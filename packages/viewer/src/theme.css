@@ -1,0 +1,128 @@
+/*
+ * Every colour, size and spacing value in the viewer.
+ *
+ * One file rather than per-component values so that "does this look like
+ * Figma" is a question you answer by reading one screen of tokens against a
+ * reference, instead of hunting hex codes through six components. No component
+ * in this package may contain a raw colour.
+ *
+ * Type is Inter, already vendored for canvas text by `scripts/setup-assets.mjs`
+ * into `public/fonts/`. Declaring the faces here points the chrome at those same
+ * local files — no font fetch, so G7's no-network rule stays true for the UI as
+ * well as the canvas. Without these @font-face rules `font-family: Inter` would
+ * silently fall through to system-ui, because the canvas loads its copies
+ * through CanvasKit's font manager, not through CSS.
+ */
+@font-face {
+  font-family: Inter;
+  src: url('/fonts/Inter-Regular.ttf') format('truetype');
+  font-weight: 400;
+  font-display: block;
+}
+@font-face {
+  font-family: Inter;
+  src: url('/fonts/Inter-Medium.ttf') format('truetype');
+  font-weight: 500;
+  font-display: block;
+}
+@font-face {
+  font-family: Inter;
+  src: url('/fonts/Inter-SemiBold.ttf') format('truetype');
+  font-weight: 600;
+  font-display: block;
+}
+@font-face {
+  font-family: Inter;
+  src: url('/fonts/Inter-Bold.ttf') format('truetype');
+  font-weight: 700;
+  font-display: block;
+}
+
+:root {
+  /* Surfaces, back to front. */
+  --bg: #1e1e1e;
+  --panel: #28282b;
+  --canvas-bg: #1e1e1e;
+  --raised: #353538;
+  --line: #3c3c40;
+
+  /* Text, by emphasis. */
+  --text: #ffffff;
+  --text-dim: #b3b3b3;
+  --text-faint: #929296;
+
+  /* Selection and state. */
+  --accent: #0d99ff;
+  --accent-dim: #0d99ff33;
+  --danger: #f24822;
+  --warn: #ffcd29;
+  --ok: #14ae5c;
+  /* A value that comes from a design token rather than a literal. */
+  --bound: #c08bff;
+  /* Scrim behind an overlay that must stay readable over the canvas. */
+  --overlay: rgba(12, 14, 18, 0.9);
+
+  /* Type. */
+  --ui-font: Inter, system-ui, -apple-system, sans-serif;
+  --ui-size: 11px;
+  --ui-size-sm: 10px;
+  --ui-line: 16px;
+
+  /* Rhythm. */
+  --row-h: 24px;
+  --field-h: 28px;
+  --bar-h: 40px;
+  --rail-w: 240px;
+  --inspector-w: 304px;
+  --indent: 16px;
+  --gap: 8px;
+  --gap-sm: 4px;
+  --pad: 8px;
+  --radius: 2px;
+  --radius-lg: 5px;
+  --section-pad: 16px;
+  --icon: 12px;
+  --shadow: 0 4px 16px rgb(0 0 0 / 0.4);
+  --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.2);
+  --shadow-float: 0 8px 32px rgb(0 0 0 / 0.24), 0 2px 8px rgb(0 0 0 / 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--ui-font);
+  font-size: var(--ui-size);
+  line-height: var(--ui-line);
+  /* Figma's chrome is dense; the browser's default text rendering is not. */
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Keep dense sidebars usable without a bright system scrollbar. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--line) transparent;
+}
+button,
+input,
+select,
+textarea {
+  font-family: inherit;
+}
+
+@media (max-width: 1100px) {
+  :root {
+    --rail-w: 208px;
+    --inspector-w: 280px;
+  }
+}
+@media (max-width: 860px) {
+  :root {
+    --rail-w: 176px;
+    --inspector-w: 264px;
+  }
+}

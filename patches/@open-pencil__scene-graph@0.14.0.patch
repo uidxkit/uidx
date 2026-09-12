@@ -1,0 +1,25 @@
+diff --git a/dist/types.js b/dist/types.js
+index 31a2c5a5e9ee63acd4dd331a087b88e0ea37d61b..dff5ab293d154b6737504f2b5a4419476bcb64b5 100644
+--- a/dist/types.js
++++ b/dist/types.js
+@@ -1138,6 +1138,20 @@ var SceneGraph = class SceneGraph {
+ 		changes = styleDetachmentChanges(node, changes);
+ 		entries = Object.entries(changes);
+ 		changes = Object.fromEntries(entries.filter(([, value]) => value !== void 0));
++		// Patched (uidx): a write that changes nothing is not an update.
++		// The layout engine rewrites x/y/width/height on every node it visits,
++		// so hiding one cell of a grid emitted 5,689 events on an 11.5k-node
++		// page while exactly two nodes actually changed — and every listener
++		// (dirty tracking, scene versioning, the patch writer) paid for them.
++		// Objects and arrays are treated as changed rather than compared.
++		{
++			const settled = Object.entries(changes).filter(([key, value]) => {
++				if (value !== null && typeof value === "object") return true;
++				return node[key] !== value;
++			});
++			if (settled.length === 0) return;
++			if (settled.length !== Object.keys(changes).length) changes = Object.fromEntries(settled);
++		}
+ 		if (Object.keys(changes).some((k) => SceneGraph.LAYOUT_AFFECTING_KEYS.has(k))) this.absPosCache.clear();
+ 		if (node.type === "INSTANCE" && "componentId" in changes && changes.componentId !== node.componentId) {
+ 			if (node.componentId) this.instanceIndex.get(node.componentId)?.delete(id);

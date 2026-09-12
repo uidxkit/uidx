@@ -1,0 +1,57 @@
+{
+  "name": "@uidx/format",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "json5": "^2.2.3",
+    "magic-string": "^0.30.17",
+    "mdast-util-from-markdown": "^2.0.2",
+    "mdast-util-frontmatter": "^2.0.1",
+    "mdast-util-mdx-expression": "^2.0.1",
+    "mdast-util-mdx-jsx": "^3.2.0",
+    "micromark-extension-frontmatter": "^2.0.0",
+    "micromark-extension-mdx-expression": "^3.0.1",
+    "micromark-extension-mdx-jsx": "^3.0.2",
+    "micromark-extension-mdx-md": "^2.0.0",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/format"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

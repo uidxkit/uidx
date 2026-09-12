@@ -1,0 +1,54 @@
+{
+  "name": "@uidx/viewer",
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "node ../../scripts/setup-assets.mjs && vite build",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "devDependencies": {
+    "@ai-sdk/vue": "^4.0.84",
+    "@open-pencil/core": "0.14.0",
+    "@open-pencil/scene-graph": "0.14.0",
+    "@open-pencil/vue": "0.14.0",
+    "@uidx/format": "workspace:*",
+    "@uidx/schema": "workspace:*",
+    "@uidx/server": "workspace:*",
+    "ai": "^7.0.84",
+    "canvaskit-wasm": "0.40.0",
+    "svgpath": "^2.6.0",
+    "vue": "^3.5.13",
+    "@types/node": "^26.2.0",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "@vue/test-utils": "^2.4.11",
+    "jsdom": "^30.0.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vitest": "^4.1.11",
+    "vue-tsc": "^2.2.0"
+  },
+  "exports": {
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/viewer"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

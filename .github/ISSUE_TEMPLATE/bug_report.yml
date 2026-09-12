@@ -1,0 +1,26 @@
+name: Bug report
+description: Report a reproducible problem with uidx.
+body:
+  - type: markdown
+    attributes:
+      value: Please use SECURITY.md for vulnerabilities. Remove credentials and private designs from examples.
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Include the smallest .uidx example that reproduces the problem.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Expected and actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: uidx version, Node version, operating system, browser and installation method.
+    validations:
+      required: true

@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch makes the in-flight run irrelevant.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['22.19.0', '24.21.0']
+
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+
+      # Reads the version from package.json's packageManager field.
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
+
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ matrix.node }}
+          cache: pnpm
+
+      # postinstall copies canvaskit.wasm and the Inter faces out of
+      # node_modules; they are gitignored, so this is what puts them in place.
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      # Cheap and fails fast, so a formatting or lint problem does not wait
+      # behind a build and the full test suite to be reported.
+      - name: Format
+        run: pnpm format:check
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      # Must precede the tests: packages/cli/test/binary.test.ts executes the
+      # built artifact as a subprocess. That test exists because a bundling bug
+      # once shipped a binary that crashed on startup while every source-level
+      # test passed — and it matters more now that the binary bundles nothing
+      # and resolves the workspace packages from their `dist` at run time.
+      #
+      # `build:cli` builds those libraries first; they are what it resolves.
+      - name: Build CLI
+        run: pnpm build:cli
+
+      - name: Test
+        run: pnpm test
+
+      - name: Test publishing safeguards
+        run: pnpm test:release
+
+      - name: Audit dependencies and verify security backports
+        run: pnpm audit:release
+
+      - name: Pack npm release
+        run: node scripts/pack-release.mjs
+
+      - name: Verify installation in a separate npm project
+        run: pnpm test:install
+
+      - name: Verify setup when install scripts are disabled
+        run: node scripts/smoke-install.mjs --ignore-scripts
+
+      - name: Verify local development link
+        run: pnpm test:linked
+
+      - name: Preserve the tested release artifact
+        if: matrix.node == '24.21.0'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: npm-release
+          path: dist/packages/*
+          if-no-files-found: error
+          retention-days: 14

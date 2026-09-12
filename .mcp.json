@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "uidx": {
+      "command": "npm",
+      "args": ["run", "--silent", "uidx:mcp"]
+    }
+  }
+}

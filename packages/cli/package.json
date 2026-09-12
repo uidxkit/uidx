@@ -1,0 +1,62 @@
+{
+  "name": "uidx",
+  "version": "0.0.0",
+  "type": "module",
+  "bin": {
+    "uidx": "./dist/uidx.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "scripts/postinstall.mjs"
+  ],
+  "scripts": {
+    "postinstall": "node scripts/postinstall.mjs",
+    "build": "tsup && tsc -p tsconfig.build.json",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@uidx/format": "workspace:*",
+    "@uidx/schema": "workspace:*",
+    "@uidx/server": "workspace:*",
+    "@uidx/viewer": "workspace:*",
+    "tinyglobby": "^0.2.10",
+    "yaml": "^2.7.0",
+    "@uidx/agent": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.30.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "description": "Project-local, file-first UI design workspace",
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

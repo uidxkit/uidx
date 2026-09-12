@@ -1,0 +1,19 @@
+dist
+node_modules
+pnpm-lock.yaml
+packages/viewer/public
+
+.uidx
+.uidx-agent
+.superpowers
+.pnpm-store
+
+# A .uidx file is the thing this repo formats, and `uidx fmt` is what formats it.
+# Prettier would parse the MDX and reprint it, which is precisely the "never
+# reprint" rule the format engine exists to uphold.
+*.uidx
+
+# Prose, hand-wrapped on purpose. The backlog and the ADRs are documents people
+# read top to bottom, and reflowing them produces a diff nobody can review for a
+# change nobody asked for. Code is what a formatter earns its keep on.
+*.md

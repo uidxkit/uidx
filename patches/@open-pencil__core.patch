@@ -1,0 +1,590 @@
+diff --git a/dist/canvas/endpoint-strokes.js b/dist/canvas/endpoint-strokes.js
+new file mode 100644
+--- /dev/null
++++ b/dist/canvas/endpoint-strokes.js
+@@ -0,0 +1,36 @@
++import { vectorEndpointShapes } from "../vector/endpoints.js";
++import { getStrokeJoinEntity } from "./strokes.js";
++
++// Draw body and tips into one opacity layer, so translucent arrowheads do not
++// darken where they overlap the centerline. Dash patterns apply to the body.
++function drawVectorEndpointStroke(r, canvas, node, paths, stroke, color) {
++  const tips = vectorEndpointShapes(node.vectorNetwork, stroke.weight, stroke.cap ?? node.strokeCap);
++  const layer = new r.ck.Paint();
++  layer.setAlphaf(stroke.opacity * color.a);
++  canvas.saveLayer(layer);
++  const paint = new r.ck.Paint();
++  paint.setAntiAlias(true);
++  paint.setColor(r.ck.Color4f(color.r, color.g, color.b, 1));
++  paint.setStyle(r.ck.PaintStyle.Stroke);
++  paint.setStrokeWidth(stroke.weight);
++  paint.setStrokeCap(r.ck.StrokeCap.Butt);
++  paint.setStrokeJoin(getStrokeJoinEntity(r, stroke.join ?? node.strokeJoin));
++  paint.setStrokeMiter(node.strokeMiterLimit);
++  const dash = stroke.dashPattern?.length ? r.ck.PathEffect.MakeDash(stroke.dashPattern, 0) : null;
++  paint.setPathEffect(dash);
++  for (const path of paths) canvas.drawPath(path, paint);
++  paint.setPathEffect(null);
++  dash?.delete();
++  for (const tip of tips) {
++    const path = r.ck.Path.MakeFromSVGString(tip.d);
++    if (!path) continue;
++    paint.setStyle(tip.stroke ? r.ck.PaintStyle.Stroke : r.ck.PaintStyle.Fill);
++    canvas.drawPath(path, paint);
++    path.delete();
++  }
++  canvas.restore();
++  paint.delete();
++  layer.delete();
++}
++
++export { drawVectorEndpointStroke };
+diff --git a/dist/canvas/labels/selection.js b/dist/canvas/labels/selection.js
+--- a/dist/canvas/labels/selection.js
++++ b/dist/canvas/labels/selection.js
+@@ -82,13 +82,22 @@
+ 	const pillColor = r.isComponentType(node.type) ? r.compColor() : r.selColor();
+ 	const overlayRotation = getOverlayRotation(node, overlays);
+ 	const abs = getAbsolutePosition(node, graph);
+-	const cx = abs.x + node.width / 2;
+-	const cy = abs.y + node.height / 2;
++	// Patched (uidx): the world transform is translate(origin) · rotate, so the
++	// node's bottom-centre is abs + R(θ)·(w/2, h). The original treated abs as
++	// an unrotated rect corner and mirrored the offset, floating the pill away
++	// from any turned node. The pill also turns to lie along the bottom edge,
++	// the way drawSingleFrameTitle already turns the title — flipped upright
++	// when the edge points leftward, so the numbers stay readable.
+ 	const rad = overlayRotation * Math.PI / 180;
+-	const hh = node.height / 2;
+-	const bottomCenterX = cx + Math.sin(rad) * hh;
+-	const bottomCenterY = cy + Math.cos(rad) * hh;
+-	drawSizePill(r, canvas, sizeFont, sizeText, bottomCenterX * r.zoom + r.panX, bottomCenterY * r.zoom + r.panY, pillColor);
++	const bottomCenterX = abs.x + Math.cos(rad) * (node.width / 2) - Math.sin(rad) * node.height;
++	const bottomCenterY = abs.y + Math.sin(rad) * (node.width / 2) + Math.cos(rad) * node.height;
++	const norm = ((overlayRotation % 360) + 360) % 360;
++	const labelRotation = norm > 90 && norm < 270 ? norm - 180 : norm;
++	canvas.save();
++	canvas.translate(bottomCenterX * r.zoom + r.panX, bottomCenterY * r.zoom + r.panY);
++	if (labelRotation !== 0) canvas.rotate(labelRotation, 0, 0);
++	drawSizePill(r, canvas, sizeFont, sizeText, 0, 0, pillColor);
++	canvas.restore();
+ }
+ function drawMultiSelectionSize(r, canvas, nodes, minX, minY, maxX, maxY, sizeFont) {
+ 	const sizeText = `${Math.round(maxX - minX)} × ${Math.round(maxY - minY)}`;
+diff --git a/dist/canvas/renderer.js b/dist/canvas/renderer.js
+--- a/dist/canvas/renderer.js
++++ b/dist/canvas/renderer.js
+@@ -54,6 +54,23 @@
+ 	nodePictureCache = /* @__PURE__ */ new Map();
+ 	nodePictureCacheGenerations = /* @__PURE__ */ new Map();
+ 	subtreePictureCache = /* @__PURE__ */ new Map();
++	/**
++	* Patched (uidx): nodes the host reports as changed since the last frame.
++	* The subtree picture cache used to be keyed by `sceneVersion`, so any
++	* change re-recorded every page child; now a version bump re-records only
++	* the chunks these nodes sit in, and everything when nothing was reported.
++	*/
++	dirtyNodes = /* @__PURE__ */ new Map();
++	/**
++	* `moveOnly` says the node's own paint did not change, only where it sits.
++	* Its picture is recorded in its own local space, so it survives; the
++	* cached ancestors that bake its position in do not. A reflow moves every
++	* section after the edit, and this is what keeps those sections cached.
++	*/
++	markDirty(nodeId, moveOnly = false) {
++		const existing = this.dirtyNodes.get(nodeId);
++		this.dirtyNodes.set(nodeId, existing === false ? false : !!moveOnly);
++	}
+ 	subtreePictureCachePageId = null;
+ 	subtreePictureCacheSceneVersion = -1;
+ 	subtreePictureCachePositionPreviewVersion = -1;
+diff --git a/dist/canvas/renderer/retained-backing.js b/dist/canvas/renderer/retained-backing.js
+--- a/dist/canvas/renderer/retained-backing.js
++++ b/dist/canvas/renderer/retained-backing.js
+@@ -1,4 +1,11 @@
+ import { clearSubtreePictureCache } from "./state.js";
++import { applyNodeTransforms, renderNodeContent } from "../scene.js";
++/**
++* Patched (uidx): a page child with more descendants than this is drawn as its
++* own content plus one cached picture per child, so an edit re-records one
++* section of a documentation page rather than the page.
++*/
++const CHUNK_LIMIT = 512;
+ import { TransformMatrix, getWorldMatrix } from "@open-pencil/scene-graph";
+ import { computeDescendantVisualBounds, effectOverflow, strokeOverflow, unionVisualBounds } from "@open-pencil/scene-graph/geometry";
+ //#region src/canvas/renderer/retained-backing.ts
+@@ -127,9 +134,52 @@
+ 		return null;
+ 	}
+ }
++/** Patched (uidx): the page child a node sits under, or null when it is gone. */
++function chunkOf(graph, nodeId, pageId) {
++	let node = graph.getNode(nodeId);
++	if (!node) return null;
++	while (node.parentId && node.parentId !== pageId) {
++		node = graph.getNode(node.parentId);
++		if (!node) return null;
++	}
++	return node.parentId === pageId ? node.id : null;
++}
+ function ensureSubtreePictureCacheScope(r, graph, sceneVersion) {
+-	if (r.subtreePictureCachePageId === r.pageId && r.subtreePictureCacheSceneVersion === sceneVersion && r.subtreePictureCachePositionPreviewVersion === graph.positionPreviewVersion && r.subtreePictureCacheFontGeneration === r.fontGeneration) return;
+-	clearSubtreePictureCache(r);
++	const scopeMoved = r.subtreePictureCachePageId !== r.pageId || r.subtreePictureCachePositionPreviewVersion !== graph.positionPreviewVersion || r.subtreePictureCacheFontGeneration !== r.fontGeneration;
++	if (!scopeMoved && r.subtreePictureCacheSceneVersion === sceneVersion) return;
++	const dirty = r.dirtyNodes ?? new Set();
++	if (scopeMoved || dirty.size === 0) {
++		// A page, preview or font change moves every picture; a version bump
++		// nobody explained is treated the same way — the safe default.
++		clearSubtreePictureCache(r);
++	} else {
++		// Patched (uidx): a version bump the host explained re-records only the
++		// chunks holding the reported nodes — every cached picture on the way up
++		// from the node to the page, whichever depth the chunk was cut at. A
++		// node that no longer exists cannot name its chain, so its removal falls
++		// back to clearing everything.
++		const pageId = r.pageId ?? graph.rootId;
++		for (const [id, moveOnly] of dirty) {
++			let node = graph.getNode(id);
++			if (!node) {
++				clearSubtreePictureCache(r);
++				break;
++			}
++			// A node that only moved keeps its own picture — it is recorded in
++			// its own local space and drawn at a translate — but every cached
++			// ancestor baked its position in.
++			if (moveOnly) node = node.parentId ? graph.getNode(node.parentId) : null;
++			while (node && node.id !== pageId) {
++				const entry = r.subtreePictureCache.get(node.id);
++				if (entry) {
++					entry.picture.delete();
++					r.subtreePictureCache.delete(node.id);
++				}
++				node = node.parentId ? graph.getNode(node.parentId) : null;
++			}
++		}
++	}
++	dirty.clear();
+ 	r.subtreePictureCachePageId = r.pageId;
+ 	r.subtreePictureCacheSceneVersion = sceneVersion;
+ 	r.subtreePictureCachePositionPreviewVersion = graph.positionPreviewVersion;
+@@ -184,15 +234,25 @@
+ 	}
+ 	return unionVisualBounds(visualBounds, transformedBounds);
+ }
+-function cachedSubtreePicture(r, graph, childId, sceneVersion) {
++function cachedSubtreePicture(r, graph, childId, sceneVersion, parentAbsX = 0, parentAbsY = 0) {
+ 	ensureSubtreePictureCacheScope(r, graph, sceneVersion);
+ 	const cached = r.subtreePictureCache.get(childId);
+-	if (cached && cached.pageId === r.pageId && cached.sceneVersion === sceneVersion && cached.positionPreviewVersion === graph.positionPreviewVersion && cached.fontGeneration === r.fontGeneration) return cached.picture;
++	// Patched (uidx): a picture outlives the scene version; `ensureSubtreePictureCacheScope`
++	// has already dropped the chunks that changed.
++	if (cached && cached.pageId === r.pageId && cached.positionPreviewVersion === graph.positionPreviewVersion && cached.fontGeneration === r.fontGeneration) return cached.picture;
+ 	cached?.picture.delete();
+ 	const bounds = computeRetainedSubtreeBounds(graph, childId);
+ 	if (!bounds) return null;
++	const child = graph.getNode(childId);
++	if (!child) return null;
++	// Patched (uidx): recorded in the *child's own* local space — its x/y are
++	// applied at draw time instead of baked in — so a reflow that moves the
++	// child leaves its picture valid. The cull viewport stays in world space,
++	// which is what `renderNode` compares its accumulated position against.
++	const originX = parentAbsX + child.x;
++	const originY = parentAbsY + child.y;
+ 	const recorder = new r.ck.PictureRecorder();
+-	const recCanvas = recorder.beginRecording(r.ck.LTRBRect(bounds.minX, bounds.minY, bounds.maxX, bounds.maxY));
++	const recCanvas = recorder.beginRecording(r.ck.LTRBRect(bounds.minX - originX, bounds.minY - originY, bounds.maxX - originX, bounds.maxY - originY));
+ 	const prevViewport = r.worldViewport;
+ 	r.worldViewport = {
+ 		x: bounds.minX,
+@@ -200,7 +260,8 @@
+ 		w: bounds.maxX - bounds.minX,
+ 		h: bounds.maxY - bounds.minY
+ 	};
+-	r.renderNode(recCanvas, graph, childId, {});
++	recCanvas.translate(-child.x, -child.y);
++	r.renderNode(recCanvas, graph, childId, {}, parentAbsX, parentAbsY);
+ 	r.worldViewport = prevViewport;
+ 	const picture = recorder.finishRecordingAsPicture();
+ 	recorder.delete();
+@@ -226,11 +287,70 @@
+ 	canvas.scale(r.dpr, r.dpr);
+ 	canvas.translate(backing.panX, backing.panY);
+ 	canvas.scale(r.zoom, r.zoom);
+-	const picture = cachedSubtreePicture(r, graph, childId, sceneVersion);
+-	if (picture) canvas.drawPicture(picture);
+-	else r.renderNode(canvas, graph, childId, {});
++	const node = graph.getNode(childId);
++	if (node && shouldSplitChunk(graph, node)) renderSplitChunk(r, canvas, graph, node, sceneVersion);
++	else drawChunk(r, canvas, graph, childId, sceneVersion, 0, 0);
+ 	canvas.restore();
+ 	r.worldViewport = prevViewport;
++}
++/** Patched (uidx): whether a page child is big and plain enough to draw as own content plus per-child pictures. */
++function shouldSplitChunk(graph, node) {
++	if (!node.visible || node.internalOnly) return false;
++	if (node.type !== "FRAME" && node.type !== "SECTION" && node.type !== "COMPONENT_SET" && node.type !== "COMPONENT") return false;
++	if (node.opacity < 1 || (node.rotation ?? 0) !== 0 || node.isMask) return false;
++	if (node.effects?.some((e) => e.visible && (e.type === "LAYER_BLUR" || e.type === "FOREGROUND_BLUR"))) return false;
++	if (node.childIds.length < 2) return false;
++	for (const id of node.childIds) {
++		const child = graph.getNode(id);
++		if (child?.isMask) return false;
++	}
++	let count = 0;
++	const stack = [node.id];
++	while (stack.length) {
++		const current = graph.getNode(stack.pop());
++		if (!current) continue;
++		count++;
++		if (count > CHUNK_LIMIT) return true;
++		for (const c of current.childIds) stack.push(c);
++	}
++	return false;
++}
++/** Patched (uidx): the parent's own paint, its clip, then one cached picture per child. */
++function renderSplitChunk(r, canvas, graph, node, sceneVersion) {
++	canvas.save();
++	canvas.translate(node.x, node.y);
++	applyNodeTransforms(r, canvas, node, node.id, {});
++	renderNodeContent(r, canvas, graph, node, node.id, {});
++	if ((node.type === "FRAME" || node.type === "COMPONENT") && node.clipsContent) {
++		if (nodeHasRadiusForClip(node)) canvas.clipRRect(r.makeRRect(node), r.ck.ClipOp.Intersect, true);
++		else canvas.clipRect(r.ck.LTRBRect(0, 0, node.width, node.height), r.ck.ClipOp.Intersect, true);
++	}
++	for (const childId of node.childIds) {
++		const child = graph.getNode(childId);
++		if (!child || !child.visible) continue;
++		// Patched (uidx): a child big enough to be its own chunk splits again,
++		// so an edit re-records the cell it touched rather than the row.
++		if (shouldSplitChunk(graph, child)) renderSplitChunk(r, canvas, graph, child, sceneVersion);
++		else drawChunk(r, canvas, graph, childId, sceneVersion, node.x, node.y);
++	}
++	canvas.restore();
++}
++/** Patched (uidx): a chunk's picture is child-local, so its position is applied here. */
++function drawChunk(r, canvas, graph, childId, sceneVersion, parentAbsX, parentAbsY) {
++	const child = graph.getNode(childId);
++	if (!child) return;
++	const picture = cachedSubtreePicture(r, graph, childId, sceneVersion, parentAbsX, parentAbsY);
++	if (!picture) {
++		r.renderNode(canvas, graph, childId, {}, parentAbsX, parentAbsY);
++		return;
++	}
++	canvas.save();
++	canvas.translate(child.x, child.y);
++	canvas.drawPicture(picture);
++	canvas.restore();
++}
++function nodeHasRadiusForClip(node) {
++	return (node.cornerRadius ?? 0) > 0 || (node.topLeftRadius ?? 0) > 0 || (node.topRightRadius ?? 0) > 0 || (node.bottomLeftRadius ?? 0) > 0 || (node.bottomRightRadius ?? 0) > 0;
+ }
+ function sceneBackingMetrics(backing) {
+ 	return {
+diff --git a/dist/canvas/scene.js b/dist/canvas/scene.js
+--- a/dist/canvas/scene.js
++++ b/dist/canvas/scene.js
+@@ -13,6 +13,7 @@
+ import { drawFigmaDerivedText } from "./text/derived.js";
+ import { getAbsolutePositionFull } from "@open-pencil/scene-graph";
+ import { computeDescendantVisualBounds } from "@open-pencil/scene-graph/geometry";
++import { drawVectorEndpointStroke } from "./endpoint-strokes.js";
+ //#region src/canvas/scene.ts
+ function drawVisibleFills(r, node, graph, draw) {
+ 	paintFills(r, node.fills, node, graph, draw);
+@@ -317,6 +318,11 @@
+ 	const vectorPaths = node.type === "VECTOR" ? r.getVectorPaths(node) : null;
+ 	const vectorStroke = node.type === "VECTOR" ? vectorStrokePaths(r, node) : null;
+ 	forVisibleStrokes(r, node, graph, (stroke, color) => {
++        // UIDX: independently styled endpoints, including editable arrow tips.
++        if (vectorPaths && node.vectorNetwork && (node.vectorNetwork.vertices.some((vertex) => vertex.strokeCap !== undefined) || !["NONE", "ROUND", "SQUARE"].includes(stroke.cap ?? node.strokeCap))) {
++            drawVectorEndpointStroke(r, canvas, node, vectorPaths, stroke, color);
++            return;
++        }
+ 		if (stroke.dashPattern && stroke.dashPattern.length > 0 && node.type === "VECTOR" && node.vectorNetwork) {
+ 			const centerline = vectorNetworkToCenterlinePath(r.ck, node.vectorNetwork);
+ 			drawVectorPathStrokes(r, canvas, [centerline], stroke, color, node.strokeMiterLimit);
+@@ -431,6 +437,6 @@
+ 	canvas.restore();
+ }
+ //#endregion
+-export { renderComponentSet, renderNode, renderSection, renderShape, renderShapeUncached, renderText, textVerticalOffset };
++export { applyNodeTransforms, renderComponentSet, renderNode, renderNodeContent, renderSection, renderShape, renderShapeUncached, renderText, textVerticalOffset };
+ 
+ //# sourceMappingURL=scene.js.map
+\ No newline at end of file
+diff --git a/dist/io/formats/fig/export.js b/dist/io/formats/fig/export.js
+--- a/dist/io/formats/fig/export.js
++++ b/dist/io/formats/fig/export.js
+@@ -327,7 +327,10 @@
+ }
+ function compressViaWorker(schemaDeflated, kiwiData, thumbnailPNG, metaJSON, imageEntries, figKiwiVersion) {
+ 	return new Promise((resolve, reject) => {
+-		const worker = new Worker(new URL("./export-worker.ts", import.meta.url), { type: "module" });
++		// Patched (uidx): the published dist ships export-worker.js but the emitted
++		// worker URL still points at the .ts source, which breaks bundlers that
++		// resolve worker entries eagerly (vite build).
++		const worker = new Worker(new URL("./export-worker.js", import.meta.url), { type: "module" });
+ 		worker.onmessage = (e) => {
+ 			resolve(e.data);
+ 			worker.terminate();
+diff --git a/dist/io/formats/fig/read.js b/dist/io/formats/fig/read.js
+--- a/dist/io/formats/fig/read.js
++++ b/dist/io/formats/fig/read.js
+@@ -13,7 +13,10 @@
+ }
+ function parseViaWorker(buffer, options) {
+ 	return new Promise((resolve, reject) => {
+-		const worker = new Worker(new URL("../../../kiwi/fig/parse/worker.ts", import.meta.url), { type: "module" });
++		// Patched (uidx): the published dist ships worker.js but the emitted worker
++		// URL still points at the .ts source, which breaks bundlers that resolve
++		// worker entries eagerly (vite build).
++		const worker = new Worker(new URL("../../../kiwi/fig/parse/worker.js", import.meta.url), { type: "module" });
+ 		worker.onmessage = (e) => {
+ 			if (e.data.error || !e.data.graph) {
+ 				worker.terminate();
+diff --git a/dist/io/formats/raster/render.js b/dist/io/formats/raster/render.js
+--- a/dist/io/formats/raster/render.js
++++ b/dist/io/formats/raster/render.js
+@@ -1,5 +1,6 @@
+ import { extractExportGraph, findPageId } from "../../subgraph.js";
+-import { getWorldMatrix } from "@open-pencil/scene-graph";
++import { getWorldMatrix, TransformMatrix } from "@open-pencil/scene-graph";
++import { vectorEndpointShapes } from "../../../vector/endpoints.js";
+ import { computeDescendantVisualBounds } from "@open-pencil/scene-graph/geometry";
+ //#region src/io/formats/raster/render.ts
+ function ensureSinglePageSelection(graph, pageId, nodeIds) {
+@@ -13,7 +14,33 @@
+ 	return node.childIds.some((childId) => nodeNeedsSceneBackdrop(graph, childId));
+ }
+ function computeContentBounds(graph, nodeIds) {
+-	return computeDescendantVisualBounds(nodeIds, (id) => graph.getNode(id), (id) => graph.getAbsolutePosition(id));
++    let bounds = computeDescendantVisualBounds(nodeIds, (id) => graph.getNode(id), (id) => graph.getAbsolutePosition(id));
++    const union = (box) => {
++        if (box.maxX < box.minX || box.maxY < box.minY) return;
++        bounds = bounds ? { minX: Math.min(bounds.minX, box.minX), minY: Math.min(bounds.minY, box.minY), maxX: Math.max(bounds.maxX, box.maxX), maxY: Math.max(bounds.maxY, box.maxY) } : box;
++    };
++    const clipped = (box, clip) => clip ? { minX: Math.max(box.minX, clip.minX), minY: Math.max(box.minY, clip.minY), maxX: Math.min(box.maxX, clip.maxX), maxY: Math.min(box.maxY, clip.maxY) } : box;
++    const visit = (id, clip = null) => {
++        const node = graph.getNode(id);
++        if (!node?.visible) return;
++        if (node.type === "VECTOR" && node.vectorNetwork) {
++            const matrix = getWorldMatrix(node, graph);
++            for (const stroke of node.strokes.filter((stroke) => stroke.visible)) {
++                for (const tip of vectorEndpointShapes(node.vectorNetwork, stroke.weight, stroke.cap ?? node.strokeCap)) {
++                    const b = tip.bounds;
++                    const corners = [[b.minX, b.minY], [b.maxX, b.minY], [b.maxX, b.maxY], [b.minX, b.maxY]].map((p) => TransformMatrix.mapPoints(matrix, p));
++                    union(clipped({ minX: Math.min(...corners.map((p) => p[0])), minY: Math.min(...corners.map((p) => p[1])), maxX: Math.max(...corners.map((p) => p[0])), maxY: Math.max(...corners.map((p) => p[1])) }, clip));
++                }
++            }
++        }
++        if (node.clipsContent && ["FRAME", "COMPONENT", "INSTANCE"].includes(node.type)) {
++            const at = graph.getAbsolutePosition(id);
++            clip = clipped({ minX: at.x, minY: at.y, maxX: at.x + node.width, maxY: at.y + node.height }, clip);
++        }
++        for (const child of node.childIds ?? []) visit(child, clip);
++    };
++    for (const id of nodeIds) visit(id);
++    return bounds;
+ }
+ function ckImageFormat(ck, format) {
+ 	switch (format) {
+diff --git a/dist/io/formats/svg/export.js b/dist/io/formats/svg/export.js
+--- a/dist/io/formats/svg/export.js
++++ b/dist/io/formats/svg/export.js
+@@ -3,8 +3,20 @@
+ import { computeContentBounds } from "../raster/render.js";
+ import { renderSVGNode, svg } from "./node.js";
+ import { SVG_BLEND_MODE, SVG_STROKE_CAP, SVG_STROKE_JOIN, createFilterDef, formatColor, nextDefId, resolveFill } from "./defs.js";
++import { vectorEndpointShapes } from "../../../vector/endpoints.js";
+ //#region src/io/formats/svg/export.ts
+-function vectorShapeElements(node, common, strokeAttrs, ctx, fallbackFills) {
++function vectorShapeElements(node, common, strokeAttrs, ctx, fallbackFills, endpointPass = false) {
++    const stroke = node.strokes.find((stroke) => stroke.visible);
++    if (!endpointPass && stroke && common.stroke && common.stroke !== "none" && node.vectorNetwork && (node.vectorNetwork.vertices.some((vertex) => vertex.strokeCap !== undefined) || !["NONE", "ROUND", "SQUARE"].includes(stroke.cap ?? node.strokeCap))) {
++        const fillElements = common.fill && common.fill !== "none" ? vectorShapeElements(node, { ...common, stroke: "none" }, {}, ctx, fallbackFills, true) : [];
++        const body = vectorShapeElements(node, { ...common, fill: "none", "stroke-linecap": "butt", "stroke-opacity": 1 }, { ...strokeAttrs, "stroke-opacity": 1 }, ctx, [], true);
++        const tips = vectorEndpointShapes(node.vectorNetwork, stroke.weight, stroke.cap ?? node.strokeCap).map((tip) => svg("path", {
++            d: tip.d, fill: tip.stroke ? "none" : common.stroke,
++            stroke: tip.stroke ? common.stroke : "none",
++            "stroke-width": stroke.weight, "stroke-linejoin": "miter"
++        }));
++        return [...fillElements, svg("g", { opacity: strokeAttrs["stroke-opacity"] }, ...body, ...tips)];
++    }
+ 	const elements = [];
+ 	if (node.fillGeometry.length > 0) for (const geo of node.fillGeometry) {
+ 		const d = geometryBlobToSVGPath(geo.commandsBlob);
+@@ -39,10 +51,17 @@
+ 	}
+ 	else if (node.vectorNetwork) {
+ 		const paths = vectorNetworkToSVGPaths(node.vectorNetwork);
+-		for (const d of paths) elements.push(svg("path", {
++		for (const [index, d] of paths.entries()) elements.push(svg("path", {
+ 			d,
+-			...common
++			...common,
++			"fill-rule": node.vectorNetwork.regions[index]?.windingRule === "EVENODD" ? "evenodd" : "nonzero"
+ 		}));
++		// UIDX: the SDK path serializer visits regions only when any exist.
++		if (node.vectorNetwork.regions.length) {
++			const filled = new Set(node.vectorNetwork.regions.flatMap((region) => region.loops.flat()));
++			const segments = node.vectorNetwork.segments.filter((_, index) => !filled.has(index));
++			if (segments.length) for (const d of vectorNetworkToSVGPaths({ vertices: node.vectorNetwork.vertices, segments, regions: [] })) elements.push(svg("path", { d, ...common, fill: "none" }));
++		}
+ 	}
+ 	if (node.strokeGeometry.length > 0 && strokeAttrs.stroke && strokeAttrs.stroke !== "none") for (const geo of node.strokeGeometry) {
+ 		const d = geometryBlobToSVGPath(geo.commandsBlob);
+@@ -134,9 +153,10 @@
+ 	if (node.textAlignHorizontal === "CENTER") return "middle";
+ 	if (isLogicalTextEnd(node, direction)) return "end";
+ }
+-function textXForNode(node, direction) {
++function textXForNode(node) {
++	// Patched (uidx): the anchor follows direction; its position follows physical alignment.
+ 	if (node.textAlignHorizontal === "CENTER") return round(node.width / 2);
+-	if (isLogicalTextEnd(node, direction)) return round(node.width);
++	if (node.textAlignHorizontal === "RIGHT") return round(node.width);
+ 	return 0;
+ }
+ function renderTextNode(node, fillAttr, colorSpace) {
+@@ -156,7 +176,7 @@
+ 		"text-decoration": textDecoration,
+ 		"letter-spacing": node.letterSpacing ? round(node.letterSpacing) : void 0
+ 	};
+-	const x = textXForNode(node, direction);
++	const x = textXForNode(node);
+ 	const y = node.fontSize || 14;
+ 	if (node.styleRuns.length > 0) {
+ 		const spans = [];
+diff --git a/dist/vector/endpoints.d.ts b/dist/vector/endpoints.d.ts
+new file mode 100644
+--- /dev/null
++++ b/dist/vector/endpoints.d.ts
+@@ -0,0 +1,3 @@
++import type { VectorNetwork } from '@open-pencil/scene-graph';
++export declare function vectorEndpoints(network: VectorNetwork | null | undefined): Array<{ vertex: number; start: boolean; x: number; y: number; dx: number; dy: number }>;
++export declare function vectorEndpointShapes(network: VectorNetwork | null | undefined, weight: number, fallbackCap?: string): Array<{ d: string; stroke: boolean; bounds: { minX: number; minY: number; maxX: number; maxY: number } }>;
+diff --git a/dist/vector/endpoints.js b/dist/vector/endpoints.js
+new file mode 100644
+--- /dev/null
++++ b/dist/vector/endpoints.js
+@@ -0,0 +1,63 @@
++// UIDX: endpoint geometry shared by canvas strokes, SVG export, and export bounds.
++function vectorEndpoints(network) {
++  if (!network) return [];
++  const links = network.vertices.map(() => []);
++  for (const segment of network.segments) {
++    links[segment.start]?.push({ segment, start: true });
++    links[segment.end]?.push({ segment, start: false });
++  }
++  return links.flatMap((edges, vertex) => {
++    if (edges.length !== 1) return [];
++    const { segment, start } = edges[0];
++    const point = network.vertices[vertex];
++    const other = network.vertices[start ? segment.end : segment.start];
++    const tangent = start ? segment.tangentStart : segment.tangentEnd;
++    let dx = -(tangent?.x ?? 0), dy = -(tangent?.y ?? 0);
++    if (Math.hypot(dx, dy) < 1e-8) { dx = point.x - other.x; dy = point.y - other.y; }
++    const length = Math.hypot(dx, dy);
++    if (length < 1e-8) return [];
++    return [{ vertex, start, x: point.x, y: point.y, dx: dx / length, dy: dy / length }];
++  });
++}
++
++function vectorEndpointShapes(network, weight, fallbackCap = "NONE") {
++  if (!network || !(weight > 0)) return [];
++  return vectorEndpoints(network).flatMap((end) => {
++    const cap = network.vertices[end.vertex].strokeCap ?? fallbackCap;
++    if (cap === "NONE") return [];
++    const h = weight / 2, size = weight * 3;
++    const xy = (x, y) => [end.x + x * end.dx - y * end.dy, end.y + x * end.dy + y * end.dx];
++    const point = (x, y) => xy(x, y).map((n) => Math.round(n * 1e4) / 1e4).join(" ");
++    const polygon = (points) => points.map(([x, y], i) => `${i ? "L" : "M"}${point(x, y)}`).join("") + "Z";
++    let d, stroke = false, localBounds;
++    if (cap === "ROUND") {
++      d = `M${point(0, -h)}A${h} ${h} 0 0 1 ${point(0, h)}Z`;
++      localBounds = [0, -h, h, h];
++    } else if (cap === "SQUARE") {
++      d = polygon([[0, -h], [h, -h], [h, h], [0, h]]);
++      localBounds = [0, -h, h, h];
++    } else if (cap === "ARROW_LINES") {
++      d = `M${point(-size, -size / 2)}L${point(0, 0)}L${point(-size, size / 2)}`;
++      stroke = true;
++      localBounds = [-size - h, -size / 2 - h, weight * 2, size / 2 + h];
++    } else if (cap === "ARROW_EQUILATERAL") {
++      d = polygon([[0, 0], [-size, size / 2], [-size, -size / 2]]);
++      localBounds = [-size, -size / 2, 0, size / 2];
++    } else if (cap === "TRIANGLE_REVERSE") {
++      d = polygon([[-size, 0], [0, -size / 2], [0, size / 2]]);
++      localBounds = [-size, -size / 2, 0, size / 2];
++    } else if (cap === "DIAMOND_FILLED") {
++      d = polygon([[0, 0], [-size / 2, size / 2], [-size, 0], [-size / 2, -size / 2]]);
++      localBounds = [-size, -size / 2, 0, size / 2];
++    } else if (cap === "CIRCLE_FILLED") {
++      const r = size / 2;
++      d = `M${point(0, -r)}A${r} ${r} 0 1 1 ${point(0, r)}A${r} ${r} 0 1 1 ${point(0, -r)}Z`;
++      localBounds = [-r, -r, r, r];
++    } else return [];
++    const [left, top, right, bottom] = localBounds;
++    const corners = [[left, top], [right, top], [right, bottom], [left, bottom]].map(([x, y]) => xy(x, y));
++    return [{ d, stroke, bounds: { minX: Math.min(...corners.map((p) => p[0])), minY: Math.min(...corners.map((p) => p[1])), maxX: Math.max(...corners.map((p) => p[0])), maxY: Math.max(...corners.map((p) => p[1])) } }];
++  });
++}
++
++export { vectorEndpoints, vectorEndpointShapes };
+diff --git a/dist/vector/index.d.ts b/dist/vector/index.d.ts
+--- a/dist/vector/index.d.ts
++++ b/dist/vector/index.d.ts
+@@ -14,4 +14,5 @@
+ declare function geometryBlobToPath(ck: CanvasKit, blob: Uint8Array, windingRule: WindingRule): Path;
+ //#endregion
+ export { type GetCanvasKit, type PreprocessForVectorizeResult, type SVGVectorizeResult, type VectorFramePlacement, type VectorizedPath, breakAtVertex, buildStyleOverrideTable, computeAccurateBounds, createVectorFrameChildren, decodeVectorNetworkBlob, deleteVertex, encodeVectorNetworkBlob, findAllHandles, findOppositeHandle, fitCircleArc, geometryBlobToPath, isClosedThinCrescent, mirrorHandle, nearestPointOnNetwork, preprocessForVectorize, regenerateFillGeometry, removeVertex, resolveVectorFramePlacement, splitSegmentAt, svgToVectorPaths, vectorNetworkToCenterlinePath, vectorNetworkToPath };
+-//# sourceMappingURL=index.d.ts.map
+\ No newline at end of file
++//# sourceMappingURL=index.d.ts.map
++export { vectorEndpoints, vectorEndpointShapes } from "./endpoints.js";
+diff --git a/dist/vector/index.js b/dist/vector/index.js
+--- a/dist/vector/index.js
++++ b/dist/vector/index.js
+@@ -17,6 +17,14 @@
+ 			for (const loop of region.loops) addLoopToPath(regionPath, loop, segments, vertices);
+ 			regionPath.setFillType(region.windingRule === "EVENODD" ? ck.FillType.EvenOdd : ck.FillType.Winding);
+ 			paths.push(regionPath);
++		}
++		// UIDX: a compound icon may also have open stroke details.
++		const filled = new Set(regions.flatMap((region) => region.loops.flat()));
++		const open = segments.filter((_, index) => !filled.has(index));
++		if (open.length) {
++			const openPath = new ck.Path();
++			addOpenSegmentsToPath(openPath, open, vertices);
++			paths.push(openPath);
+ 		}
+ 		return paths;
+ 	}
+@@ -80,4 +88,5 @@
+ //#endregion
+ export { breakAtVertex, buildStyleOverrideTable, computeAccurateBounds, createVectorFrameChildren, decodeVectorNetworkBlob, deleteVertex, encodeVectorNetworkBlob, findAllHandles, findOppositeHandle, fitCircleArc, geometryBlobToPath, isClosedThinCrescent, mirrorHandle, nearestPointOnNetwork, preprocessForVectorize, regenerateFillGeometry, removeVertex, resolveVectorFramePlacement, splitSegmentAt, svgToVectorPaths, vectorNetworkToCenterlinePath, vectorNetworkToPath };
+ 
+-//# sourceMappingURL=index.js.map
+\ No newline at end of file
++//# sourceMappingURL=index.js.map
++export { vectorEndpoints, vectorEndpointShapes } from "./endpoints.js";
+diff --git a/dist/canvas/text/index.js b/dist/canvas/text/index.js
+--- a/dist/canvas/text/index.js
++++ b/dist/canvas/text/index.js
+@@ -181,12 +181,12 @@
+ 	return resolved;
+ }
+ function getParagraphTextAlign(ck, node) {
+-	const direction = resolveNodeTextDirection(node);
++	// Patched (uidx): Left and Right are physical alignment, independent of text direction.
+ 	switch (node.textAlignHorizontal) {
+ 		case "CENTER": return ck.TextAlign.Center;
+-		case "RIGHT": return direction === "RTL" ? ck.TextAlign.Left : ck.TextAlign.Right;
++		case "RIGHT": return ck.TextAlign.Right;
+ 		case "JUSTIFIED": return ck.TextAlign.Justify;
+-		default: return direction === "RTL" ? ck.TextAlign.Right : ck.TextAlign.Left;
++		default: return ck.TextAlign.Left;
+ 	}
+ }
+ function textFontVariations(variations) {

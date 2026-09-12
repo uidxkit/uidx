@@ -1,0 +1,68 @@
+{
+  "name": "@uidx/server",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./protocol": {
+      "development": "./src/protocol.ts",
+      "types": "./dist/protocol.d.ts",
+      "default": "./dist/protocol.js"
+    },
+    "./document": {
+      "development": "./src/document.ts",
+      "types": "./dist/document.d.ts",
+      "default": "./dist/document.js"
+    },
+    "./symbols": {
+      "development": "./src/symbols.ts",
+      "types": "./dist/symbols.d.ts",
+      "default": "./dist/symbols.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@uidx/format": "workspace:*",
+    "chokidar": "^4.0.3",
+    "picomatch": "^4.0.2",
+    "vite": "^6.0.7",
+    "ws": "^8.18.0",
+    "tinyglobby": "^0.2.10"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/picomatch": "^4.0.0",
+    "@types/ws": "^8.5.13",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/server"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

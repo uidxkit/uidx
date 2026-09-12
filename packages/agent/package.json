@@ -1,0 +1,91 @@
+{
+  "name": "@uidx/agent",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "uidx-agent": "./dist/server/main.js",
+    "uidx-mcp": "./dist/mcp/main.js"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./core": {
+      "development": "./src/core/index.ts",
+      "types": "./dist/core/index.d.ts",
+      "default": "./dist/core/index.js"
+    },
+    "./core/eval": {
+      "development": "./src/core/eval.ts",
+      "types": "./dist/core/eval.d.ts",
+      "default": "./dist/core/eval.js"
+    },
+    "./mcp": {
+      "development": "./src/mcp/server.ts",
+      "types": "./dist/mcp/server.d.ts",
+      "default": "./dist/mcp/server.js"
+    },
+    "./mcp/http": {
+      "development": "./src/mcp/http.ts",
+      "types": "./dist/mcp/http.d.ts",
+      "default": "./dist/mcp/http.js"
+    },
+    "./mcp/client": {
+      "development": "./src/mcp/client.ts",
+      "types": "./dist/mcp/client.d.ts",
+      "default": "./dist/mcp/client.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.45",
+    "@ai-sdk/openai-compatible": "^3.0.40",
+    "@hono/node-server": "^2.1.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@open-pencil/core": "0.14.0",
+    "@uidx/format": "workspace:*",
+    "@uidx/schema": "workspace:^",
+    "ai": "^7.0.84",
+    "ai-sdk-ollama": "^4.2.0",
+    "chokidar": "^4.0.3",
+    "dotenv": "^17.4.2",
+    "hono": "^4.13.5",
+    "picomatch": "^4.0.2",
+    "tinyglobby": "^0.2.10",
+    "zod": "^4.5.2"
+  },
+  "devDependencies": {
+    "@types/node": "^26.2.0",
+    "@types/picomatch": "^4.0.0",
+    "typescript": "^5.7.2",
+    "vitest": "^4.1.11"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/agent"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

@@ -1,0 +1,102 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
+<title id="title">Design in your repo with UIDX</title><desc id="desc">An illustration of a visual design canvas, a .uidx source file, and a project-local CLI and MCP workflow. Designs stay in Git.</desc>
+<defs><radialGradient id="glow"><stop stop-color="#22467d" stop-opacity=".65"/><stop offset="1" stop-color="#10151f" stop-opacity="0"/></radialGradient><linearGradient id="card" x2="0" y2="1"><stop stop-color="#172638"/><stop offset="1" stop-color="#131b28"/></linearGradient><pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#64738a" opacity=".18"/></pattern></defs>
+<rect width="1440" height="900" rx="28" fill="#0d121b"/><ellipse cx="620" cy="420" rx="900" ry="560" fill="url(#glow)"/>
+<g font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif">
+<text x="64" y="68" fill="#91b5e8" font-size="14" font-weight="600">UIDX / YOUR PROJECT’S DESIGN WORKSPACE</text>
+<text x="64" y="142" fill="#f5f8ff" font-size="48" font-weight="650">The canvas meets the codebase.</text>
+<text x="64" y="181" fill="#9baec5" font-size="23" font-weight="400">Design visually. Keep the source. Build together.</text>
+<rect x="64" y="232" width="812" height="534" rx="18" fill="#131a24" stroke="#35435a"/>
+<rect x="65" y="279" width="810" height="486" rx="16" fill="#0e1520"/>
+<text x="88" y="262" fill="#f8faff" font-size="23" font-weight="600">uidx</text>
+<text x="162" y="260" fill="#9aadc5" font-size="14" font-weight="400">orbit / workspace</text>
+<circle cx="765" cy="255" r="4" fill="#75d7ab"/>
+<text x="778" y="260" fill="#a8c7bd" font-size="13" font-weight="400">Local</text>
+<rect x="65" y="280" width="170" height="485" rx="0" fill="#151c27"/>
+<path d="M235 280 L235 765" stroke="#2e394a" fill="none"/>
+<text x="85" y="315" fill="#74859e" font-size="11" font-weight="600">PAGES</text>
+<text x="86" y="348" fill="#c0c9da" font-size="13" font-weight="400">Overview</text>
+<rect x="77" y="368" width="146" height="30" rx="6" fill="#24374f"/>
+<text x="87" y="388" fill="#d8e8ff" font-size="13" font-weight="400">◈  launch</text>
+<text x="85" y="438" fill="#74859e" font-size="11" font-weight="600">LAYERS</text>
+<text x="85" y="470" fill="#d8e8ff" font-size="12" font-weight="400">▾ Landing</text>
+<text x="85" y="497" fill="#c0c9da" font-size="12" font-weight="400">  ▾ Hero</text>
+<text x="85" y="524" fill="#a6b6cb" font-size="12" font-weight="400">      Heading</text>
+<text x="85" y="551" fill="#a6b6cb" font-size="12" font-weight="400">      Description</text>
+<text x="85" y="578" fill="#89bbff" font-size="12" font-weight="400">      Get started</text>
+<text x="85" y="605" fill="#a6b6cb" font-size="12" font-weight="400">  Features</text>
+<text x="85" y="632" fill="#a6b6cb" font-size="12" font-weight="400">  Footer</text>
+<rect x="236" y="280" width="451" height="485" rx="0" fill="url(#dots)"/>
+<rect x="269" y="336" width="384" height="310" rx="5" fill="#f5f7fc"/>
+<text x="291" y="364" fill="#192c41" font-size="13" font-weight="700">orbit</text>
+<text x="551" y="364" fill="#536582" font-size="10" font-weight="400">Sign in</text>
+<rect x="291" y="390" width="128" height="19" rx="9" fill="#e0eafa"/>
+<text x="302" y="404" fill="#4066a8" font-size="8" font-weight="650">YOUR NEXT CHAPTER</text>
+<text x="291" y="444" fill="#122a45" font-size="33" font-weight="700">Make room</text>
+<text x="291" y="482" fill="#122a45" font-size="33" font-weight="700">for what’s next.</text>
+<text x="291" y="516" fill="#63738a" font-size="11" font-weight="400">A calmer place for your team’s best work.</text>
+<rect x="291" y="540" width="125" height="35" rx="7" fill="#376fe6"/>
+<text x="308" y="562" fill="#fff" font-size="12" font-weight="600">Get started  →</text>
+<rect x="433" y="540" width="108" height="35" rx="7" fill="#f5f7fc" stroke="#cbd5e6"/>
+<text x="451" y="562" fill="#536582" font-size="9" font-weight="400">See how it works</text>
+<path d="M291 601 L630 601" stroke="#dfe4ee" fill="none"/>
+<text x="291" y="624" fill="#8190a8" font-size="9" font-weight="600">LESS FRICTION. MORE POSSIBILITY.</text>
+<rect x="286" y="535" width="135" height="45" rx="2" fill="none" stroke="#5b9aff" stroke-width="1.5"/>
+<rect x="283" y="532" width="6" height="6" rx="0" fill="#f0f7ff" stroke="#5b9aff"/>
+<rect x="283" y="577" width="6" height="6" rx="0" fill="#f0f7ff" stroke="#5b9aff"/>
+<rect x="418" y="532" width="6" height="6" rx="0" fill="#f0f7ff" stroke="#5b9aff"/>
+<rect x="418" y="577" width="6" height="6" rx="0" fill="#f0f7ff" stroke="#5b9aff"/>
+<rect x="292" y="676" width="325" height="37" rx="10" fill="#172130" stroke="#34465e"/>
+<text x="311" y="700" fill="#b2c3dc" font-size="19" font-weight="400">↖    ▣    T    □    ○    ／    ◇</text>
+<rect x="688" y="280" width="187" height="485" rx="0" fill="#151c27"/>
+<path d="M688 280 L688 765" stroke="#2e394a" fill="none"/>
+<text x="707" y="316" fill="#eef4ff" font-size="14" font-weight="600">Design</text>
+<text x="707" y="350" fill="#a8bddb" font-size="12" font-weight="400">Get started</text>
+<path d="M704 369 L857 369" stroke="#2e394a" fill="none"/>
+<text x="707" y="397" fill="#93a4bc" font-size="11" font-weight="400">Width</text>
+<rect x="784" y="379" width="68" height="27" rx="5" fill="#1e2a3a"/>
+<text x="797" y="397" fill="#d6e5f8" font-size="11" font-weight="400">125</text>
+<text x="707" y="435" fill="#93a4bc" font-size="11" font-weight="400">Height</text>
+<rect x="784" y="417" width="68" height="27" rx="5" fill="#1e2a3a"/>
+<text x="797" y="435" fill="#d6e5f8" font-size="11" font-weight="400">35</text>
+<text x="707" y="473" fill="#93a4bc" font-size="11" font-weight="400">Radius</text>
+<rect x="784" y="455" width="68" height="27" rx="5" fill="#1e2a3a"/>
+<text x="797" y="473" fill="#d6e5f8" font-size="11" font-weight="400">7</text>
+<path d="M704 499 L857 499" stroke="#2e394a" fill="none"/>
+<text x="707" y="531" fill="#cad6e7" font-size="12" font-weight="400">Fill</text>
+<rect x="708" y="550" width="22" height="22" rx="4" fill="#376fe6"/>
+<text x="739" y="566" fill="#a6b6ca" font-size="11" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">#376FE6</text>
+<text x="707" y="622" fill="#cad6e7" font-size="12" font-weight="400">Auto layout</text>
+<text x="707" y="650" fill="#8498b4" font-size="11" font-weight="400">Hug contents</text>
+<rect x="914" y="268" width="462" height="439" rx="16" fill="#121a26" stroke="#40516d"/>
+<rect x="915" y="269" width="460" height="46" rx="15" fill="#1c2839"/>
+<circle cx="939" cy="292" r="4" fill="#70a9ff"/>
+<text x="954" y="297" fill="#dbe7fa" font-size="14" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">.uidx / launch.uidx</text>
+<text x="937" y="343" fill="#7086a5" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">---</text>
+<text x="937" y="363" fill="#adc9ed" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">id: launch</text>
+<text x="937" y="383" fill="#7086a5" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">---</text>
+<text x="937" y="403" fill="#adc9ed" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace"></text>
+<text x="937" y="423" fill="#d7b4f7" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">## Core Intent</text>
+<text x="937" y="443" fill="#93a6bf" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">A calmer place to do great work.</text>
+<text x="937" y="463" fill="#adc9ed" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace"></text>
+<text x="937" y="483" fill="#d7b4f7" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">## Visual Contract</text>
+<text x="937" y="503" fill="#80c2ff" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">&lt;Page&gt;</text>
+<text x="937" y="523" fill="#80c2ff" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">  &lt;Frame name=&quot;Hero&quot;&gt;</text>
+<text x="937" y="543" fill="#9fd7cf" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">    &lt;Text name=&quot;heading&quot;</text>
+<text x="937" y="563" fill="#9fd7cf" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">      characters=&quot;Make room&quot; /&gt;</text>
+<text x="937" y="583" fill="#80c2ff" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">    &lt;Frame name=&quot;Get started&quot;</text>
+<text x="937" y="603" fill="#adc9ed" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">      cornerRadius={7} /&gt;</text>
+<text x="937" y="623" fill="#80c2ff" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">  &lt;/Frame&gt;</text>
+<text x="937" y="643" fill="#80c2ff" font-size="14" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">&lt;/Page&gt;</text>
+<rect x="937" y="674" width="205" height="18" rx="5" fill="#192f2a"/>
+<text x="947" y="687" fill="#87cfb1" font-size="11" font-weight="400" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">✓  saved to your project</text>
+<rect x="854" y="460" width="82" height="42" rx="21" fill="#346bdd" stroke="#779ef2"/>
+<text x="876" y="489" fill="#fff" font-size="31" font-weight="600">⇄</text>
+<rect x="917" y="728" width="174" height="38" rx="9" fill="#182333" stroke="#33445d"/>
+<text x="932" y="752" fill="#aac0dc" font-size="14" font-weight="400">⌘  CLI + MCP</text>
+<rect x="1107" y="728" width="266" height="38" rx="9" fill="#182333" stroke="#33445d"/>
+<text x="1122" y="752" fill="#aac0dc" font-size="14" font-weight="400">⑂  Ready for your next PR</text>
+<path d="M64 809 L1376 809" stroke="#29364a" fill="none"/>
+<text x="64" y="850" fill="#b7c7df" font-size="15" font-weight="600">YOUR CANVAS. YOUR FILES. YOUR WORKFLOW.</text>
+<text x="969" y="850" fill="#7eb0ff" font-size="17" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">npm install --save-dev uidx</text>
+</g></svg>

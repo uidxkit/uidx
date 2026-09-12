@@ -1,0 +1,41 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+.vite/
+.pnpm-store/
+.superpowers/
+
+# This checkout's local design workspace is created by `uidx init`.
+# Consumer projects should commit their own .uidx designs.
+/.uidx/
+/.uidx-agent/
+/.agents/
+/.claude/
+
+# Runtime assets copied out of node_modules by scripts/setup-assets.mjs.
+# ~8 MB of binaries that are byte-for-byte copies of installed dependencies;
+# committing them would mean a large binary diff on every SDK bump.
+packages/viewer/public/canvaskit.wasm
+packages/viewer/public/fonts/
+.claude/launch.json
+
+# Where a running viewer server is listening, written next to the document's
+# manifest by `uidx open` and removed on close. Machine- and moment-specific.
+.uidx-server.json
+
+# Per-document agent state: turn checkpoints and plans under a document root.
+# The shipped skills and memories are the exception — both are authored content
+# versioned like any other doc-tree file, so ignore everything else under
+# .uidx-agent/ and negate those two subdirectories back in.
+.uidx-agent/*
+!.uidx-agent/skills/
+!.uidx-agent/memory/
+
+# Local run configuration: which model, which base URL, which document root.
+# Machine-specific by nature, and `packages/agent/.env.example` is the tracked
+# record of what belongs in one. `.env.local` follows Vite's own convention.
+.env
+.env.*
+!.env.example
+*.env.local

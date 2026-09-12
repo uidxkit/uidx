@@ -1,0 +1,298 @@
+/* Inspector-wide control rules. Component styles keep their layout; these
+   shared surfaces and states also reach fragment roots and SDK primitives. */
+.properties {
+  color-scheme: dark;
+}
+
+.properties
+  .editor
+  :is(
+    .font-family,
+    .number,
+    .size-box,
+    .padding-box,
+    .corner-box,
+    .corner-smoothing,
+    .effect-num,
+    .effect-type,
+    .paint-hex,
+    .paint-opacity,
+    .enum-select,
+    input.value,
+    .instance-props .text,
+    .instance-props .pick
+  ) {
+  height: var(--field-h);
+  min-width: 0;
+  box-sizing: border-box;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background-color: var(--raised);
+  color: var(--text);
+  font: var(--ui-size) / var(--ui-line) var(--ui-font);
+}
+
+.properties .editor :is(.enum-select, .effect-type, .instance-props .pick) {
+  width: 100%;
+  padding: 2px 6px;
+  cursor: pointer;
+  color-scheme: dark;
+}
+
+.properties .editor :is(.field-caption, .smoothing-label, .effect-label) {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--text-dim);
+  font: var(--ui-size) / var(--ui-line) var(--ui-font);
+}
+.properties .editor .pair-captions .field-caption {
+  margin-bottom: 0;
+}
+
+.properties
+  .editor
+  :is(
+    .font-family,
+    .number,
+    .size-box,
+    .padding-box,
+    .corner-box,
+    .corner-smoothing,
+    .effect-num,
+    .effect-type,
+    .paint-hex,
+    .paint-opacity,
+    .enum-select,
+    input.value,
+    .instance-props .text,
+    .instance-props .pick
+  ):hover:not(:disabled):not(:has(.scrub.disabled)) {
+  border-color: var(--line);
+}
+.properties
+  .editor
+  :is(
+    .font-family,
+    .number,
+    .size-box,
+    .padding-box,
+    .corner-box,
+    .corner-smoothing,
+    .effect-num,
+    .effect-type,
+    .paint-hex,
+    .paint-opacity,
+    .enum-select,
+    input.value,
+    .instance-props .text,
+    .instance-props .pick
+  ):is(:focus-within, :has([data-scrubbing])) {
+  border-color: var(--accent);
+  outline: none;
+}
+.properties .editor input.invalid {
+  border-color: var(--danger);
+}
+
+/* A segment never changes border width when selected or hovered. */
+.properties .editor :is(.enum-segmented, .format-pills) {
+  height: var(--field-h);
+  min-height: var(--field-h);
+  box-sizing: border-box;
+  align-items: stretch;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+}
+.properties .editor :is(.enum-segmented .enum-item, .format-pill) {
+  min-width: 0;
+  margin: 0;
+  padding: 2px 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  font: var(--ui-size-sm) / var(--ui-line) var(--ui-font);
+  height: auto;
+}
+.properties
+  .editor
+  :is(.enum-segmented .enum-item, .format-pill):hover:not(:disabled):not([aria-disabled='true']) {
+  background: var(--panel);
+  color: var(--text);
+}
+.properties
+  .editor
+  :is(.enum-segmented .enum-item[data-state='on'], .format-pill[aria-checked='true']) {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--text);
+}
+
+/* All bindings use one tint, regardless of whether the value is text,
+   numeric, a color, or one half of a paired control. */
+.properties .editor :is(.token-pill, .paint-token) {
+  height: var(--field-h);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--bound) 12%, var(--raised));
+  color: var(--bound);
+}
+.properties .editor :is(.token-pill, .paint-token):hover:not(:disabled) {
+  border-color: var(--bound);
+}
+.properties .editor .field-caption.bound {
+  color: var(--bound);
+}
+
+.properties .editor :is(.paint-swatch, .effect-swatch) {
+  width: var(--field-h);
+  height: var(--field-h);
+  border-radius: var(--radius-lg);
+}
+.properties
+  .editor
+  :is(
+    .paint-variables,
+    .paint-eye,
+    .paint-remove,
+    .paint-detach,
+    .effect-eye,
+    .effect-remove,
+    .token-detach,
+    .icon-button,
+    .field-variables
+  ) {
+  width: 24px;
+  flex: none;
+  border-radius: var(--radius);
+}
+.properties
+  .editor
+  :is(
+    .paint-variables,
+    .paint-eye,
+    .paint-remove,
+    .paint-detach,
+    .effect-eye,
+    .effect-remove,
+    .token-detach,
+    .icon-button,
+    .field-variables,
+    .padding-expand,
+    .corner-expand
+  ):hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+
+/* Keyboard focus stays visible on every icon and segmented choice. */
+.properties :is(button, select, input, summary, [role='button']):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.properties .editor .enum-item:is(:disabled, [aria-disabled='true']) {
+  opacity: 0.5;
+  cursor: default;
+}
+.properties
+  .editor
+  :is(.number, .size-box, .padding-box, .corner-box, .corner-smoothing, .effect-num):has(
+    .scrub.disabled
+  ) {
+  opacity: 0.5;
+}
+.properties
+  .editor
+  :is(.number, .size-box, .padding-box, .corner-box, .corner-smoothing, .effect-num)
+  :is(.scrub.disabled, .prefix.disabled, .length-unit:disabled) {
+  opacity: 1;
+}
+
+/* Equal columns must be allowed to shrink when the inspector is narrow. */
+.properties .editor :is(.padding-boxes, .corner-boxes, .corner-smoothing-row, .effect-nums) {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: var(--gap);
+}
+.properties .editor .text-content {
+  max-width: 100%;
+}
+.properties
+  .editor
+  :is(.padding-box, .corner-box, .corner-smoothing, .effect-num)
+  .length-number-content {
+  gap: 4px;
+}
+
+/* Component rows share the inspector's gutters and leave room for 32px fields. */
+.properties .editor :is(.component-props, .instance-props, .variants) {
+  margin: 0 calc(-1 * var(--section-pad));
+  padding: 0 var(--section-pad) 12px;
+}
+.properties .editor :is(.component-props, .instance-props, .variants) > .head {
+  height: 44px;
+  align-items: center;
+}
+.properties .editor :is(.component-props, .instance-props) > .row {
+  min-height: var(--field-h);
+  height: auto;
+  padding: 4px 0;
+}
+.properties .editor .instance-props > .row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 24px;
+  gap: var(--gap);
+}
+.properties
+  .editor
+  :is(
+    .component-props .pill,
+    .variants .value,
+    .variants .rename,
+    .component-props .add-form input,
+    .swap-name,
+    .export-field input,
+    .export-run
+  ) {
+  border-radius: var(--radius-lg);
+}
+.properties
+  .editor
+  :is(.component-props, .instance-props, .variants)
+  :is(.add, .edit, .drop, .confirm, .reset) {
+  min-width: 24px;
+  min-height: 24px;
+}
+
+.properties .editor .export-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  color: var(--text-dim);
+}
+.properties .editor .export-pixels {
+  flex: none;
+}
+.properties .editor .export-run:hover:not(:disabled) {
+  border-color: var(--text-faint);
+}
+.properties .graphics-section :is(button, select) {
+  min-height: var(--field-h);
+  border: 1px solid transparent;
+  border-radius: var(--radius-lg);
+  padding: 2px 8px;
+  color-scheme: dark;
+}
+.properties .graphics-section :is(button, select):hover:not(:disabled) {
+  border-color: var(--line);
+}
+.properties .graphics-section .point-actions {
+  gap: var(--gap);
+}
+.properties .editor .field-check {
+  min-height: var(--field-h);
+}
+.properties input[type='checkbox'] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent);
+}

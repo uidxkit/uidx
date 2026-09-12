@@ -1,0 +1,1014 @@
+{
+  "generatedAt": "2026-08-25",
+  "about": {
+    "purpose": "One row per Figma property that can be bound to a variable, as a seed for the UIDX editor's property schema.",
+    "primarySources": {
+      "typings": "npm @figma/plugin-typings@1.135.0, plugin-api.d.ts — retrieved 2026-08-25. Authoritative for every enum and field name below.",
+      "help": "help.figma.com Guide to variables hub and children — retrieved 2026-08-25.",
+      "rest": "developers.figma.com REST Variables API — retrieved 2026-08-25."
+    },
+    "verifiedByLegend": {
+      "docs": "Field/enum name read verbatim from plugin-typings 1.135.0 and/or stated in a help.figma.com article.",
+      "empirical": "Probed live via a Figma MCP bridge. NOT USED: the bridge reported connected=false on 2026-08-25, so no row is empirically verified.",
+      "unverified": "Plausible but not confirmed in a primary source. Treated as unknown, not as fact."
+    },
+    "enums": {
+      "VariableResolvedDataType": ["BOOLEAN", "COLOR", "EASING", "FLOAT", "STRING", "TIMING"],
+      "VariableScope": [
+        "ALL_SCOPES",
+        "TEXT_CONTENT",
+        "CORNER_RADIUS",
+        "WIDTH_HEIGHT",
+        "GAP",
+        "ALL_FILLS",
+        "FRAME_FILL",
+        "SHAPE_FILL",
+        "TEXT_FILL",
+        "STROKE_COLOR",
+        "STROKE_FLOAT",
+        "EFFECT_FLOAT",
+        "EFFECT_COLOR",
+        "OPACITY",
+        "FONT_FAMILY",
+        "FONT_STYLE",
+        "FONT_WEIGHT",
+        "FONT_SIZE",
+        "LINE_HEIGHT",
+        "LETTER_SPACING",
+        "PARAGRAPH_SPACING",
+        "PARAGRAPH_INDENT"
+      ],
+      "note": "There is no scope value for BOOLEAN, EASING or TIMING variables, and none for padding specifically."
+    }
+  },
+  "properties": [
+    {
+      "uiLabel": "Fill",
+      "panelSection": "Fill",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT",
+        "SECTION"
+      ],
+      "variableTypes": ["COLOR"],
+      "scopes": ["ALL_FILLS", "FRAME_FILL", "SHAPE_FILL", "TEXT_FILL", "ALL_SCOPES"],
+      "pluginApiFields": ["fills", "SolidPaint.boundVariables.color"],
+      "bindMethod": "figma.variables.setBoundVariableForPaint(paint, 'color', variable)",
+      "restApiPath": "node.boundVariables.fills[] and the per-paint boundVariables.color",
+      "granularity": "per-paint in the fills array",
+      "notes": "VariableBindablePaintField is 'color' ONLY. A paint's own opacity is NOT bindable — only the layer-level opacity field is. Applied in the UI via the 'Apply styles and variables' control; the picker shows color variables as square swatches and color styles as circles.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15343107263511"
+      ],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "color",
+        "notes": "Already supported: paint-level aliases shipped in the panel-ui3-and-variables pass."
+      }
+    },
+    {
+      "uiLabel": "Gradient stop color",
+      "panelSection": "Fill",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "TEXT"
+      ],
+      "variableTypes": ["COLOR"],
+      "scopes": ["ALL_FILLS", "FRAME_FILL", "SHAPE_FILL", "TEXT_FILL", "ALL_SCOPES"],
+      "pluginApiFields": ["ColorStop.boundVariables.color"],
+      "bindMethod": "write a GradientPaint whose gradientStops carry boundVariables.color (no dedicated setBoundVariableForColorStop helper exists)",
+      "restApiPath": "paint.gradientStops[].boundVariables.color",
+      "granularity": "per-stop",
+      "notes": "IMPORTANT NUANCE: individual gradient STOPS accept color variables (VariableBindableColorStopField = 'color'), but there is no gradient-typed variable — you cannot tokenise a whole gradient. This is the distinction behind the long-running gradient-variable complaints.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/14506821864087",
+        "https://forum.figma.com/share-your-feedback-26/gradients-in-figma-variables-38653"
+      ],
+      "uidx": {
+        "priority": "v2",
+        "dtcgType": "color",
+        "notes": "Bind stops in v2; also add a composite gradient token, which Figma lacks."
+      }
+    },
+    {
+      "uiLabel": "Fill (text range)",
+      "panelSection": "Fill",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["COLOR"],
+      "scopes": ["TEXT_FILL", "ALL_FILLS", "ALL_SCOPES"],
+      "pluginApiFields": ["textRangeFills"],
+      "bindMethod": "setRangeFills with a paint carrying a bound color, surfaced as node.boundVariables.textRangeFills",
+      "restApiPath": "node.boundVariables.textRangeFills[]",
+      "granularity": "per text range/segment",
+      "notes": "Distinct key from 'fills'. Lets one text node carry several differently-tokenised runs.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": {
+        "priority": "v2",
+        "dtcgType": "color",
+        "notes": "Needs a rich-text range model in .uidx first."
+      }
+    },
+    {
+      "uiLabel": "Stroke",
+      "panelSection": "Stroke",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT"
+      ],
+      "variableTypes": ["COLOR"],
+      "scopes": ["STROKE_COLOR", "ALL_SCOPES"],
+      "pluginApiFields": ["strokes", "SolidPaint.boundVariables.color"],
+      "bindMethod": "figma.variables.setBoundVariableForPaint(paint, 'color', variable)",
+      "restApiPath": "node.boundVariables.strokes[]",
+      "granularity": "per-paint in the strokes array",
+      "notes": "Same paint mechanism as Fill; only the scope differs.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://developers.figma.com/docs/plugins/api/VariableScope/"
+      ],
+      "uidx": { "priority": "v1", "dtcgType": "color", "notes": "" }
+    },
+    {
+      "uiLabel": "Stroke weight",
+      "panelSection": "Stroke",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["STROKE_FLOAT", "ALL_SCOPES"],
+      "pluginApiFields": ["strokeWeight"],
+      "bindMethod": "node.setBoundVariable('strokeWeight', variable)",
+      "restApiPath": "node.boundVariables.strokeWeight",
+      "granularity": "uniform",
+      "notes": "Applied in the UI by shift-clicking the field or right-click > 'Apply variable'.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15343107263511"
+      ],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Stroke weight (per side)",
+      "panelSection": "Stroke",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE", "RECTANGLE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["STROKE_FLOAT", "ALL_SCOPES"],
+      "pluginApiFields": [
+        "strokeTopWeight",
+        "strokeRightWeight",
+        "strokeBottomWeight",
+        "strokeLeftWeight"
+      ],
+      "bindMethod": "node.setBoundVariable('strokeTopWeight', variable)",
+      "restApiPath": "node.boundVariables.strokeTopWeight etc.",
+      "granularity": "per-side",
+      "notes": "Only on node types that support independent stroke weights.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Effect color",
+      "panelSection": "Effects",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT",
+        "GROUP"
+      ],
+      "variableTypes": ["COLOR"],
+      "scopes": ["EFFECT_COLOR", "ALL_SCOPES"],
+      "pluginApiFields": [
+        "effects",
+        "DropShadowEffect.boundVariables.color",
+        "InnerShadowEffect.boundVariables.color"
+      ],
+      "bindMethod": "figma.variables.setBoundVariableForEffect(effect, 'color', variable)",
+      "restApiPath": "node.boundVariables.effects[]",
+      "granularity": "per-effect",
+      "notes": "Shadow effects only. Blur effects expose ONLY a 'radius' binding (BlurEffectBase.boundVariables permits 'radius' alone).",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "color",
+        "notes": "Part of a composite shadow token in UIDX rather than four loose bindings."
+      }
+    },
+    {
+      "uiLabel": "Effect blur / radius",
+      "panelSection": "Effects",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT",
+        "GROUP"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["EFFECT_FLOAT", "ALL_SCOPES"],
+      "pluginApiFields": ["Effect.boundVariables.radius"],
+      "bindMethod": "figma.variables.setBoundVariableForEffect(effect, 'radius', variable)",
+      "restApiPath": "node.boundVariables.effects[]",
+      "granularity": "per-effect",
+      "notes": "Available on shadows AND on LAYER_BLUR / BACKGROUND_BLUR.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Effect spread",
+      "panelSection": "Effects",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE", "RECTANGLE", "ELLIPSE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["EFFECT_FLOAT", "ALL_SCOPES"],
+      "pluginApiFields": ["Effect.boundVariables.spread"],
+      "bindMethod": "figma.variables.setBoundVariableForEffect(effect, 'spread', variable)",
+      "restApiPath": "node.boundVariables.effects[]",
+      "granularity": "per-effect",
+      "notes": "Shadow effects only. Figma restricts spread values themselves to rectangles/ellipses, or frames/components/instances with visible fills and clipsContent enabled.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Effect offset X / Y",
+      "panelSection": "Effects",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT",
+        "GROUP"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["EFFECT_FLOAT", "ALL_SCOPES"],
+      "pluginApiFields": ["Effect.boundVariables.offsetX", "Effect.boundVariables.offsetY"],
+      "bindMethod": "figma.variables.setBoundVariableForEffect(effect, 'offsetX', variable)",
+      "restApiPath": "node.boundVariables.effects[]",
+      "granularity": "per-effect, per-axis",
+      "notes": "Shadow effects only.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Width",
+      "panelSection": "Layout",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "TEXT",
+        "GROUP",
+        "VECTOR"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["WIDTH_HEIGHT", "ALL_SCOPES"],
+      "pluginApiFields": ["width"],
+      "bindMethod": "node.setBoundVariable('width', variable)",
+      "restApiPath": "node.boundVariables.width",
+      "granularity": "single",
+      "notes": "Applied via the field's dropdown > 'Apply variable', or by pressing '=' to open the picker.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15343107263511"
+      ],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Height",
+      "panelSection": "Layout",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "TEXT",
+        "GROUP",
+        "VECTOR"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["WIDTH_HEIGHT", "ALL_SCOPES"],
+      "pluginApiFields": ["height"],
+      "bindMethod": "node.setBoundVariable('height', variable)",
+      "restApiPath": "node.boundVariables.height",
+      "granularity": "single",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Min width / Max width / Min height / Max height",
+      "panelSection": "Layout",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE", "TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["WIDTH_HEIGHT", "ALL_SCOPES"],
+      "pluginApiFields": ["minWidth", "maxWidth", "minHeight", "maxHeight"],
+      "bindMethod": "node.setBoundVariable('minWidth', variable)",
+      "restApiPath": "node.boundVariables.minWidth etc.",
+      "granularity": "per-constraint",
+      "notes": "Four independent fields.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Padding (per side)",
+      "panelSection": "Auto layout",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["GAP", "ALL_SCOPES"],
+      "pluginApiFields": ["paddingTop", "paddingRight", "paddingBottom", "paddingLeft"],
+      "bindMethod": "node.setBoundVariable('paddingLeft', variable)",
+      "restApiPath": "node.boundVariables.paddingLeft etc.",
+      "granularity": "per-side",
+      "notes": "There is NO padding-specific VariableScope value; GAP is the only spacing-ish scope in the enum. Which scope gates the padding picker exactly is unverified. Editing padding with the on-canvas handles DETACHES an applied variable — a documented UI quirk.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15343107263511"
+      ],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "dimension",
+        "notes": "Give UIDX a real SPACING scope distinct from GAP."
+      }
+    },
+    {
+      "uiLabel": "Gap between items",
+      "panelSection": "Auto layout",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["GAP", "ALL_SCOPES"],
+      "pluginApiFields": ["itemSpacing"],
+      "bindMethod": "node.setBoundVariable('itemSpacing', variable)",
+      "restApiPath": "node.boundVariables.itemSpacing",
+      "granularity": "single",
+      "notes": "On-canvas gap handles detach the variable, same quirk as padding.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Counter-axis gap (wrap)",
+      "panelSection": "Auto layout",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["GAP", "ALL_SCOPES"],
+      "pluginApiFields": ["counterAxisSpacing"],
+      "bindMethod": "node.setBoundVariable('counterAxisSpacing', variable)",
+      "restApiPath": "node.boundVariables.counterAxisSpacing",
+      "granularity": "single",
+      "notes": "Only meaningful when layoutWrap is WRAP.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Grid row gap / Grid column gap",
+      "panelSection": "Auto layout (grid)",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["GAP", "ALL_SCOPES"],
+      "pluginApiFields": ["gridRowGap", "gridColumnGap"],
+      "bindMethod": "node.setBoundVariable('gridRowGap', variable)",
+      "restApiPath": "node.boundVariables.gridRowGap",
+      "granularity": "per-axis",
+      "notes": "Belongs to grid auto layout, distinct from the LayoutGrid guide system below.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Corner radius",
+      "panelSection": "Appearance",
+      "nodeTypes": ["FRAME", "RECTANGLE", "COMPONENT", "INSTANCE", "STAR", "POLYGON", "VECTOR"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["CORNER_RADIUS", "ALL_SCOPES"],
+      "pluginApiFields": [
+        "cornerRadius",
+        "topLeftRadius",
+        "topRightRadius",
+        "bottomLeftRadius",
+        "bottomRightRadius"
+      ],
+      "bindMethod": "node.setBoundVariable('cornerRadius', variable)",
+      "restApiPath": "node.boundVariables.topLeftRadius etc.",
+      "granularity": "per-corner",
+      "notes": "DOCUMENTED ASYMMETRY: on nodes with independent corner radii (rectangles, frames) binding 'cornerRadius' sets all four corners and READS BACK as the four per-corner keys, not as 'cornerRadius'. Elsewhere it reads back as 'cornerRadius'. A round-trip that assumes write-key == read-key will corrupt here.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://developers.figma.com/docs/plugins/api/properties/nodes-boundvariables/"
+      ],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "dimension",
+        "notes": "Already supported via cornerRadius=\"{radius#lg}\". Do NOT copy the read/write key asymmetry."
+      }
+    },
+    {
+      "uiLabel": "Opacity",
+      "panelSection": "Appearance",
+      "nodeTypes": [
+        "FRAME",
+        "COMPONENT",
+        "INSTANCE",
+        "RECTANGLE",
+        "ELLIPSE",
+        "POLYGON",
+        "STAR",
+        "VECTOR",
+        "LINE",
+        "TEXT",
+        "GROUP"
+      ],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["OPACITY", "ALL_SCOPES"],
+      "pluginApiFields": ["opacity"],
+      "bindMethod": "node.setBoundVariable('opacity', variable)",
+      "restApiPath": "node.boundVariables.opacity",
+      "granularity": "single (layer level)",
+      "notes": "LAYER opacity only. An individual paint's opacity is not bindable — VariableBindablePaintField is 'color' alone.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "number",
+        "notes": "UIDX should also allow binding per-paint opacity, which Figma does not."
+      }
+    },
+    {
+      "uiLabel": "Visibility (show/hide layer)",
+      "panelSection": "Layer",
+      "nodeTypes": ["ALL SceneNode types"],
+      "variableTypes": ["BOOLEAN", "STRING"],
+      "scopes": [],
+      "pluginApiFields": ["visible"],
+      "bindMethod": "node.setBoundVariable('visible', variable)",
+      "restApiPath": "node.boundVariables.visible",
+      "granularity": "single",
+      "notes": "Bound by right-clicking the visibility icon. A STRING variable also drives it when its value is literally 'true'/'false'. NO VariableScope value exists for booleans, so boolean variables cannot be scope-filtered at all.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/14506821864087"
+      ],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "boolean",
+        "notes": "Give booleans scopes; Figma's omission is an oversight, not a constraint."
+      }
+    },
+    {
+      "uiLabel": "Layout grid (count, size, offset, gutter)",
+      "panelSection": "Layout guides",
+      "nodeTypes": ["FRAME", "COMPONENT", "INSTANCE"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["ALL_SCOPES"],
+      "pluginApiFields": [
+        "layoutGrids",
+        "LayoutGrid.boundVariables.sectionSize",
+        "LayoutGrid.boundVariables.count",
+        "LayoutGrid.boundVariables.offset",
+        "LayoutGrid.boundVariables.gutterSize"
+      ],
+      "bindMethod": "figma.variables.setBoundVariableForLayoutGrid(layoutGrid, 'gutterSize', variable)",
+      "restApiPath": "node.boundVariables.layoutGrids[]",
+      "granularity": "per-grid, per-field",
+      "notes": "No dedicated VariableScope for layout guides, so these variables cannot be scope-filtered to guides only.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Font family",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["STRING"],
+      "scopes": ["FONT_FAMILY", "ALL_SCOPES"],
+      "pluginApiFields": ["fontFamily"],
+      "bindMethod": "node.setBoundVariable('fontFamily', variable)",
+      "restApiPath": "node.boundVariables.fontFamily[]",
+      "granularity": "per text range (array on nodes), single on TextStyle",
+      "notes": "On a TextNode the text fields read back as VariableAlias[] (one per styled range); on a TextStyle the same field is a single VariableAlias.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "fontFamily", "notes": "" }
+    },
+    {
+      "uiLabel": "Font style",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["STRING"],
+      "scopes": ["FONT_STYLE", "ALL_SCOPES"],
+      "pluginApiFields": ["fontStyle"],
+      "bindMethod": "node.setBoundVariable('fontStyle', variable)",
+      "restApiPath": "node.boundVariables.fontStyle[]",
+      "granularity": "per text range",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "string", "notes": "" }
+    },
+    {
+      "uiLabel": "Font weight",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["FONT_WEIGHT", "ALL_SCOPES"],
+      "pluginApiFields": ["fontWeight"],
+      "bindMethod": "node.setBoundVariable('fontWeight', variable)",
+      "restApiPath": "node.boundVariables.fontWeight[]",
+      "granularity": "per text range",
+      "notes": "Dev Mode does NOT surface a string variable for font weight; it prints the numeric value instead (e.g. font-weight: 100).",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/27882809912471"
+      ],
+      "uidx": { "priority": "v1", "dtcgType": "fontWeight", "notes": "" }
+    },
+    {
+      "uiLabel": "Font size",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["FONT_SIZE", "ALL_SCOPES"],
+      "pluginApiFields": ["fontSize"],
+      "bindMethod": "node.setBoundVariable('fontSize', variable)",
+      "restApiPath": "node.boundVariables.fontSize[]",
+      "granularity": "per text range",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Line height",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["LINE_HEIGHT", "ALL_SCOPES"],
+      "pluginApiFields": ["lineHeight"],
+      "bindMethod": "node.setBoundVariable('lineHeight', variable)",
+      "restApiPath": "node.boundVariables.lineHeight[]",
+      "granularity": "per text range",
+      "notes": "Variables do not carry units, so PERCENTAGE line heights cannot be expressed — a widely reported limitation. Bound values are absolute.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://frontendmasters.com/blog/figma-typography-variables/"
+      ],
+      "uidx": {
+        "priority": "v1",
+        "dtcgType": "dimension",
+        "notes": "UIDX dimension tokens must carry a unit so % line height works."
+      }
+    },
+    {
+      "uiLabel": "Letter spacing",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["LETTER_SPACING", "ALL_SCOPES"],
+      "pluginApiFields": ["letterSpacing"],
+      "bindMethod": "node.setBoundVariable('letterSpacing', variable)",
+      "restApiPath": "node.boundVariables.letterSpacing[]",
+      "granularity": "per text range",
+      "notes": "Same unitless caveat as line height.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v1", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Paragraph spacing",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["PARAGRAPH_SPACING", "ALL_SCOPES"],
+      "pluginApiFields": ["paragraphSpacing"],
+      "bindMethod": "node.setBoundVariable('paragraphSpacing', variable)",
+      "restApiPath": "node.boundVariables.paragraphSpacing[]",
+      "granularity": "per text range",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Paragraph indent",
+      "panelSection": "Typography",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["PARAGRAPH_INDENT", "ALL_SCOPES"],
+      "pluginApiFields": ["paragraphIndent"],
+      "bindMethod": "node.setBoundVariable('paragraphIndent', variable)",
+      "restApiPath": "node.boundVariables.paragraphIndent[]",
+      "granularity": "per text range",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "dimension", "notes": "" }
+    },
+    {
+      "uiLabel": "Text content",
+      "panelSection": "Text",
+      "nodeTypes": ["TEXT"],
+      "variableTypes": ["STRING", "FLOAT"],
+      "scopes": ["TEXT_CONTENT", "ALL_SCOPES"],
+      "pluginApiFields": ["characters"],
+      "bindMethod": "node.setBoundVariable('characters', variable)",
+      "restApiPath": "node.boundVariables.characters",
+      "granularity": "whole node",
+      "notes": "Applied via 'Apply variable' in the Text section. TEXT_CONTENT is a scope for BOTH float and string variables, so a number variable can drive copy.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://developers.figma.com/docs/plugins/api/VariableScope/"
+      ],
+      "uidx": { "priority": "v1", "dtcgType": "string", "notes": "Key for localisation modes." }
+    },
+    {
+      "uiLabel": "Component property value (on an instance)",
+      "panelSection": "Component / instance properties",
+      "nodeTypes": ["INSTANCE"],
+      "variableTypes": ["BOOLEAN", "STRING", "FLOAT"],
+      "scopes": [],
+      "pluginApiFields": ["componentProperties[name].boundVariables.value"],
+      "bindMethod": "instance.setProperties with a bound value; read via node.boundVariables.componentProperties",
+      "restApiPath": "node.boundVariables.componentProperties.<propertyName>",
+      "granularity": "per property name",
+      "notes": "VariableBindableComponentPropertyField = 'value'. Drives variant selection and boolean/text properties, which is how a mode change can swap nested variants. Whether INSTANCE_SWAP and SLOT property types accept a bound variable is UNVERIFIED.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15343816063383"
+      ],
+      "uidx": {
+        "priority": "v2",
+        "dtcgType": "string",
+        "notes": "Maps to UIDX variant axes and instance overrides."
+      }
+    },
+    {
+      "uiLabel": "Component property default value (on the component definition)",
+      "panelSection": "Component properties",
+      "nodeTypes": ["COMPONENT", "COMPONENT_SET"],
+      "variableTypes": ["BOOLEAN", "STRING", "FLOAT"],
+      "scopes": [],
+      "pluginApiFields": ["componentPropertyDefinitions[name].boundVariables.defaultValue"],
+      "bindMethod": "component property definition APIs; field name 'defaultValue'",
+      "restApiPath": "componentPropertyDefinitions.<name>.boundVariables.defaultValue",
+      "granularity": "per property name",
+      "notes": "VariableBindableComponentPropertyDefinitionField = 'defaultValue'. Distinct from the instance-level 'value' binding above.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "v2", "dtcgType": "string", "notes": "" }
+    },
+    {
+      "uiLabel": "Color style paints",
+      "panelSection": "(Styles, not the Design panel)",
+      "nodeTypes": ["PaintStyle"],
+      "variableTypes": ["COLOR"],
+      "scopes": ["ALL_FILLS", "ALL_SCOPES"],
+      "pluginApiFields": ["PaintStyle.boundVariables.paints"],
+      "bindMethod": "assign paints whose SolidPaint/ColorStop carry bound color variables",
+      "restApiPath": "style.boundVariables.paints[]",
+      "granularity": "per paint in the style",
+      "notes": "This is the interplay case: a color STYLE whose paints reference variables. It is how teams get a multi-paint or gradient 'token' that still themes by mode.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/15871097384471"
+      ],
+      "uidx": {
+        "priority": "never",
+        "dtcgType": "color",
+        "notes": "UIDX has no separate style concept — composite tokens replace it."
+      }
+    },
+    {
+      "uiLabel": "Text style typography fields",
+      "panelSection": "(Styles, not the Design panel)",
+      "nodeTypes": ["TextStyle"],
+      "variableTypes": ["STRING", "FLOAT"],
+      "scopes": [
+        "FONT_FAMILY",
+        "FONT_SIZE",
+        "FONT_WEIGHT",
+        "FONT_STYLE",
+        "LINE_HEIGHT",
+        "LETTER_SPACING",
+        "PARAGRAPH_SPACING",
+        "PARAGRAPH_INDENT"
+      ],
+      "pluginApiFields": ["TextStyle.boundVariables[VariableBindableTextField]"],
+      "bindMethod": "textStyle.setBoundVariable(field, variable)",
+      "restApiPath": "style.boundVariables.<field>",
+      "granularity": "one alias per field",
+      "notes": "TextStyle has its OWN setBoundVariable overload restricted to VariableBindableTextField. Here the value is a single VariableAlias, not the array form used on TextNode.",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": {
+        "priority": "never",
+        "dtcgType": "typography",
+        "notes": "Replace with a DTCG composite typography token."
+      }
+    },
+    {
+      "uiLabel": "Effect style effects",
+      "panelSection": "(Styles, not the Design panel)",
+      "nodeTypes": ["EffectStyle"],
+      "variableTypes": ["COLOR", "FLOAT"],
+      "scopes": ["EFFECT_COLOR", "EFFECT_FLOAT"],
+      "pluginApiFields": ["EffectStyle.boundVariables.effects"],
+      "bindMethod": "assign effects carrying bound variables",
+      "restApiPath": "style.boundVariables.effects[]",
+      "granularity": "per effect",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": {
+        "priority": "never",
+        "dtcgType": "shadow",
+        "notes": "Replace with a DTCG composite shadow token."
+      }
+    },
+    {
+      "uiLabel": "Grid style layout grids",
+      "panelSection": "(Styles, not the Design panel)",
+      "nodeTypes": ["GridStyle"],
+      "variableTypes": ["FLOAT"],
+      "scopes": ["ALL_SCOPES"],
+      "pluginApiFields": ["GridStyle.boundVariables.layoutGrids"],
+      "bindMethod": "assign layoutGrids carrying bound variables",
+      "restApiPath": "style.boundVariables.layoutGrids[]",
+      "granularity": "per grid",
+      "notes": "",
+      "availability": "GA",
+      "verifiedBy": "docs",
+      "sources": ["https://www.npmjs.com/package/@figma/plugin-typings"],
+      "uidx": { "priority": "never", "dtcgType": "other", "notes": "" }
+    },
+    {
+      "uiLabel": "Animation duration / delay (preset animation)",
+      "panelSection": "Motion",
+      "nodeTypes": ["nodes carrying an AppliedAnimationStyle"],
+      "variableTypes": ["TIMING"],
+      "scopes": [],
+      "pluginApiFields": ["AnimationStyleConfiguration.props[key]"],
+      "bindMethod": "set the prop to a VariableAlias — AnimationStylePropValue = string | number | boolean | MotionEasing | VariableAlias",
+      "restApiPath": "unverified — the REST Variables API does not list EASING/TIMING in resolvedType as of 2026-08-25",
+      "granularity": "per animation prop",
+      "notes": "DIFFERENT BINDING MECHANISM: motion binds by putting a VariableAlias directly in the value slot, NOT via a boundVariables map. UNIT DISCREPANCY: help.figma.com describes timing variables in milliseconds ('500ms') while plugin-typings and the Update 133 note describe timing values as numbers in SECONDS. Do not assume either without probing.",
+      "availability": "Open beta (rolled out 2026-06-24); Plugin API support landed 2026-08-05 in Version 1, Update 133",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://developers.figma.com/docs/plugins/updates/2026/08/05/version-1-update-133/",
+        "https://help.figma.com/hc/en-us/articles/39582753756695-What-s-new-from-Config-2026",
+        "https://help.figma.com/hc/en-us/articles/14506821864087"
+      ],
+      "uidx": {
+        "priority": "v2",
+        "dtcgType": "duration",
+        "notes": "DTCG duration carries a unit, which resolves Figma's ms/s ambiguity by construction."
+      }
+    },
+    {
+      "uiLabel": "Keyframe easing / animation easing",
+      "panelSection": "Motion",
+      "nodeTypes": ["nodes with manual keyframe tracks or applied animation styles"],
+      "variableTypes": ["EASING"],
+      "scopes": [],
+      "pluginApiFields": [
+        "ManualKeyframe.easing",
+        "ManualKeyframeInput.easing",
+        "AnimationStyleConfiguration.props[key]"
+      ],
+      "bindMethod": "set easing to a VariableAlias — the field type is MotionEasing | VariableAlias",
+      "restApiPath": "unverified",
+      "granularity": "per keyframe",
+      "notes": "An EASING variable resolves to a MotionEasing object (type EASE_IN | EASE_OUT | EASE_IN_AND_OUT | LINEAR | EASE_IN_BACK | EASE_OUT_BACK | ... plus spring params such as bounce). There is NO VariableScope value for EASING or TIMING, so motion variables cannot be scope-filtered.",
+      "availability": "Open beta (2026-06-24); Plugin API 2026-08-05",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://developers.figma.com/docs/plugins/updates/2026/08/05/version-1-update-133/"
+      ],
+      "uidx": {
+        "priority": "v2",
+        "dtcgType": "cubicBezier",
+        "notes": "DTCG cubicBezier covers curves but NOT springs; a spring needs an extension."
+      }
+    },
+    {
+      "uiLabel": "Shader parameter",
+      "panelSection": "Fill / Effects (shader)",
+      "nodeTypes": ["nodes with a ShaderPaint fill/stroke or a ShaderEffect"],
+      "variableTypes": ["FLOAT", "COLOR", "BOOLEAN", "STRING"],
+      "scopes": [],
+      "pluginApiFields": ["ShaderPaint.properties[defId]", "ShaderEffect.properties[defId]"],
+      "bindMethod": "assign a VariableAlias into the properties map — 'A value can always be a variable binding via the standard VariableAlias form'",
+      "restApiPath": "unverified",
+      "granularity": "per shader property definition id",
+      "notes": "Keys are property-definition IDS, not names. The valid value shape depends on the property's declared type in its ShaderPropertyDefinition (scalars, RGB/RGBA, points, circles...). Same value-slot binding mechanism as motion.",
+      "availability": "Open beta (2026-06-24); paid plans only, not on Education/Government/Starter",
+      "verifiedBy": "docs",
+      "sources": [
+        "https://www.npmjs.com/package/@figma/plugin-typings",
+        "https://help.figma.com/hc/en-us/articles/39582753756695-What-s-new-from-Config-2026"
+      ],
+      "uidx": {
+        "priority": "never",
+        "dtcgType": "other",
+        "notes": "Out of scope for a code-first UI design system."
+      }
+    }
+  ],
+  "notBindable": [
+    {
+      "uiLabel": "X / Y position",
+      "why": "product choice",
+      "evidence": "Not in VariableBindableNodeField (typings 1.135.0), though TRANSLATION_X/TRANSLATION_Y ARE animatable via KeyframePropertyFieldName — so the engine can vary them, it just is not exposed to variables.",
+      "workaround": "Auto layout padding and gap; absolute positioning by hand.",
+      "uidxShould": "support — a code-first tool has no reason to withhold it"
+    },
+    {
+      "uiLabel": "Rotation",
+      "why": "product choice",
+      "evidence": "Not in VariableBindableNodeField; ROTATION is in KeyframePropertyFieldName.",
+      "workaround": "Variants per angle.",
+      "uidxShould": "support in v2"
+    },
+    {
+      "uiLabel": "Constraints",
+      "why": "product choice",
+      "evidence": "Not in any VariableBindable* union.",
+      "workaround": "Components per breakpoint.",
+      "uidxShould": "not a token concern; skip"
+    },
+    {
+      "uiLabel": "Blend mode",
+      "why": "product choice",
+      "evidence": "BlendMode is a plain enum on Paint/Effect with no boundVariables entry.",
+      "workaround": "Styles.",
+      "uidxShould": "low value; skip"
+    },
+    {
+      "uiLabel": "Whole gradient as a token",
+      "why": "product choice",
+      "evidence": "VariableResolvedDataType has no gradient member; only individual ColorStop.color is bindable. Long-standing unanswered feature request.",
+      "workaround": "Color styles whose paints reference variables.",
+      "uidxShould": "support — DTCG has a composite gradient type"
+    },
+    {
+      "uiLabel": "Paint opacity",
+      "why": "product choice",
+      "evidence": "VariableBindablePaintField = 'color' only; SolidPaint.opacity has no binding.",
+      "workaround": "Bake alpha into the color variable, or bind layer opacity.",
+      "uidxShould": "support"
+    },
+    {
+      "uiLabel": "Image fills / video / pattern paints",
+      "why": "real technical constraint (partly)",
+      "evidence": "Only SolidPaint and ColorStop carry boundVariables; ImagePaint/VideoPaint/PatternPaint do not.",
+      "workaround": "Component swap.",
+      "uidxShould": "an asset token (a path reference) is reasonable in v2"
+    },
+    {
+      "uiLabel": "Text decoration, text case, text align",
+      "why": "product choice",
+      "evidence": "textCase exists on TextStyle but is absent from VariableBindableTextField.",
+      "workaround": "Text styles.",
+      "uidxShould": "support as string tokens; cheap"
+    },
+    {
+      "uiLabel": "Effect visibility and blend mode",
+      "why": "product choice",
+      "evidence": "VariableBindableEffectField = color | radius | spread | offsetX | offsetY only.",
+      "workaround": "Duplicate effect sets.",
+      "uidxShould": "falls out free from a composite shadow token"
+    },
+    {
+      "uiLabel": "Blur spread / offsets",
+      "why": "real technical constraint",
+      "evidence": "BlurEffectBase.boundVariables permits ONLY 'radius' — blurs have no spread or offset to bind.",
+      "workaround": "n/a",
+      "uidxShould": "match"
+    },
+    {
+      "uiLabel": "Instance swap",
+      "why": "unverified",
+      "evidence": "ComponentPropertyType includes INSTANCE_SWAP and SLOT, and component property 'value' is bindable, but no source confirms an INSTANCE_SWAP value accepts a variable. componentPropertyReferences is a separate mechanism, not variable binding.",
+      "workaround": "Boolean properties toggling pre-placed instances.",
+      "uidxShould": "decide after empirical probing"
+    },
+    {
+      "uiLabel": "Stroke align / dash pattern",
+      "why": "product choice",
+      "evidence": "Absent from every VariableBindable* union.",
+      "workaround": "Styles.",
+      "uidxShould": "support — DTCG has a strokeStyle composite type"
+    }
+  ]
+}
