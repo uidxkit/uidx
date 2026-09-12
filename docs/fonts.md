@@ -37,6 +37,14 @@ A conflicting file for the same family, weight and italic is rejected until the
 existing face is removed. Removing a face leaves the document’s text references
 intact. Reload the viewer to clear removed fonts from open rendering sessions.
 
+Imported and uploaded fonts keep their own license; uidx does not relicense
+them. A Google Fonts import is usually SIL Open Font License 1.1, but some
+families (Roboto and its variants, for example) are Apache License 2.0, and a
+few are the Ubuntu Font License or CC BY-SA. Check the family’s license on
+[fonts.google.com](https://fonts.google.com/) before committing or sharing a
+project that bundles it, and keep that family’s notice with it the same way
+you would for any other third-party asset.
+
 Only an explicit Google import uses the internet. The server requests a full,
 static TrueType face and saves it locally. The canvas, thumbnails and image
 exports use these same saved bytes through the SDK font manager. Imported
