@@ -48,7 +48,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.45",
-    "@ai-sdk/openai-compatible": "^3.0.40",
+    "@ai-sdk/openai-compatible": "^3.0.47",
     "@hono/node-server": "^2.1.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@open-pencil/core": "0.14.0",
