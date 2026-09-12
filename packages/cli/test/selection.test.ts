@@ -48,7 +48,8 @@ async function serveSelection(body: unknown): Promise<void> {
 describe('uidx selection', () => {
   it('requires a project or document when no root is supplied', async () => {
     const { io, err } = collect()
-    io.cwd = '/private/tmp'
+    await rm(join(root, 'uidx.json'))
+    io.cwd = root
     expect(await run(['selection'], io)).toBe(1)
     expect(err.join('')).toContain('document root')
   })
