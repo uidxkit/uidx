@@ -7,15 +7,15 @@
   <a href="#install"><img src="https://img.shields.io/badge/install-project%20devDependency-151a23" alt="Install as a project development dependency" /></a>
 </p>
 
-![UIDX workflow: a visual canvas connected to editable .uidx files in your project, with CLI and MCP access.](docs/assets/workflow.svg)
+![UIDX workflow: a visual canvas connected to editable .uidx files in your project, with CLI and MCP access.](docs/assets/workflow-npm.svg)
 
 *Workflow illustration: one design, shared by the canvas, your files, and your tools.*
 
 ## What is UIDX?
 
-UIDX brings a design canvas into your application's repository. Install it as a
-**local development dependency**, run `npm run uidx`, and work on designs stored
-in your project's `.uidx/` folder.
+UIDX brings a design canvas into your application's repository. Install
+`@uidxkit/uidx` as a **local development dependency**, run `npm run uidx`, and
+work on designs stored in your project's `.uidx/` folder.
 
 A `.uidx` file combines Markdown describing a design's purpose with a declarative
 node tree describing its appearance. Edit the canvas and the file updates. Edit
@@ -116,22 +116,6 @@ npx --no-install uidx fmt --check
 The CLI also supports reading, creating, editing, and rendering pages. See the
 [CLI guide](packages/cli/README.md) and [agent architecture](packages/agent/README.md).
 
-## Development
-
-```sh
-pnpm install --frozen-lockfile
-pnpm build:cli
-pnpm exec uidx init
-pnpm dev
-```
-
-This checkout's `.uidx/` folder is a personal development workspace and is
-ignored by Git. Demo collections are not included in the repository. Tests use
-isolated fixtures and generated documents.
-
-See [Contributing](CONTRIBUTING.md) for checks and conventions, and
-[package distribution](docs/package-distribution.md) for local dependency testing.
-
 ## Documentation
 
 - [Drawing icons and custom graphics](docs/graphics-tools.md)
@@ -144,6 +128,7 @@ See [Contributing](CONTRIBUTING.md) for checks and conventions, and
 ## Contributing and license
 
 Bug reports, documentation improvements, and pull requests are welcome.
+See [Contributing](CONTRIBUTING.md) for development setup and checks.
 Follow the [Code of Conduct](CODE_OF_CONDUCT.md) and report vulnerabilities through
 the [security policy](SECURITY.md). Changes to `main` are merged by the owner.
 

@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1440" height="900" viewBox="0 0 1440 900" role="img" aria-labelledby="title desc">
-<title id="title">Design in your repo with UIDX</title><desc id="desc">An illustration of a visual design canvas, a .uidx source file, and a project-local CLI and MCP workflow. Designs stay in Git.</desc>
+<title id="title">Design in your repo with @uidxkit/uidx</title><desc id="desc">An illustration of a visual design canvas, a .uidx source file, and a project-local CLI and MCP workflow. Install @uidxkit/uidx as a development dependency. Designs stay in Git.</desc>
 <defs><radialGradient id="glow"><stop stop-color="#22467d" stop-opacity=".65"/><stop offset="1" stop-color="#10151f" stop-opacity="0"/></radialGradient><linearGradient id="card" x2="0" y2="1"><stop stop-color="#172638"/><stop offset="1" stop-color="#131b28"/></linearGradient><pattern id="dots" width="20" height="20" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r="1" fill="#64738a" opacity=".18"/></pattern></defs>
 <rect width="1440" height="900" rx="28" fill="#0d121b"/><ellipse cx="620" cy="420" rx="900" ry="560" fill="url(#glow)"/>
 <g font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif">
@@ -98,5 +98,5 @@
 <text x="1122" y="752" fill="#aac0dc" font-size="14" font-weight="400">⑂  Ready for your next PR</text>
 <path d="M64 809 L1376 809" stroke="#29364a" fill="none"/>
 <text x="64" y="850" fill="#b7c7df" font-size="15" font-weight="600">YOUR CANVAS. YOUR FILES. YOUR WORKFLOW.</text>
-<text x="969" y="850" fill="#7eb0ff" font-size="17" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">npm install --save-dev @uidxkit/uidx</text>
+<text x="944" y="850" fill="#7eb0ff" font-size="16" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">npm install --save-dev <tspan fill="#f8faff" font-weight="700">@uidxkit/uidx</tspan></text>
 </g></svg>

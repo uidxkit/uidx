@@ -1,7 +1,11 @@
-# uidx
+<p align="center"><img src="https://raw.githubusercontent.com/uidxkit/uidx/main/docs/assets/uidx.svg" alt="UIDX" width="144" /></p>
+
+# @uidxkit/uidx
 
 A file-first UI design workspace installed as a local development dependency
 in your application. Requires Node 22.19+ (Node 24 LTS recommended).
+
+![UIDX: a visual canvas, editable design files, and project-local CLI and MCP tools.](https://raw.githubusercontent.com/uidxkit/uidx/main/docs/assets/workflow-npm.svg)
 
 ## Install
 
@@ -17,7 +21,7 @@ merges `.mcp.json`, and installs portable skills. Existing designs, configuratio
 MCP servers and skills are preserved. The CLI, server, built viewer, WASM and
 fonts live in your project's `node_modules`; no global installation is needed.
 
-Use `-D` / `--save-dev` to save uidx as a development dependency. If install
+Use `-D` / `--save-dev` to save `@uidxkit/uidx` as a development dependency. If install
 scripts are disabled or `UIDX_SKIP_INIT=1` is set, run `npx --no-install uidx init`
 after installation. When a script name is already taken, use
 `npx --no-install uidx init --script design` and then `npm run design`.
@@ -67,27 +71,6 @@ npx --no-install uidx --help
 `uidx dev` discovers the nearest project's workspace even from a subdirectory.
 `uidx open path/to/page.uidx` opens a specific page. Agent commands need the
 running project server; `check` and `fmt` also work offline.
-
-## Use an unpublished checkout locally
-
-```bash
-cd /path/to/uidx
-nvm use
-corepack enable
-pnpm install
-pnpm build:cli
-
-cd /path/to/my-project
-npm install --save-dev /path/to/uidx/packages/cli
-npx --no-install uidx init
-npm run uidx -- --viewer-dev
-```
-
-This creates a project-local directory link. Setup is explicit for links.
-The linked CLI uses the checkout's server and viewer; designs stay in the
-application's `.uidx/`. Use `--viewer-dev` for viewer hot reload. Rebuild with
-`pnpm build:cli` and restart after backend changes. Omit `--viewer-dev` to use
-the prebuilt viewer, which also needs rebuilding after UI edits.
 
 ## License
 

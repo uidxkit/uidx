@@ -4,6 +4,12 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## 0.1.1 — 2026-09-12
+
+- Refresh the GitHub and npm READMEs and workflow image for `@uidxkit/uidx`.
+- Show project-local npm installation and remove local-checkout installation
+  instructions from the READMEs.
+
 ## 0.1.0 — 2026-09-12
 
 - Project-local `@uidxkit/uidx` devDependency with automatic workspace, npm-script,
