@@ -124,7 +124,7 @@ try {
     env: { ...process.env, npm_config_cache: join(scratch, 'npm-cache') },
     stdio: 'pipe',
   })
-  const archiveName = `uidx-${pkg.version}.tgz`
+  const archiveName = `${pkg.name.replace('@', '').replace('/', '-')}-${pkg.version}.tgz`
   const digest = createHash('sha256')
     .update(await readFile(join(destination, archiveName)))
     .digest('hex')

@@ -10,7 +10,7 @@ Design content lives under `.uidx/` at the application's package root.
 and editing commands are relative to that document, such as `button.uidx`.
 Images live under `.uidx/assets/` and use `src="assets/logo.svg"`.
 
-Install `uidx` as a local devDependency with `npm install --save-dev uidx`.
+Install `@uidxkit/uidx` as a local devDependency with `npm install --save-dev @uidxkit/uidx`.
 Installation initializes `.uidx/` and the npm scripts; if install scripts are
 disabled, run `npx --no-install uidx init` once. No global installation is needed.
 

@@ -40,7 +40,7 @@ export async function configureMcp(config: JsonFile, script: string): Promise<vo
 /** Copies packaged skills without replacing any project-authored file. */
 export async function installSkills(root: string): Promise<void> {
   const require = createRequire(import.meta.url)
-  const source = join(dirname(require.resolve('uidx/package.json')), 'skills')
+  const source = join(dirname(require.resolve('@uidxkit/uidx/package.json')), 'skills')
   const destinations = [
     join(root, '.agents/skills'),
     join(root, '.claude/skills'),

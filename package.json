@@ -1,6 +1,6 @@
 {
   "name": "uidx-monorepo",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.2",
@@ -12,7 +12,7 @@
     "setup:assets": "node scripts/setup-assets.mjs",
     "viewer": "pnpm dev",
     "build": "pnpm -r --filter \"@uidx/format\" --filter \"@uidx/schema\" --filter \"@uidx/server\" build",
-    "build:cli": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter @uidx/viewer build && pnpm --filter uidx build",
+    "build:cli": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter @uidx/viewer build && pnpm --filter @uidxkit/uidx build",
     "test": "pnpm -r --workspace-concurrency=1 test",
     "typecheck": "pnpm -r typecheck",
     "lint": "eslint .",
@@ -21,7 +21,7 @@
     "format:check": "prettier --check .",
     "pack:release": "pnpm build:cli && node scripts/pack-release.mjs",
     "test:install": "node scripts/smoke-install.mjs",
-    "dev": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter uidx build && node packages/cli/dist/uidx.js dev --viewer-dev",
+    "dev": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter @uidxkit/uidx build && node packages/cli/dist/uidx.js dev --viewer-dev",
     "test:linked": "node scripts/smoke-install.mjs --linked",
     "uidx": "uidx dev",
     "uidx:mcp": "uidx mcp",
@@ -31,13 +31,13 @@
   },
   "devDependencies": {
     "@eslint/js": "^9",
+    "@uidxkit/uidx": "workspace:*",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "eslint-plugin-vue": "^9",
     "globals": "^17.11.0",
     "prettier": "^3",
     "typescript-eslint": "^8",
-    "uidx": "workspace:*",
     "vue-eslint-parser": "^9"
   },
   "pnpm": {

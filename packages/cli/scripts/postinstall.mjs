@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url'
 export function installedProject(packageRoot, env = process.env) {
   if (env.npm_config_global === 'true' || env.UIDX_SKIP_INIT === '1') return null
   if (env.npm_command === 'exec') return null
-  const modules = dirname(packageRoot)
+  const parent = dirname(packageRoot)
+  const modules = basename(parent).startsWith('@') ? dirname(parent) : parent
   if (basename(modules) !== 'node_modules') return null
   const project = dirname(modules)
   // Skip nested dependencies and package-manager stores. Source checkouts and
@@ -35,6 +36,6 @@ try {
   await postinstall()
 } catch (error) {
   process.stderr.write(
-    `uidx: automatic setup was skipped: ${error.message}\nRun npx uidx init in your project to finish setup.\n`,
+    `uidx: automatic setup was skipped: ${error.message}\nRun npx --no-install uidx init in your project to finish setup.\n`,
   )
 }

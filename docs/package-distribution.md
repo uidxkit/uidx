@@ -1,6 +1,6 @@
 # npm distribution
 
-The consumer installs **one local devDependency**, `uidx`, which exposes the
+The consumer installs **one local devDependency**, `@uidxkit/uidx`, which exposes the
 `uidx` executable. The release tarball bundles the built `@uidx/format`,
 `@uidx/schema`, `@uidx/server`, `@uidx/agent` and `@uidx/viewer` packages, plus
 the patched Open Pencil core and scene graph, plus PptxGenJS and its patched
@@ -14,8 +14,8 @@ version ranges instead of silently choosing one. Internal exports point to
 JavaScript and declarations in `dist/`; the `development` condition selects
 TypeScript source only within this repository.
 
-In an application, the CLI lives in `node_modules/uidx/`; its bundled libraries,
-server and viewer live in `node_modules/uidx/node_modules/`. The application's
+In an application, the CLI lives in `node_modules/@uidxkit/uidx/`; its bundled libraries,
+server and viewer live in `node_modules/@uidxkit/uidx/node_modules/`. The application's
 `.uidx/` contains authored pages, assets, manifest and configuration.
 
 `npm run uidx` starts one process scoped to the nearest project. It serves the
@@ -43,7 +43,7 @@ Build and pack using the repository's pinned pnpm version:
 corepack pnpm pack:release
 ```
 
-This produces a single `dist/packages/uidx-<version>.tgz`. The build compiles
+This produces a single `dist/packages/uidxkit-uidx-<version>.tgz`. The build compiles
 all internal packages and the viewer. The packer stages their published files,
 includes the installed patched SDK with its licenses and assets, and produces
 a standard npm bundle. It clears old generated tarballs before packing.
@@ -54,7 +54,7 @@ Install that one tarball in an application:
 
 ```bash
 cd /path/to/my-project
-npm install --save-dev /path/to/uidx/dist/packages/uidx-0.0.0.tgz
+npm install --save-dev /path/to/uidx/dist/packages/uidxkit-uidx-0.1.0.tgz
 npm run uidx
 ```
 
@@ -88,7 +88,7 @@ npx --no-install uidx init
 npm run uidx -- --viewer-dev
 ```
 
-The local `node_modules/uidx` link resolves the checkout's built backend and
+The local `node_modules/@uidxkit/uidx` link resolves the checkout's built backend and
 viewer source. Setup is explicit for directory links. `--viewer-dev` enables
 viewer hot reload; rebuild and restart after backend edits. Omit the flag to
 use the built viewer. Published packages do not ship viewer source.
@@ -106,5 +106,5 @@ need separate registry releases. Do not publish directly from `packages/cli`,
 because that bypasses release bundling. Follow the [release guide](releasing.md)
 for CI gates, protected tag publishing, provenance and account configuration.
 
-After publication, consumers run `npm install --save-dev uidx`, followed by
+After publication, consumers run `npm install --save-dev @uidxkit/uidx`, followed by
 `npm run uidx`. Packing and installation tests do not publish anything.

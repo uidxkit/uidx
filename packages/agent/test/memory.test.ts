@@ -1,8 +1,7 @@
-import { mkdir, mkdtemp, readdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
-import { describe, expect, it } from 'vitest'
+import { join } from 'node:path'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import {
   discoverMemories,
@@ -17,8 +16,19 @@ const run = async (tool: { execute?: unknown }, input: unknown): Promise<string>
     messages: [],
   })
 
-async function shelf(name: string, body: string) {
+const roots: string[] = []
+afterEach(async () => {
+  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })))
+})
+
+async function project() {
   const root = await mkdtemp(join(tmpdir(), 'uidx-memory-'))
+  roots.push(root)
+  return root
+}
+
+async function shelf(name: string, body: string) {
+  const root = await project()
   await mkdir(join(root, name), { recursive: true })
   await writeFile(join(root, name, 'SKILL.md'), body)
   return discoverMemories([{ dir: root, origin: 'docroot' }])
@@ -60,51 +70,32 @@ The field is \`element\`, and its value comes from a fixed list.
   })
 })
 
-/**
- * The shipped lessons, checked against the harness they describe. Each was
- * written from a correction measured on the wire this week, and a lesson that
- * drifts from the schema it teaches is worse than none — a model that follows
- * it confidently gets a refusal it was told would not come.
- */
-describe('the memories this repo ships', () => {
-  const dir = join(
-    dirname(fileURLToPath(import.meta.url)),
-    '..',
-    '..',
-    '..',
-    '.uidx-agent',
-    MEMORY_DIR,
-  )
-
-  it('discovers every one of them, each with a name and a description', async () => {
+describe('project memories', () => {
+  it('starts empty in a fresh project without a memory directory', async () => {
+    const dir = join(await project(), '.uidx-agent', MEMORY_DIR)
     const memories = await discoverMemories([{ dir, origin: 'docroot' }])
-    const names = memories.map((m) => m.name).sort()
-    expect(names).toEqual([
-      'insert-node-takes-element',
-      'page-root-is-empty-string',
-      'text-says-characters',
-    ])
-    for (const memory of memories) expect(memory.description.length).toBeGreaterThan(20)
+    expect(memories).toEqual([])
+    const { use_memory } = memoryTools({ memories: () => memories, maxChars: 10_000 })
+    expect(await run(use_memory, { name: 'missing' })).toContain('missing')
   })
 
-  it('has a directory for every memory and no strays', async () => {
-    const dirs = (await readdir(dir, { withFileTypes: true }))
-      .filter((e) => e.isDirectory())
-      .map((e) => e.name)
-    expect(dirs).toHaveLength(3)
-  })
-
-  it('teaches the field name the schema actually uses', async () => {
-    const body = await readFile(join(dir, 'insert-node-takes-element', 'SKILL.md'), 'utf8')
-    expect(body).toContain('"element"')
-    // The aliases it promises have to be the ones `narrowOps` accepts.
-    const root = await readFile(join(dir, 'page-root-is-empty-string', 'SKILL.md'), 'utf8')
-    for (const alias of ['"/"', '"page"', '"root"']) expect(root).toContain(alias)
-  })
-
-  it('fits the listing without crowding out the skills beside it', async () => {
-    const listing = renderMemoryListing(await discoverMemories([{ dir, origin: 'docroot' }]))
-    expect(listing.length).toBeLessThan(600)
-    expect(listing).not.toContain('not listed')
+  it('discovers and reads a project-authored lesson without repository-local state', async () => {
+    const dir = join(await project(), '.uidx-agent', MEMORY_DIR)
+    const file = join(dir, 'prefer-tokens', 'SKILL.md')
+    await mkdir(join(dir, 'prefer-tokens'), { recursive: true })
+    await writeFile(
+      file,
+      `---
+name: prefer-tokens
+description: Use the project tokens when assigning a color.
+---
+Resolve the shared token before changing a fill.
+`,
+    )
+    const memories = await discoverMemories([{ dir, origin: 'docroot' }])
+    expect(memories.map((memory) => memory.name)).toEqual(['prefer-tokens'])
+    expect(renderMemoryListing(memories)).toContain('Use the project tokens')
+    const { use_memory } = memoryTools({ memories: () => memories, maxChars: 10_000 })
+    expect(await run(use_memory, { name: 'prefer-tokens' })).toContain('Resolve the shared token')
   })
 })

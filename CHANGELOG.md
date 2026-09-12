@@ -4,9 +4,9 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
-## Unreleased
+## 0.1.0 — 2026-09-12
 
-- Project-local `uidx` devDependency with automatic workspace, npm-script,
+- Project-local `@uidxkit/uidx` devDependency with automatic workspace, npm-script,
   skill and MCP setup; explicit setup remains available.
 - One release tarball containing the server, viewer and patched drawing SDK.
 - Bidirectional `.uidx` editing, reusable components, variables, fonts and

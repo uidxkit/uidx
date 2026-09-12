@@ -1,7 +1,7 @@
 # Releasing uidx
 
 uidx is a project-local development dependency. Publish the single tested
-`uidx-<version>.tgz` produced by `scripts/pack-release.mjs`. Do not publish directly
+`uidxkit-uidx-<version>.tgz` produced by `scripts/pack-release.mjs`. Do not publish directly
 from `packages/cli`: that directory does not contain the bundled runtime patches,
 viewer assets, and third-party notices required by a working installation.
 
@@ -14,13 +14,35 @@ and protect `main` with required CI checks and pull-request review.
 
 Create a GitHub environment named `npm` with required maintainer approval and
 restrict deployments to release tags. Confirm ownership and availability of the
-`uidx` package name. Configure an [npm trusted publisher](https://docs.npmjs.com/trusted-publishers/)
-for owner `beharguy`, repository `uidx`, workflow `release.yml`, environment `npm`.
+`@uidxkit/uidx` package name. Configure an [npm trusted publisher](https://docs.npmjs.com/trusted-publishers/)
+for owner `uidxkit`, repository `uidx`, workflow `release.yml`, environment `npm`.
 The workflow uses GitHub OIDC and needs no long-lived npm token. First publication
 may require an authenticated maintainer to bootstrap the package before its npm
 settings are available; use the verified tarball and npm's interactive 2FA flow.
 Do not store registry tokens in this repository. These account settings must be
 completed by a maintainer; committing the workflow does not enable them.
+
+## First npm publication
+
+Create and verify a personal npm account, enable two-factor authentication, and
+create the free `uidxkit` organization. GitHub organization ownership does not
+automatically grant ownership of the same npm scope.
+
+After the release changes pass CI and merge into `main`, download the
+`npm-release` artifact from that commit's successful CI run into `dist/packages`.
+Using Node from `.nvmrc`, verify and publish the tested tarball:
+
+```sh
+RELEASE_TAG=v0.1.0 node scripts/check-release.mjs
+npm login
+npm publish dist/packages/uidxkit-uidx-0.1.0.tgz --access public
+node scripts/smoke-install.mjs --registry
+```
+
+Complete npm's interactive account verification when prompted. This first
+publication uses the maintainer's login. Configure the trusted publisher in the
+new package's npm settings before using release tags for subsequent versions.
+Those later releases use the workflow below and include npm provenance.
 
 ## Prepare a release
 
@@ -54,8 +76,10 @@ completed by a maintainer; committing the workflow does not enable them.
    artifact from that run, verifies its checksum/version, then awaits the protected
    `npm` environment before publishing that exact tarball with provenance.
 
-After publishing, verify `npm install --save-dev uidx` in a fresh project and
+After publishing, verify `npm install --save-dev @uidxkit/uidx` in a fresh project and
 `npm run uidx -- --no-open`. Confirm the viewer, `.uidx` setup and MCP bridge work.
+`node scripts/smoke-install.mjs --registry` runs those checks against the exact
+version in `packages/cli/package.json`, downloaded from npm.
 Create release notes linking the changelog and npm package. If a release is broken,
 deprecate that version with a concrete explanation and publish a new patch version;
 do not overwrite an existing artifact or move a published tag.

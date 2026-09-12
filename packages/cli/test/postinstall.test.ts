@@ -13,15 +13,15 @@ describe('installation scope', () => {
       `import { installedProject } from ${JSON.stringify(script)};
        import { resolve } from 'node:path';
        const root = resolve('consumer');
-       const pkg = resolve(root, 'node_modules/uidx');
+       const pkg = resolve(root, 'node_modules/@uidxkit/uidx');
        process.stdout.write(JSON.stringify([
          installedProject(pkg, {}),
          installedProject(pkg, { npm_config_global: 'true' }),
          installedProject(pkg, { npm_command: 'exec' }),
          installedProject(pkg, { UIDX_SKIP_INIT: '1' }),
          installedProject(resolve(root, 'packages/cli'), {}),
-         installedProject(resolve(root, 'node_modules/other/node_modules/uidx'), {}),
-         installedProject(resolve(root, 'node_modules/.pnpm/uidx/node_modules/uidx'), {}),
+         installedProject(resolve(root, 'node_modules/other/node_modules/@uidxkit/uidx'), {}),
+         installedProject(resolve(root, 'node_modules/.pnpm/@uidxkit+uidx/node_modules/@uidxkit/uidx'), {}),
        ]));`,
     ])
     expect(stderr).toBe('')

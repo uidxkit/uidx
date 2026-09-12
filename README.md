@@ -33,7 +33,7 @@ review in a pull request.
 - **Local by default.** The viewer and project server run on your machine. Canvas
   synchronization does not require an LLM or a hosted design service.
 
-UIDX is preparing its first public release. The file format and APIs may change
+UIDX is an early release. The file format and APIs may change
 before 1.0. It is a design workspace; it does not render your application's
 existing UI components as Storybook stories.
 
@@ -41,32 +41,10 @@ existing UI components as Storybook stories.
 
 Requires **Node.js 22.19 or newer**. Node 24 is recommended.
 
-### Try it before the first npm release
-
-Build the installable package using the pinned pnpm version:
+Run these commands **inside your application's repository**:
 
 ```sh
-git clone https://github.com/uidxkit/uidx.git
-cd uidx
-corepack enable
-pnpm install --frozen-lockfile
-pnpm pack:release
-```
-
-Then install the resulting tarball **inside your application's repository**:
-
-```sh
-cd /path/to/your-project
-npm install --save-dev /path/to/uidx/dist/packages/uidx-0.0.0.tgz
-npm run uidx
-```
-
-### After the npm release
-
-The published package will use the same project-local setup:
-
-```sh
-npm install --save-dev uidx
+npm install --save-dev @uidxkit/uidx
 npm run uidx
 ```
 
@@ -84,7 +62,7 @@ choose another with `npx --no-install uidx init --script design`, then run
 
 ```text
 your-project/
-├── package.json          # uidx devDependency and npm scripts
+├── package.json          # @uidxkit/uidx devDependency and npm scripts
 ├── .mcp.json             # connection for MCP clients
 ├── src/
 └── .uidx/
