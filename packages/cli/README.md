@@ -5,11 +5,10 @@ in your application. Requires Node 22.19+ (Node 24 LTS recommended).
 
 ## Install
 
-These packages have not been published yet. After release, run this in your
-application repo:
+Run this in your application repository:
 
 ```bash
-npm install --save-dev uidx
+npm install --save-dev @uidxkit/uidx
 npm run uidx
 ```
 

@@ -26,10 +26,11 @@ test('publishing requires a matching tag, intact tarball and shipped license not
     for (const file of ['package.json', 'packages/cli/package.json']) {
       await writeFile(join(root, file), JSON.stringify({ version: '0.1.0' }))
     }
+    await writeFile(join(root, 'packages/.DS_Store'), 'unrelated macOS metadata')
     await writeFile(
       join(stage, 'package.json'),
       JSON.stringify({
-        name: 'uidx',
+        name: '@uidxkit/uidx',
         version: '0.1.0',
         license: 'MIT',
         bundledDependencies: ['pptxgenjs', 'image-size'],
@@ -41,13 +42,13 @@ test('publishing requires a matching tag, intact tarball and shipped license not
       join(stage, 'node_modules/@uidx/viewer/dist/third-party-notices.txt'),
       'SIL OPEN FONT LICENSE',
     )
-    const archive = join(dist, 'uidx-0.1.0.tgz')
+    const archive = join(dist, 'uidxkit-uidx-0.1.0.tgz')
     const pack = async () => {
       execFileSync('tar', ['-czf', archive, '-C', join(root, 'stage'), 'package'])
       const hash = createHash('sha256')
         .update(await readFile(archive))
         .digest('hex')
-      await writeFile(`${archive}.sha256`, `${hash}  uidx-0.1.0.tgz\n`)
+      await writeFile(`${archive}.sha256`, `${hash}  uidxkit-uidx-0.1.0.tgz\n`)
     }
     const check = (tag = 'v0.1.0') =>
       spawnSync(process.execPath, [join(root, 'scripts/check-release.mjs')], {
@@ -59,6 +60,11 @@ test('publishing requires a matching tag, intact tarball and shipped license not
     assert.match(check('v0.2.0').stderr, /Tag must match/)
     await writeFile(archive, 'corrupt artifact')
     assert.match(check().stderr, /Artifact checksum mismatch/)
+    const manifest = await readFile(join(stage, 'package.json'), 'utf8')
+    await writeFile(join(stage, 'package.json'), manifest.replace('@uidxkit/uidx', 'uidx'))
+    await pack()
+    assert.notEqual(check().status, 0, 'An unscoped package must not be published')
+    await writeFile(join(stage, 'package.json'), manifest)
     await rm(join(stage, 'LICENSE'))
     await pack()
     assert.notEqual(check().status, 0, 'Missing license must prevent publishing')

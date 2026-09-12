@@ -54,7 +54,7 @@ id: bad
 
 describe('built binary', () => {
   it('has been built', () => {
-    expect(existsSync(BIN), 'run `pnpm --filter uidx build` first').toBe(true)
+    expect(existsSync(BIN), 'run `pnpm --filter @uidxkit/uidx build` first').toBe(true)
   })
 
   it('starts without a module-resolution error', async () => {

@@ -98,5 +98,5 @@
 <text x="1122" y="752" fill="#aac0dc" font-size="14" font-weight="400">⑂  Ready for your next PR</text>
 <path d="M64 809 L1376 809" stroke="#29364a" fill="none"/>
 <text x="64" y="850" fill="#b7c7df" font-size="15" font-weight="600">YOUR CANVAS. YOUR FILES. YOUR WORKFLOW.</text>
-<text x="969" y="850" fill="#7eb0ff" font-size="17" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">npm install --save-dev uidx</text>
+<text x="969" y="850" fill="#7eb0ff" font-size="17" font-weight="500" font-family="ui-monospace, SFMono-Regular, Consolas, monospace">npm install --save-dev @uidxkit/uidx</text>
 </g></svg>

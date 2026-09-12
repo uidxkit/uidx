@@ -12,10 +12,13 @@ import { verifyDependencyFixes } from './check-dependency-fixes.mjs'
 const exec = promisify(execFile)
 const root = fileURLToPath(new URL('..', import.meta.url))
 const tarballs = resolve(root, 'dist/packages')
-const project = await realpath(await mkdtemp(join(tmpdir(), 'uidx-install-')))
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const linked = process.argv.includes('--linked')
+const registry = process.argv.includes('--registry')
+assert(!(linked && registry), 'Choose a local link or the npm registry')
+const release = JSON.parse(await readFile(join(root, 'packages/cli/package.json'), 'utf8'))
 const ignoreScripts = process.argv.includes('--ignore-scripts')
+const project = await realpath(await mkdtemp(join(tmpdir(), 'uidx-install-')))
 let child
 let mcp
 let log = ''
@@ -40,11 +43,13 @@ try {
   )
   const files = linked
     ? [join(root, 'packages/cli')]
-    : (await readdir(tarballs))
-        .filter((name) => name.endsWith('.tgz'))
-        .map((name) => join(tarballs, name))
+    : registry
+      ? [`${release.name}@${release.version}`]
+      : (await readdir(tarballs))
+          .filter((name) => name.endsWith('.tgz'))
+          .map((name) => join(tarballs, name))
   if (!linked) assert.equal(files.length, 1, 'run pnpm pack:release first')
-  console.log(`Installing ${linked ? 'local development link' : 'release tarballs'} in ${project}`)
+  console.log(`Installing ${files.join(', ')} in ${project}`)
   await command(npm, [
     'install',
     '--save-dev',
@@ -56,11 +61,12 @@ try {
     ...files,
   ])
   // Import the published API and use the installed executable, with no workspace source resolution.
-  const cli = join(project, 'node_modules/uidx/dist/uidx.js')
+  const cli = join(project, 'node_modules/@uidxkit/uidx/dist/uidx.js')
+  assert.equal((await command(process.execPath, [cli, '--version'])).trim(), release.version)
   await command(process.execPath, [
     '--input-type=module',
     '-e',
-    "const { run } = await import('uidx'); if (typeof run !== 'function') process.exit(1)",
+    "const { run } = await import('@uidxkit/uidx'); if (typeof run !== 'function') process.exit(1)",
   ])
   const port = linked ? 4950 : 4940
   if (linked || ignoreScripts) {
@@ -70,9 +76,12 @@ try {
   assert.equal(pkg.scripts.uidx, 'uidx dev')
   assert.equal(pkg.scripts['uidx:mcp'], 'uidx mcp')
   assert.equal(pkg.scripts.dev, 'echo application')
-  assert.ok(pkg.devDependencies.uidx, 'uidx is installed as a project devDependency')
-  assert.deepEqual(Object.keys(pkg.devDependencies), ['uidx'])
-  assert.equal(pkg.dependencies?.uidx, undefined)
+  assert.ok(
+    pkg.devDependencies['@uidxkit/uidx'],
+    '@uidxkit/uidx is installed as a project devDependency',
+  )
+  assert.deepEqual(Object.keys(pkg.devDependencies), ['@uidxkit/uidx'])
+  assert.equal(pkg.dependencies?.['@uidxkit/uidx'], undefined)
   assert.deepEqual(JSON.parse(await readFile(join(project, '.uidx/config.json'), 'utf8')), {
     port: 4400,
   })
@@ -82,7 +91,7 @@ try {
   const manifest = await readFile(join(project, '.uidx/uidx.json'), 'utf8')
   if (!linked && !ignoreScripts) {
     // Re-running the install lifecycle preserves authored files and configuration.
-    await command(npm, ['rebuild', 'uidx', '--cache', join(tmpdir(), 'uidx-npm-cache')])
+    await command(npm, ['rebuild', '@uidxkit/uidx', '--cache', join(tmpdir(), 'uidx-npm-cache')])
     assert.equal(await readFile(join(project, '.uidx/welcome.uidx'), 'utf8'), starter)
     assert.equal(await readFile(join(project, '.uidx/uidx.json'), 'utf8'), manifest)
     assert.deepEqual(JSON.parse(await readFile(join(project, '.uidx/config.json'), 'utf8')), {
@@ -92,9 +101,12 @@ try {
   const require = createRequire(await realpath(cli))
   verifyDependencyFixes(dirname(require.resolve('@uidx/schema')))
   if (!linked) {
-    assert.match(await readFile(join(project, 'node_modules/uidx/LICENSE'), 'utf8'), /MIT License/)
     assert.match(
-      await readFile(join(project, 'node_modules/uidx/THIRD_PARTY_NOTICES.md'), 'utf8'),
+      await readFile(join(project, 'node_modules/@uidxkit/uidx/LICENSE'), 'utf8'),
+      /MIT License/,
+    )
+    assert.match(
+      await readFile(join(project, 'node_modules/@uidxkit/uidx/THIRD_PARTY_NOTICES.md'), 'utf8'),
       /Open Pencil/,
     )
     const schemaRequire = createRequire(require.resolve('@uidx/schema'))

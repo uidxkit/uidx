@@ -29,6 +29,9 @@ importers:
       '@eslint/js':
         specifier: ^9
         version: 9.39.5
+      '@uidxkit/uidx':
+        specifier: workspace:*
+        version: link:packages/cli
       eslint:
         specifier: ^9
         version: 9.39.5
@@ -47,9 +50,6 @@ importers:
       typescript-eslint:
         specifier: ^8
         version: 8.67.0(eslint@9.39.5)(typescript@5.9.3)
-      uidx:
-        specifier: workspace:*
-        version: link:packages/cli
       vue-eslint-parser:
         specifier: ^9
         version: 9.4.3(eslint@9.39.5)

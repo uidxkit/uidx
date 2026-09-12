@@ -12,7 +12,7 @@ beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), 'uidx-init-'))
   await writeFile(
     join(dir, 'package.json'),
-    '{\n  "name": "my-app",\n  "scripts": { "dev": "vite" },\n  "devDependencies": { "uidx": "0.0.0" }\n}\n',
+    '{\n  "name": "my-app",\n  "scripts": { "dev": "vite" },\n  "devDependencies": { "@uidxkit/uidx": "0.1.0" }\n}\n',
   )
 })
 afterEach(async () => {
@@ -63,7 +63,7 @@ describe('project setup', () => {
     expect(pkg).toEqual({
       name: 'my-app',
       scripts: { dev: 'vite', uidx: 'uidx dev', 'uidx:mcp': 'uidx mcp' },
-      devDependencies: { uidx: '0.0.0' },
+      devDependencies: { '@uidxkit/uidx': '0.1.0' },
     })
     expect(JSON.parse(await readFile(join(dir, '.uidx/uidx.json'), 'utf8'))).toEqual({
       id: 'my-app',

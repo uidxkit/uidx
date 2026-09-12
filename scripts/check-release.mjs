@@ -11,12 +11,16 @@ const pkg = await readJson(join(root, 'package.json'))
 assert.match(pkg.version, /^\d+\.\d+\.\d+$/, 'This workflow publishes stable semver releases')
 assert.notEqual(pkg.version, '0.0.0', 'Choose a release version before publishing')
 assert.equal(process.env.RELEASE_TAG, `v${pkg.version}`, 'Tag must match the package version')
-for (const dir of await readdir(join(root, 'packages'))) {
-  assert.equal((await readJson(join(root, 'packages', dir, 'package.json'))).version, pkg.version)
+for (const dir of await readdir(join(root, 'packages'), { withFileTypes: true })) {
+  if (!dir.isDirectory()) continue
+  assert.equal(
+    (await readJson(join(root, 'packages', dir.name, 'package.json'))).version,
+    pkg.version,
+  )
 }
 const destination = join(root, 'dist/packages')
 const archives = (await readdir(destination)).filter((file) => file.endsWith('.tgz'))
-const name = `uidx-${pkg.version}.tgz`
+const name = `uidxkit-uidx-${pkg.version}.tgz`
 assert.deepEqual(archives, [name], 'Publish exactly one tested tarball')
 const archive = join(destination, name)
 const hash = createHash('sha256')
@@ -33,7 +37,7 @@ const extract = (path) =>
     maxBuffer: 4 * 1024 * 1024,
   })
 const shipped = JSON.parse(extract('package.json'))
-assert.equal(shipped.name, 'uidx')
+assert.equal(shipped.name, '@uidxkit/uidx')
 assert.equal(shipped.version, pkg.version)
 assert.equal(shipped.license, 'MIT')
 assert.match(extract('LICENSE'), /MIT License/)
