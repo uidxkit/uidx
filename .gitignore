@@ -39,3 +39,6 @@ packages/viewer/public/fonts/
 .env.*
 !.env.example
 *.env.local
+
+# scripts/canvas-canary.mjs's own output, uploaded as a CI artifact
+canvas-canary.png

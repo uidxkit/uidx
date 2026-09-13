@@ -20,6 +20,7 @@ import { chromium } from 'playwright'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const tarballs = resolve(root, 'dist/packages')
+const screenshotPath = resolve(root, 'canvas-canary.png')
 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm'
 const port = 4970
 const exec = promisify(execFile)
@@ -94,6 +95,10 @@ try {
   const boundingBox = await canvas.boundingBox()
   assert.ok(boundingBox, 'canvas never became visible')
   const screenshot = await canvas.screenshot()
+  // Written before the assertions below, so a failing run still leaves
+  // behind the screenshot that caused it — not just a byte count.
+  await writeFile(screenshotPath, screenshot)
+  console.log(`Screenshot saved to ${screenshotPath}`)
 
   const canvasErrors = consoleErrors.filter((text) => /canvaskit|webgl|getcontext/i.test(text))
   assert.deepEqual(canvasErrors, [], `canvas reported errors:\n${canvasErrors.join('\n')}`)

@@ -53,3 +53,14 @@ jobs:
 
       - name: Canvas canary
         run: pnpm test:canvas
+
+      # Uploaded whether the canary passed or failed, so a human can look at
+      # what it actually saw instead of trusting a byte-count heuristic blind.
+      - name: Upload canvas screenshot
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: canvas-canary-screenshot
+          path: canvas-canary.png
+          if-no-files-found: warn
+          retention-days: 14
