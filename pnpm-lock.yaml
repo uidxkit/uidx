@@ -273,7 +273,7 @@ importers:
         version: 0.14.0(patch_hash=7sljpqhgkvaeufrleyxea56pem)
       '@open-pencil/vue':
         specifier: 0.14.0
-        version: 0.14.0(@open-pencil/core@0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha))(canvaskit-wasm@0.42.0)(vue@3.5.42(typescript@5.9.3))
+        version: 0.14.0(@open-pencil/core@0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha))(canvaskit-wasm@0.40.0)(vue@3.5.42(typescript@5.9.3))
       '@types/node':
         specifier: ^26.5.1
         version: 26.5.1
@@ -296,8 +296,8 @@ importers:
         specifier: ^7.0.99
         version: 7.0.99(zod@4.5.2)
       canvaskit-wasm:
-        specifier: 0.42.0
-        version: 0.42.0
+        specifier: 0.40.0
+        version: 0.40.0
       jsdom:
         specifier: ^30.0.1
         version: 30.0.1
@@ -1393,9 +1393,6 @@ packages:
 
   canvaskit-wasm@0.40.0:
     resolution: {integrity: sha512-Od2o+ZmoEw9PBdN/yCGvzfu0WVqlufBPEWNG452wY7E9aT8RBE+ChpZF526doOlg7zumO4iCS+RAeht4P0Gbpw==}
-
-  canvaskit-wasm@0.42.0:
-    resolution: {integrity: sha512-N3ikotmzYwDVAcpQKDMptBT2P5pIEWS9ywdmrQA2awwaMF9cxKEFuxZZHv9ay1Em9kDjxDsPtwUzDm1uNj136g==}
 
   canvg@3.0.11:
     resolution: {integrity: sha512-5ON+q7jCTgMp9cjpu4Jo6XbvfYwSB2Ow3kzHKfIyJfaCAOHLbdKPQqGKgfED/R5B+3TFFfe8pegYA+b423SRyA==}
@@ -3474,7 +3471,7 @@ snapshots:
       nanoevents: 9.1.0
       svgpath: 2.6.0
 
-  '@open-pencil/vue@0.14.0(@open-pencil/core@0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha))(canvaskit-wasm@0.42.0)(vue@3.5.42(typescript@5.9.3))':
+  '@open-pencil/vue@0.14.0(@open-pencil/core@0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha))(canvaskit-wasm@0.40.0)(vue@3.5.42(typescript@5.9.3))':
     dependencies:
       '@atlaskit/pragmatic-drag-and-drop': 1.8.1
       '@atlaskit/pragmatic-drag-and-drop-hitbox': 1.2.0
@@ -3488,7 +3485,7 @@ snapshots:
       reka-ui: 2.10.3(vue@3.5.42(typescript@5.9.3))
       vue: 3.5.42(typescript@5.9.3)
     optionalDependencies:
-      canvaskit-wasm: 0.42.0
+      canvaskit-wasm: 0.40.0
     transitivePeerDependencies:
       - '@nanostores/logger'
       - '@vue/composition-api'
@@ -4063,10 +4060,6 @@ snapshots:
   callsites@3.1.0: {}
 
   canvaskit-wasm@0.40.0:
-    dependencies:
-      '@webgpu/types': 0.1.21
-
-  canvaskit-wasm@0.42.0:
     dependencies:
       '@webgpu/types': 0.1.21
 
