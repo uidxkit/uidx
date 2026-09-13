@@ -43,7 +43,7 @@
     "tinyglobby": "^0.2.10"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.5.1",
     "@types/picomatch": "^4.0.0",
     "@types/ws": "^8.5.13",
     "typescript": "^5.7.2",
