@@ -1,10 +1,16 @@
 name: Canvas Canary
 
+# Pure and reusable: this workflow only runs the canary and needs no
+# permissions beyond checking out the repo. Nightly scheduling and
+# failure-alerting (which needs issues: write) live in
+# nightly-canvas-canary.yml instead — GitHub statically validates that a
+# caller grants every permission a reusable workflow's jobs declare, even
+# for a job gated behind an `if:` that would never run in that context. A
+# caller here (dependency-gate.yml, release.yml) would otherwise be forced
+# to grant issues: write it has no other use for, just to satisfy that
+# check.
+
 on:
-  schedule:
-    # 03:00 UTC nightly. Catches a broken canvas the morning after a
-    # dependency bump lands, instead of only at the next release.
-    - cron: '0 3 * * *'
   workflow_call:
   workflow_dispatch:
 
@@ -47,44 +53,3 @@ jobs:
 
       - name: Canvas canary
         run: pnpm test:canvas
-
-  file-issue-on-failure:
-    needs: canary
-    if: failure() && github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      issues: write
-    steps:
-      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
-        with:
-          script: |
-            const label = 'canvas-canary'
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
-            const { data: open } = await github.rest.issues.listForRepo({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              state: 'open',
-              labels: label,
-            })
-            if (open.length > 0) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: open[0].number,
-                body: `Still failing on \`main\`: ${runUrl}`,
-              })
-            } else {
-              await github.rest.issues.create({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                title: 'Nightly canvas canary failed',
-                labels: [label],
-                body:
-                  'The nightly canvas canary failed on `main`: the packaged viewer ' +
-                  `either errored or never painted a canvas.\n\nRun: ${runUrl}\n\n` +
-                  'See CONTRIBUTING.md and the 0.1.2 release notes for the incident ' +
-                  '(a Dependabot bump silently violating @open-pencil/core\'s pinned ' +
-                  'canvaskit-wasm range) that this check exists to catch.',
-              })
-            }
