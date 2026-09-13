@@ -1,0 +1,90 @@
+name: Canvas Canary
+
+on:
+  schedule:
+    # 03:00 UTC nightly. Catches a broken canvas the morning after a
+    # dependency bump lands, instead of only at the next release.
+    - cron: '0 3 * * *'
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: canvas-canary-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  canary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Build CLI
+        run: pnpm build:cli
+
+      - name: Pack npm release
+        run: node scripts/pack-release.mjs
+
+      # playwright is in neverBuiltDependencies (see package.json) so a plain
+      # `pnpm install` never downloads a browser; only this job does.
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Canvas canary
+        run: pnpm test:canvas
+
+  file-issue-on-failure:
+    needs: canary
+    if: failure() && github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const label = 'canvas-canary'
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
+            const { data: open } = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+            })
+            if (open.length > 0) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: open[0].number,
+                body: `Still failing on \`main\`: ${runUrl}`,
+              })
+            } else {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: 'Nightly canvas canary failed',
+                labels: [label],
+                body:
+                  'The nightly canvas canary failed on `main`: the packaged viewer ' +
+                  `either errored or never painted a canvas.\n\nRun: ${runUrl}\n\n` +
+                  'See CONTRIBUTING.md and the 0.1.2 release notes for the incident ' +
+                  '(a Dependabot bump silently violating @open-pencil/core\'s pinned ' +
+                  'canvaskit-wasm range) that this check exists to catch.',
+              })
+            }

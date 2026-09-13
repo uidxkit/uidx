@@ -27,7 +27,8 @@
     "uidx:mcp": "uidx mcp",
     "audit:release": "node scripts/audit-release.mjs",
     "test:security": "node scripts/check-dependency-fixes.mjs",
-    "test:release": "node --test scripts/test-release.mjs"
+    "test:release": "node --test scripts/test-release.mjs",
+    "test:canvas": "node scripts/canvas-canary.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9",
@@ -36,6 +37,7 @@
     "eslint-config-prettier": "^10",
     "eslint-plugin-vue": "^9",
     "globals": "^17.12.0",
+    "playwright": "^1.63.0",
     "prettier": "^3",
     "typescript-eslint": "^8",
     "vue-eslint-parser": "^9"
@@ -52,7 +54,10 @@
       "vite": "8.3.0",
       "esbuild": "0.28.1",
       "js-yaml": "4.3.2"
-    }
+    },
+    "neverBuiltDependencies": [
+      "playwright"
+    ]
   },
   "license": "MIT",
   "repository": {

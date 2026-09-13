@@ -14,8 +14,10 @@ concurrency:
 jobs:
   verify:
     uses: ./.github/workflows/ci.yml
+  canvas-canary:
+    uses: ./.github/workflows/canvas-canary.yml
   publish:
-    needs: verify
+    needs: [verify, canvas-canary]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: npm
