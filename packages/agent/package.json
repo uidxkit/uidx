@@ -61,7 +61,7 @@
     "hono": "^4.13.5",
     "picomatch": "^4.0.2",
     "tinyglobby": "^0.2.10",
-    "zod": "^4.5.2"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

@@ -61,16 +61,16 @@ importers:
     dependencies:
       '@ai-sdk/anthropic':
         specifier: ^4.0.45
-        version: 4.0.45(zod@4.5.2)
+        version: 4.0.45(zod@4.6.1)
       '@ai-sdk/openai-compatible':
         specifier: ^3.0.48
-        version: 3.0.48(zod@4.5.2)
+        version: 3.0.48(zod@4.6.1)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.5)
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
-        version: 1.30.0(zod@4.5.2)
+        version: 1.30.0(zod@4.6.1)
       '@open-pencil/core':
         specifier: 0.14.0
         version: 0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha)
@@ -82,10 +82,10 @@ importers:
         version: link:../schema
       ai:
         specifier: ^7.0.99
-        version: 7.0.99(zod@4.5.2)
+        version: 7.0.99(zod@4.6.1)
       ai-sdk-ollama:
         specifier: ^4.2.0
-        version: 4.2.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2)
+        version: 4.2.0(ai@7.0.99(zod@4.6.1))(zod@4.6.1)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -102,8 +102,8 @@ importers:
         specifier: ^0.2.10
         version: 0.2.17
       zod:
-        specifier: ^4.5.2
-        version: 4.5.2
+        specifier: ^4.6.1
+        version: 4.6.1
     devDependencies:
       '@types/node':
         specifier: ^26.5.1
@@ -122,7 +122,7 @@ importers:
     dependencies:
       '@modelcontextprotocol/sdk':
         specifier: ^1.30.0
-        version: 1.30.0(zod@4.5.2)
+        version: 1.30.0(zod@4.6.1)
       '@uidx/agent':
         specifier: workspace:*
         version: link:../agent
@@ -267,7 +267,7 @@ importers:
     devDependencies:
       '@ai-sdk/vue':
         specifier: ^4.0.97
-        version: 4.0.99(vue@3.5.42(typescript@5.9.3))(zod@4.5.2)
+        version: 4.0.99(vue@3.5.42(typescript@5.9.3))(zod@4.6.1)
       '@open-pencil/core':
         specifier: 0.14.0
         version: 0.14.0(patch_hash=nbujajz77bzziy5vsqnifqklha)
@@ -297,7 +297,7 @@ importers:
         version: 2.5.0(@vue/compiler-dom@3.5.42)(@vue/server-renderer@3.5.42)(vue@3.5.42(typescript@5.9.3))
       ai:
         specifier: ^7.0.99
-        version: 7.0.99(zod@4.5.2)
+        version: 7.0.99(zod@4.6.1)
       canvaskit-wasm:
         specifier: 0.40.0
         version: 0.40.0
@@ -3056,50 +3056,50 @@ packages:
     peerDependencies:
       zod: ^3.25.28 || ^4
 
-  zod@4.5.2:
-    resolution: {integrity: sha512-XkYXCol10+ba/6F/cueWV+TezUeOqXW0hdeJt5CdXjTYeAgAQg5N03RQdJ80mhfFE72+pblvYMW4wy2Qp4Qbrg==}
+  zod@4.6.1:
+    resolution: {integrity: sha512-341aRWQsve0rvronKNTqZpjmzdbUDlFuzHaI/XLg/Ej82qffDJRRfBTCuv7+9q/rMjB6LSLyEBnW4InJeMtt/Q==}
 
   zwitch@2.0.4:
     resolution: {integrity: sha512-bXE4cR/kVZhKZX/RjPEflHaKVhUVl85noU3v6b8apfQEc1x4A+zBxjZ4lN8LqGd6WZ3dl98pY4o717VFmoPp+A==}
 
 snapshots:
 
-  '@ai-sdk/anthropic@4.0.45(zod@4.5.2)':
+  '@ai-sdk/anthropic@4.0.45(zod@4.6.1)':
     dependencies:
       '@ai-sdk/provider': 4.0.8
-      '@ai-sdk/provider-utils': 5.0.33(zod@4.5.2)
-      zod: 4.5.2
+      '@ai-sdk/provider-utils': 5.0.33(zod@4.6.1)
+      zod: 4.6.1
 
-  '@ai-sdk/gateway@4.0.80(zod@4.5.2)':
+  '@ai-sdk/gateway@4.0.80(zod@4.6.1)':
     dependencies:
       '@ai-sdk/provider': 4.0.14
-      '@ai-sdk/provider-utils': 5.0.40(zod@4.5.2)
+      '@ai-sdk/provider-utils': 5.0.40(zod@4.6.1)
       '@vercel/oidc': 3.2.0
-      zod: 4.5.2
+      zod: 4.6.1
 
-  '@ai-sdk/openai-compatible@3.0.48(zod@4.5.2)':
+  '@ai-sdk/openai-compatible@3.0.48(zod@4.6.1)':
     dependencies:
       '@ai-sdk/provider': 4.0.14
-      '@ai-sdk/provider-utils': 5.0.40(zod@4.5.2)
-      zod: 4.5.2
+      '@ai-sdk/provider-utils': 5.0.40(zod@4.6.1)
+      zod: 4.6.1
 
-  '@ai-sdk/provider-utils@5.0.33(zod@4.5.2)':
+  '@ai-sdk/provider-utils@5.0.33(zod@4.6.1)':
     dependencies:
       '@ai-sdk/provider': 4.0.8
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.29.0
-      zod: 4.5.2
+      zod: 4.6.1
 
-  '@ai-sdk/provider-utils@5.0.40(zod@4.5.2)':
+  '@ai-sdk/provider-utils@5.0.40(zod@4.6.1)':
     dependencies:
       '@ai-sdk/provider': 4.0.14
       '@standard-schema/spec': 1.1.0
       '@workflow/serde': 4.1.0
       eventsource-parser: 3.1.1
       undici: 7.29.1
-      zod: 4.5.2
+      zod: 4.6.1
 
   '@ai-sdk/provider@4.0.14':
     dependencies:
@@ -3109,10 +3109,10 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
-  '@ai-sdk/vue@4.0.99(vue@3.5.42(typescript@5.9.3))(zod@4.5.2)':
+  '@ai-sdk/vue@4.0.99(vue@3.5.42(typescript@5.9.3))(zod@4.6.1)':
     dependencies:
-      '@ai-sdk/provider-utils': 5.0.40(zod@4.5.2)
-      ai: 7.0.99(zod@4.5.2)
+      '@ai-sdk/provider-utils': 5.0.40(zod@4.6.1)
+      ai: 7.0.99(zod@4.6.1)
       swrv: 1.2.0(vue@3.5.42(typescript@5.9.3))
       vue: 3.5.42(typescript@5.9.3)
     transitivePeerDependencies:
@@ -3392,7 +3392,7 @@ snapshots:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
 
-  '@modelcontextprotocol/sdk@1.30.0(zod@4.5.2)':
+  '@modelcontextprotocol/sdk@1.30.0(zod@4.6.1)':
     dependencies:
       '@hono/node-server': 2.1.1(hono@4.13.5)
       ajv: 8.20.0
@@ -3409,8 +3409,8 @@ snapshots:
       json-schema-typed: 8.0.2
       pkce-challenge: 5.0.1
       raw-body: 3.0.2
-      zod: 4.5.2
-      zod-to-json-schema: 3.25.2(zod@4.5.2)
+      zod: 4.6.1
+      zod-to-json-schema: 3.25.2(zod@4.6.1)
     transitivePeerDependencies:
       - supports-color
 
@@ -3958,22 +3958,22 @@ snapshots:
 
   acorn@8.18.0: {}
 
-  ai-sdk-ollama@4.2.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2):
+  ai-sdk-ollama@4.2.0(ai@7.0.99(zod@4.6.1))(zod@4.6.1):
     dependencies:
       '@ai-sdk/provider': 4.0.8
-      '@ai-sdk/provider-utils': 5.0.33(zod@4.5.2)
-      ai: 7.0.99(zod@4.5.2)
+      '@ai-sdk/provider-utils': 5.0.33(zod@4.6.1)
+      ai: 7.0.99(zod@4.6.1)
       jsonrepair: 3.15.0
       ollama: 0.6.3
     transitivePeerDependencies:
       - zod
 
-  ai@7.0.99(zod@4.5.2):
+  ai@7.0.99(zod@4.6.1):
     dependencies:
-      '@ai-sdk/gateway': 4.0.80(zod@4.5.2)
+      '@ai-sdk/gateway': 4.0.80(zod@4.6.1)
       '@ai-sdk/provider': 4.0.14
-      '@ai-sdk/provider-utils': 5.0.40(zod@4.5.2)
-      zod: 4.5.2
+      '@ai-sdk/provider-utils': 5.0.40(zod@4.6.1)
+      zod: 4.6.1
 
   ajv-formats@3.0.1(ajv@8.20.0):
     optionalDependencies:
@@ -5866,10 +5866,10 @@ snapshots:
 
   yocto-queue@0.1.0: {}
 
-  zod-to-json-schema@3.25.2(zod@4.5.2):
+  zod-to-json-schema@3.25.2(zod@4.6.1):
     dependencies:
-      zod: 4.5.2
+      zod: 4.6.1
 
-  zod@4.5.2: {}
+  zod@4.6.1: {}
 
   zwitch@2.0.4: {}
