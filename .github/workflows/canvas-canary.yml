@@ -1,14 +1,8 @@
 name: Canvas Canary
 
-# Pure and reusable: this workflow only runs the canary and needs no
-# permissions beyond checking out the repo. Nightly scheduling and
-# failure-alerting (which needs issues: write) live in
-# nightly-canvas-canary.yml instead — GitHub statically validates that a
-# caller grants every permission a reusable workflow's jobs declare, even
-# for a job gated behind an `if:` that would never run in that context. A
-# caller here (dependency-gate.yml, release.yml) would otherwise be forced
-# to grant issues: write it has no other use for, just to satisfy that
-# check.
+# Pure and reusable: runs the canary and needs no permissions beyond
+# checking out the repo, so callers (dependency-gate.yml, release.yml)
+# never have to grant anything beyond contents: read.
 
 on:
   workflow_call:

@@ -1,8 +1,8 @@
 name: Dependency Visual Gate
 
-# Runs the canvas canary before a dependency change reaches main, not just
-# nightly after — nightly only reports a break the morning after it already
-# landed. canvaskit-wasm is still 0.x, so under semver only its patch digit
+# Runs the canvas canary before a dependency change reaches main, so a
+# rendering break is caught at PR time instead of only surfacing at the
+# next release. canvaskit-wasm is still 0.x, so under semver only its patch digit
 # is guaranteed non-breaking; bumping the minor digit (0.40 -> 0.41) is as
 # risky as a major bump on a 1.x+ package would be. See the 0.1.2 release
 # notes and CONTRIBUTING.md for the incident this exists to catch.
