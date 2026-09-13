@@ -9,10 +9,16 @@ name: Dependency Visual Gate
 
 on:
   pull_request:
+    # OR-matched: a PR only needs to touch one of these to trigger, no
+    # matter how many other unrelated files it also changes. patches/ is
+    # included because editing a pinned dependency's patch silently changes
+    # its behavior the same way a version bump does, without necessarily
+    # touching package.json at all.
     paths:
       - 'package.json'
       - 'packages/*/package.json'
       - 'pnpm-lock.yaml'
+      - 'patches/**'
 
 permissions:
   contents: read
