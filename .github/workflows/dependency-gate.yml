@@ -1,0 +1,80 @@
+name: Dependency Visual Gate
+
+# Runs the canvas canary before a dependency change reaches main, not just
+# nightly after — nightly only reports a break the morning after it already
+# landed. canvaskit-wasm is still 0.x, so under semver only its patch digit
+# is guaranteed non-breaking; bumping the minor digit (0.40 -> 0.41) is as
+# risky as a major bump on a 1.x+ package would be. See the 0.1.2 release
+# notes and CONTRIBUTING.md for the incident this exists to catch.
+
+on:
+  pull_request:
+    paths:
+      - 'package.json'
+      - 'packages/*/package.json'
+      - 'pnpm-lock.yaml'
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: dependency-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  classify:
+    runs-on: ubuntu-latest
+    outputs:
+      needs-canary: ${{ steps.decide.outputs.needed }}
+      reason: ${{ steps.decide.outputs.reason }}
+    steps:
+      # Only Dependabot PRs carry parseable update-type metadata. A
+      # human-authored dependency change gets no such shortcut, and is rare
+      # enough that always gating it costs nothing.
+      - name: Read Dependabot update metadata
+        if: github.actor == 'dependabot[bot]'
+        id: metadata
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        with:
+          github-token: '${{ secrets.GITHUB_TOKEN }}'
+
+      - id: decide
+        env:
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+          DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
+        run: |
+          if [ "${{ github.actor }}" != "dependabot[bot]" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=human-authored dependency change" >> "$GITHUB_OUTPUT"
+          elif [ "$UPDATE_TYPE" = "version-update:semver-patch" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=Dependabot patch-only bump ($DEPENDENCY_NAMES)" >> "$GITHUB_OUTPUT"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "reason=Dependabot $UPDATE_TYPE ($DEPENDENCY_NAMES)" >> "$GITHUB_OUTPUT"
+          fi
+
+      - run: |
+          echo "${{ steps.decide.outputs.reason }}"
+          echo "canary needed: ${{ steps.decide.outputs.needed }}"
+
+  canvas-canary:
+    needs: classify
+    if: needs.classify.outputs.needs-canary == 'true'
+    uses: ./.github/workflows/canvas-canary.yml
+
+  gate:
+    needs: [classify, canvas-canary]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report gate result
+        run: |
+          echo "${{ needs.classify.outputs.reason }}"
+          if [ "${{ needs.classify.outputs.needs-canary }}" = "true" ] && \
+             [ "${{ needs.canvas-canary.result }}" != "success" ]; then
+            echo "Canvas canary was required for this change and did not pass." >&2
+            exit 1
+          fi
+          echo "OK"
