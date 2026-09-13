@@ -1,6 +1,6 @@
 {
   "name": "@uidx/agent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -48,13 +48,13 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.45",
-    "@ai-sdk/openai-compatible": "^3.0.40",
+    "@ai-sdk/openai-compatible": "^3.0.48",
     "@hono/node-server": "^2.1.1",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@open-pencil/core": "0.14.0",
     "@uidx/format": "workspace:*",
     "@uidx/schema": "workspace:^",
-    "ai": "^7.0.84",
+    "ai": "^7.0.99",
     "ai-sdk-ollama": "^4.2.0",
     "chokidar": "^4.0.3",
     "dotenv": "^17.4.2",
@@ -64,10 +64,10 @@
     "zod": "^4.5.2"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^26.5.1",
     "@types/picomatch": "^4.0.0",
     "typescript": "^5.7.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   },
   "files": [
     "dist"

@@ -1,6 +1,6 @@
 {
   "name": "@uidx/viewer",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -9,24 +9,24 @@
     "typecheck": "vue-tsc --noEmit"
   },
   "devDependencies": {
-    "@ai-sdk/vue": "^4.0.84",
+    "@ai-sdk/vue": "^4.0.97",
     "@open-pencil/core": "0.14.0",
     "@open-pencil/scene-graph": "0.14.0",
     "@open-pencil/vue": "0.14.0",
     "@uidx/format": "workspace:*",
     "@uidx/schema": "workspace:*",
     "@uidx/server": "workspace:*",
-    "ai": "^7.0.84",
+    "ai": "^7.0.99",
     "canvaskit-wasm": "0.40.0",
     "svgpath": "^2.6.0",
-    "vue": "^3.5.13",
-    "@types/node": "^26.2.0",
+    "vue": "^3.5.42",
+    "@types/node": "^26.5.1",
     "@vitejs/plugin-vue": "^5.2.1",
-    "@vue/test-utils": "^2.4.11",
+    "@vue/test-utils": "^2.5.0",
     "jsdom": "^30.0.1",
     "typescript": "^5.7.2",
-    "vite": "^6.0.7",
-    "vitest": "^4.1.11",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0",
     "vue-tsc": "^2.2.0"
   },
   "exports": {

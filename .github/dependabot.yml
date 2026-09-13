@@ -9,6 +9,14 @@ updates:
       development-tools:
         dependency-type: development
         update-types: [minor, patch]
+        # canvaskit-wasm and @open-pencil/* live under devDependencies but are
+        # bundled rendering code, not tooling. @open-pencil/core pins a strict
+        # canvaskit-wasm range and breaks silently outside it (rendering goes
+        # blank with no test failure), so they need their own reviewable PR
+        # instead of being swept into a batch of eslint/prettier-style bumps.
+        exclude-patterns:
+          - 'canvaskit-wasm'
+          - '@open-pencil/*'
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -43,6 +43,12 @@ node scripts/smoke-install.mjs --ignore-scripts
 pnpm test:linked
 ```
 
+Before bumping `canvaskit-wasm` in `packages/viewer`, check the range
+`@open-pencil/core` currently declares for it (`npm view @open-pencil/core
+dependencies`). A version outside that range can leave the canvas blank with
+no test failure, because nothing in the suite exercises real CanvasKit/WebGL
+initialization — the API mismatch only shows up when you open the viewer.
+
 Integration tests start temporary localhost servers. Package installation tests
 need npm registry access and remove their temporary projects when finished.
 The binary tests execute built files, so build before running the full suite.

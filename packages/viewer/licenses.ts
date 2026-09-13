@@ -72,6 +72,7 @@ export function thirdPartyNotices(): Plugin {
         'Inter-OFL.txt',
         'NotoNaskhArabic-OFL.txt',
         'CanvasKit-BSD.txt',
+        'CanvasKit-embedded.txt',
         'Apache-2.0.txt',
       ]) {
         sections.push(`${name}\n${await readFile(resolve(licenseDir, name), 'utf8')}`)
