@@ -55,7 +55,7 @@
     "@uidx/format": "workspace:*",
     "@uidx/schema": "workspace:^",
     "ai": "^7.0.99",
-    "ai-sdk-ollama": "^4.2.0",
+    "ai-sdk-ollama": "^4.3.0",
     "chokidar": "^4.0.3",
     "dotenv": "^17.4.2",
     "hono": "^4.13.5",
