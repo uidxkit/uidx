@@ -84,8 +84,8 @@ importers:
         specifier: ^7.0.99
         version: 7.0.99(zod@4.5.2)
       ai-sdk-ollama:
-        specifier: ^4.2.0
-        version: 4.2.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2)
+        specifier: ^4.3.0
+        version: 4.3.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2)
       chokidar:
         specifier: ^4.0.3
         version: 4.0.3
@@ -1287,11 +1287,11 @@ packages:
     engines: {node: '>=0.4.0'}
     hasBin: true
 
-  ai-sdk-ollama@4.2.0:
-    resolution: {integrity: sha512-w3RfHahQIy8ov6Q0wpwcWK2AYxYWIwSoOAAQnY4bv900C/uMXPeWwDvDX8xp9qI1e3MEbNgsTanVwJmRwW9Qmw==}
+  ai-sdk-ollama@4.3.0:
+    resolution: {integrity: sha512-3rvaWZJvprmt707WnbkeEvMJc6XZHwfgXbF73g8fQhn4spGWOdeASnFd/xH9hmrdml7oTtZLFqzk6Fvkr/q8Ig==}
     engines: {node: '>=22'}
     peerDependencies:
-      ai: ^7.0.66
+      ai: ^7.0.95
 
   ai@7.0.99:
     resolution: {integrity: sha512-Ov+3j/nSajaVH5hO8C94wN9wisG5tAJ8HWsLV9d/+nlzrRGUh3oYO3Kp1fRyUNWjAWLSpGLHLPaHCdfxb307Vg==}
@@ -3958,10 +3958,10 @@ snapshots:
 
   acorn@8.18.0: {}
 
-  ai-sdk-ollama@4.2.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2):
+  ai-sdk-ollama@4.3.0(ai@7.0.99(zod@4.5.2))(zod@4.5.2):
     dependencies:
-      '@ai-sdk/provider': 4.0.8
-      '@ai-sdk/provider-utils': 5.0.33(zod@4.5.2)
+      '@ai-sdk/provider': 4.0.14
+      '@ai-sdk/provider-utils': 5.0.40(zod@4.5.2)
       ai: 7.0.99(zod@4.5.2)
       jsonrepair: 3.15.0
       ollama: 0.6.3
