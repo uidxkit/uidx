@@ -10,6 +10,7 @@ fonts, and data retain their respective licenses and copyrights.
 | Open Pencil core, scene graph, and Vue integration 0.14.0 | MIT | [Source](https://github.com/open-pencil/open-pencil/tree/v0.14.0), [license](third-party/licenses/open-pencil-MIT.txt) |
 | Open Pencil's Yoga layout fork | MIT | [Yoga](https://github.com/facebook/yoga/tree/v3.2.1), [upstream license](third-party/licenses/yoga-MIT.txt); Open Pencil's notice also applies |
 | CanvasKit 0.40.0 | BSD-3-Clause | [Skia](https://skia.org/), [license](third-party/licenses/CanvasKit-BSD.txt) |
+| Libraries compiled into CanvasKit's `canvaskit.wasm` (FreeType, HarfBuzz, libjpeg-turbo, libpng, zlib, ICU, Wuffs) | FreeType License, Old MIT, BSD-style, PNG Reference Library License, zlib License, Unicode License, MIT | Statically linked by [Skia](https://github.com/google/skia/tree/main/third_party) at commit `5f262bd2cbb40f78659ec32547163fe83117a38d`, not separate npm dependencies; [collected upstream license texts](third-party/licenses/CanvasKit-embedded.txt) |
 | Inter font family | SIL OFL 1.1 | [Source](https://github.com/rsms/inter/tree/v4.1), [license](third-party/licenses/Inter-OFL.txt) |
 | Noto Naskh Arabic font | SIL OFL 1.1 | [Source](https://github.com/notofonts/arabic), [license](third-party/licenses/NotoNaskhArabic-OFL.txt) |
 | AI SDK | Apache-2.0 | [Source](https://github.com/vercel/ai), [copyright notice](third-party/licenses/AI-SDK-Apache-notice.txt), [license](third-party/licenses/Apache-2.0.txt) |
@@ -34,3 +35,6 @@ the image-size security backport and how it is verified.
 The example map builders use [Natural Earth](https://www.naturalearthdata.com/)
 geographic data, which is public domain. User-imported fonts, images, and design
 assets are not relicensed by uidx; their owners' terms still apply.
+
+Portions of this software are based in part on the work of the FreeType Team,
+compiled into CanvasKit as described above.
