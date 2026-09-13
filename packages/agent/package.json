@@ -54,7 +54,7 @@
     "@open-pencil/core": "0.14.0",
     "@uidx/format": "workspace:*",
     "@uidx/schema": "workspace:^",
-    "ai": "^7.0.84",
+    "ai": "^7.0.97",
     "ai-sdk-ollama": "^4.2.0",
     "chokidar": "^4.0.3",
     "dotenv": "^17.4.2",
