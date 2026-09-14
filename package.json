@@ -39,7 +39,7 @@
     "globals": "^17.12.0",
     "playwright": "^1.63.0",
     "prettier": "^3",
-    "typescript-eslint": "^8",
+    "typescript-eslint": "^8.70.0",
     "vue-eslint-parser": "^9"
   },
   "pnpm": {
