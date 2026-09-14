@@ -4,6 +4,11 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## 0.1.3 — 2026-09-13
+
+- Update `typescript-eslint`, `ai-sdk-ollama`, `@ai-sdk/anthropic` and `zod`
+  dependencies.
+
 ## 0.1.2 — 2026-09-13
 
 - Document third-party license notices for the libraries statically linked into
