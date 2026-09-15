@@ -7,8 +7,11 @@ import {
   movedRect,
   nudged,
   cornerWorld,
+  handlePointsOf,
   resizedRect,
   rotationFor,
+  rotationHandlePoint,
+  ROTATE_HANDLE_STEM,
   type Rect,
 } from '../src/gesture-model'
 
@@ -265,5 +268,54 @@ describe('resizeCursor', () => {
   it('is stable across full turns and negative angles', () => {
     expect(resizeCursor('e', 360)).toBe('ew-resize')
     expect(resizeCursor('e', -90)).toBe('ns-resize')
+  })
+})
+
+describe('handlePointsOf', () => {
+  it('puts the eight grips where cornerWorld puts them', () => {
+    const points = handlePointsOf(BOX)
+    expect(points.nw).toEqual({ x: 100, y: 100 })
+    expect(points.n).toEqual({ x: 200, y: 100 })
+    expect(points.se).toEqual({ x: 300, y: 200 })
+    expect(points.w).toEqual({ x: 100, y: 150 })
+  })
+
+  it('turns with the node, about its origin', () => {
+    const turned = handlePointsOf(BOX, 90)
+    expect(turned.nw).toEqual({ x: 100, y: 100 })
+    expect(turned.ne.x).toBeCloseTo(100)
+    expect(turned.ne.y).toBeCloseTo(300)
+  })
+})
+
+/**
+ * The knob is the rotate target the eye can find (#16): Figma's corner zones
+ * are invisible, and a gesture nobody can see may as well not exist.
+ */
+describe('rotationHandlePoint', () => {
+  it('sits on a stem straight above the top-centre grip', () => {
+    expect(rotationHandlePoint(handlePointsOf(BOX), 1)).toEqual({
+      x: 200,
+      y: 100 - ROTATE_HANDLE_STEM,
+    })
+  })
+
+  it('keeps the same reach on screen whatever the zoom', () => {
+    const handles = handlePointsOf(BOX)
+    expect(rotationHandlePoint(handles, 2).y).toBeCloseTo(100 - ROTATE_HANDLE_STEM / 2)
+    expect(rotationHandlePoint(handles, 0.5).y).toBeCloseTo(100 - ROTATE_HANDLE_STEM * 2)
+  })
+
+  it('turns with the node, so it stays above the box the author sees', () => {
+    const turned = handlePointsOf(BOX, 90)
+    const knob = rotationHandlePoint(turned, 1)
+    // A quarter turn clockwise points the box's "up" to the right.
+    expect(knob.x - turned.n.x).toBeCloseTo(ROTATE_HANDLE_STEM)
+    expect(knob.y - turned.n.y).toBeCloseTo(0)
+  })
+
+  it('points straight up for a box with no height of its own', () => {
+    const flat = handlePointsOf({ x: 0, y: 0, width: 100, height: 0 })
+    expect(rotationHandlePoint(flat, 1)).toEqual({ x: 50, y: -ROTATE_HANDLE_STEM })
   })
 })

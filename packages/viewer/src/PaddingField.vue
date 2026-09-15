@@ -27,6 +27,12 @@ const props = defineProps<{
 const emit = defineEmits<{
   bind: [properties: string[], token: string]
   detach: [writes: TokenDetachWrite[]]
+  /**
+   * A scrub step or a keystroke: the writes a commit would make, shown on the
+   * canvas and held in the field but never written to the file — so the
+   * children reflow as the number moves rather than jumping on release.
+   */
+  preview: [writes: Array<{ prop: string; value: JsonValue }>]
   commit: [writes: Array<{ prop: string; value: JsonValue }>]
   hover: [prop: string | null]
 }>()
@@ -67,16 +73,43 @@ const SIDES = [
 const axisValue = (axis: 'horizontal' | 'vertical'): number =>
   (axis === 'horizontal' ? model.value.horizontal : model.value.vertical) ?? 0
 
-function commitAxis(axis: 'horizontal' | 'vertical', value: JsonValue): void {
-  if (!props.editable || !parseLength(value)) return
+/** The writes an axis edit makes, or null when it may not be made. */
+function axisWrites(
+  axis: 'horizontal' | 'vertical',
+  value: JsonValue,
+): Array<{ prop: string; value: JsonValue }> | null {
+  if (!props.editable || !parseLength(value)) return null
   const writes = paddingWrites(axis, 0).map(({ prop }) => ({ prop, value }))
-  if (writes.some(({ prop }) => props.tokenSource?.bindings[prop])) return
-  emit('commit', writes)
+  if (writes.some(({ prop }) => props.tokenSource?.bindings[prop])) return null
+  return writes
+}
+
+function previewAxis(axis: 'horizontal' | 'vertical', value: JsonValue): void {
+  const writes = axisWrites(axis, value)
+  if (writes) emit('preview', writes)
+}
+
+function commitAxis(axis: 'horizontal' | 'vertical', value: JsonValue): void {
+  const writes = axisWrites(axis, value)
+  if (writes) emit('commit', writes)
+}
+
+function sideWrite(
+  prop: string,
+  value: JsonValue,
+): Array<{ prop: string; value: JsonValue }> | null {
+  if (!props.editable || !parseLength(value) || props.tokenSource?.bindings[prop]) return null
+  return [{ prop, value }]
+}
+
+function previewSide(prop: string, value: JsonValue): void {
+  const writes = sideWrite(prop, value)
+  if (writes) emit('preview', writes)
 }
 
 function commitSide(prop: string, value: JsonValue): void {
-  if (!props.editable || !parseLength(value) || props.tokenSource?.bindings[prop]) return
-  emit('commit', [{ prop, value }])
+  const writes = sideWrite(prop, value)
+  if (writes) emit('commit', writes)
 }
 </script>
 
@@ -105,6 +138,7 @@ function commitSide(prop: string, value: JsonValue): void {
             :disabled="!editable"
             :label="entry.label"
             :step="1"
+            @update:model-value="(v: JsonValue) => previewAxis(entry.axis, v)"
             @commit="(v: JsonValue) => commitAxis(entry.axis, v)"
           >
             <span
@@ -172,6 +206,7 @@ function commitSide(prop: string, value: JsonValue): void {
             :disabled="!editable"
             :label="entry.prop"
             :step="1"
+            @update:model-value="(v: JsonValue) => previewSide(entry.prop, v)"
             @commit="(v: JsonValue) => commitSide(entry.prop, v)"
           >
             <span

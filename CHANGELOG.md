@@ -4,6 +4,22 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## Unreleased
+
+- Canvas: a press selects the element under it immediately, the way Figma
+  does, instead of waiting for the release; a click that wobbles a few pixels
+  stays a click rather than nudging what it selected (#15).
+- Canvas: the rotation grip drawn on a stem above the selection now responds —
+  it shows the rotate cursor and dragging it turns the element, with the angle
+  shown beside the pointer. Previously it was painted but not a target; only
+  the invisible zones outside the corners rotated, and those still do (#16).
+- Properties: scrubbing or typing corner radius and padding now previews live
+  in the field and on the canvas, like every other numeric field, with one
+  write to the file on release (#17, #18).
+- Canvas: moving, nudging or rotating an element on the canvas is now written
+  to the `.uidx` file. Previously only panel edits were persisted, and a canvas
+  gesture silently reverted on reload (#19).
+
 ## 0.1.3 — 2026-09-13
 
 - Update `typescript-eslint`, `ai-sdk-ollama`, `@ai-sdk/anthropic` and `zod`

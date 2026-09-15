@@ -1154,6 +1154,57 @@ id: alias-effect
       await box.find('input').trigger('blur')
       expect(wrapper.emitted('commit')).toEqual([['Card#root/swatch', 'cornerRadius', 6]])
     })
+
+    /**
+     * #17 and #18: these two controls listened for `commit` alone, so a scrub
+     * or a keystroke showed nothing until release — the number stood still and
+     * the corners stayed square while every other field previewed live.
+     */
+    it('previews a corner scrub live, in the field and to the canvas', async () => {
+      const wrapper = pane(['Card#root/swatch'])
+      // The number field renders the box through its slot, so it is found from
+      // the control rather than from inside the box.
+      const field = wrapper.find('.corner-field').findComponent({ name: 'NumberFieldRoot' })
+      field.vm.$emit('update:modelValue', 12)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.emitted('preview')).toEqual([['Card#root/swatch', 'cornerRadius', 12]])
+      expect(wrapper.emitted('commit')).toBeUndefined()
+      expect(wrapper.find('.corner-field .corner-box .scrub').text()).toBe('12')
+    })
+
+    it('previews both sides of a collapsed padding box live', async () => {
+      const wrapper = pane()
+      // Collapsed: two number fields, the horizontal axis first.
+      const fields = wrapper.find('.padding-field').findAllComponents({ name: 'NumberFieldRoot' })
+      expect(fields).toHaveLength(2)
+      fields[0]!.vm.$emit('update:modelValue', 20)
+      await wrapper.vm.$nextTick()
+      const previews = wrapper.emitted('preview')!
+      expect(previews).toContainEqual(['Card#root', 'paddingLeft', 20])
+      expect(previews).toContainEqual(['Card#root', 'paddingRight', 20])
+      expect(wrapper.emitted('commit')).toBeUndefined()
+      expect(
+        wrapper.find('.padding-field .padding-box[data-axis="horizontal"] .scrub').text(),
+      ).toBe('20')
+      // The other axis is nobody's gesture.
+      expect(wrapper.find('.padding-field .padding-box[data-axis="vertical"] .scrub').text()).toBe(
+        '0',
+      )
+    })
+
+    it('previews one side of an expanded padding control', async () => {
+      const wrapper = pane(['Card#root/actions'])
+      // Expanded: left, right, top, bottom.
+      const fields = wrapper.find('.padding-field').findAllComponents({ name: 'NumberFieldRoot' })
+      expect(fields).toHaveLength(4)
+      fields[2]!.vm.$emit('update:modelValue', 30)
+      await wrapper.vm.$nextTick()
+      expect(wrapper.emitted('preview')).toEqual([['Card#root/actions', 'paddingTop', 30]])
+      expect(wrapper.find('.padding-field .padding-box[data-side="top"] .scrub').text()).toBe('30')
+      expect(wrapper.find('.padding-field .padding-box[data-side="bottom"] .scrub').text()).toBe(
+        '9',
+      )
+    })
   })
 
   describe('unset properties (C7)', () => {

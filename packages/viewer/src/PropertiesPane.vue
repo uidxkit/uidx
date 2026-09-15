@@ -856,7 +856,12 @@ function onUnlink(prop: string): void {
   if (patches) emit('patches', patches)
 }
 
-const preview = ref<{ address: string; prop: string; value: number } | null>(null)
+/**
+ * One value per prop rather than one prop, because a compound control scrubs
+ * several at once: the collapsed corner box writes four radii, the padding
+ * axis writes both sides. Every one of them has to move with the pointer.
+ */
+const preview = ref<{ address: string; values: Record<string, number> } | null>(null)
 
 watch(
   () => props.doc,
@@ -867,10 +872,15 @@ watch(
   },
 )
 
-function heldFor(field: EditableProp): number | null {
+/** The value a gesture is showing for a prop of the active node, or null at rest. */
+function heldNumber(prop: string): number | null {
   const held = preview.value
-  if (held && held.address === active.value?.address && held.prop === field.name) return held.value
-  return null
+  if (!held || held.address !== active.value?.address) return null
+  return held.values[prop] ?? null
+}
+
+function heldFor(field: EditableProp): number | null {
+  return heldNumber(field.name)
 }
 
 const editable = (field: EditableProp): boolean =>
@@ -878,11 +888,18 @@ const editable = (field: EditableProp): boolean =>
 
 function onPreview(prop: string, value: JsonValue): void {
   if (!active.value) return
+  const address = active.value.address
   const px = LENGTH_PROPS.has(prop) ? lengthToPx(value, rootFontSize.value) : value
   if (typeof px === 'number') {
-    preview.value = { address: active.value.address, prop, value: px }
+    const held = preview.value?.address === address ? preview.value.values : {}
+    preview.value = { address, values: { ...held, [prop]: px } }
   }
-  emit('preview', active.value.address, prop, value)
+  emit('preview', address, prop, value)
+}
+
+/** A compound control's scrub: one preview per prop it writes. */
+function onMultiPreview(writes: Array<{ prop: string; value: JsonValue }>): void {
+  for (const write of writes) onPreview(write.prop, write.value)
 }
 
 /** The value a prop currently has, falling back to the SDK's own default. */
@@ -984,8 +1001,11 @@ const cornerValues = computed<SideValues>(() => {
   const uniform = cornerField.value
     ? (heldFor(cornerField.value) ?? resolved(cornerField.value) ?? 0)
     : 0
+  // A previewed corner shows whether or not the file authors it yet: the
+  // collapsed box's scrub writes all four, and the unauthored ones would
+  // otherwise sit still until release.
   const radius = (name: string): number =>
-    active.value?.attrs[name] ? numberOf(name, uniform) : uniform
+    heldNumber(name) ?? (active.value?.attrs[name] ? numberOf(name, uniform) : uniform)
   return {
     top: radius('topLeftRadius'),
     right: radius('topRightRadius'),
@@ -1726,6 +1746,7 @@ function onDetach(prop: string, value: JsonValue): void {
                 :token-source="tokenSource"
                 @bind="onBindVariables"
                 @detach="onDetachVariables"
+                @preview="onMultiPreview"
                 @commit="onMultiCommit"
                 @hover="onHover"
               />
@@ -1740,6 +1761,7 @@ function onDetach(prop: string, value: JsonValue): void {
                 :token-source="tokenSource"
                 @bind="onBindVariables"
                 @detach="onDetachVariables"
+                @preview="onMultiPreview"
                 @commit="onMultiCommit"
                 @hover="onHover"
               />

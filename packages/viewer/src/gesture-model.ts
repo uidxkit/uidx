@@ -130,6 +130,46 @@ export function nearestHandle(
 export const grabRadius = (zoom: number): number => HANDLE_GRAB / Math.max(zoom, 0.01)
 
 /**
+ * The eight grips of a rect, turned about its origin — the same points
+ * `getWorldHandles` answers for a node the graph can place, for a host that
+ * cannot ask it.
+ */
+export function handlePointsOf(rect: Rect, rotation = 0): HandlePoints {
+  const points = {} as HandlePoints
+  for (const handle of HANDLES) points[handle] = cornerWorld(rect, rotation, ANCHOR[handle])
+  return points
+}
+
+/**
+ * How far above the top-centre grip the renderer draws its rotation grip, in
+ * screen px: `drawBoundsHandles` puts it at `minY - 24 / zoom`, on a stem, in
+ * the node's own frame. Fixed in screen space like the grips themselves, so
+ * it is the same reach from the box whatever the zoom.
+ */
+export const ROTATE_HANDLE_STEM = 24
+/** The grip's grab radius on screen, in px — the 6px square plus a little. */
+export const ROTATE_HANDLE_RADIUS = 6
+
+/**
+ * Where the renderer's rotation grip sits, in canvas units: out along the
+ * box's own up-axis from the top-centre grip, so it turns with the node.
+ *
+ * Measured from the drawn grips rather than a rect, so a nested or rotated
+ * node puts the target exactly where the grip is painted. A box of no height
+ * has no up-axis of its own, and the grip sits straight above it.
+ */
+export function rotationHandlePoint(handles: HandlePoints, zoom: number): Point {
+  const centre = { x: (handles.nw.x + handles.se.x) / 2, y: (handles.nw.y + handles.se.y) / 2 }
+  const top = handles.n
+  const dx = top.x - centre.x
+  const dy = top.y - centre.y
+  const length = Math.hypot(dx, dy)
+  const up = length > 0 ? { x: dx / length, y: dy / length } : { x: 0, y: -1 }
+  const reach = ROTATE_HANDLE_STEM / Math.max(zoom, 0.01)
+  return { x: top.x + up.x * reach, y: top.y + up.y * reach }
+}
+
+/**
  * The angle of each grip's resize axis in the node's own frame, in degrees.
  * An edge grip resizes along one axis; a corner along its diagonal.
  */
