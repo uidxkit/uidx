@@ -4,7 +4,7 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
-## Unreleased
+## 0.1.4 — 2026-09-15
 
 - Canvas: a press selects the element under it immediately, the way Figma
   does, instead of waiting for the release; a click that wobbles a few pixels
