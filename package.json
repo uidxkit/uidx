@@ -1,6 +1,6 @@
 {
   "name": "uidx-monorepo",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.12.2",
