@@ -31,6 +31,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   bind: [properties: string[], token: string]
   detach: [writes: TokenDetachWrite[]]
+  /**
+   * A scrub step or a keystroke: the same writes a commit would make, shown
+   * on the canvas and held in the field, but never written to the file. The
+   * pane routes these through the preview path `PropertyField` uses, so the
+   * corners round as the number moves rather than jumping on release.
+   */
+  preview: [writes: Array<{ prop: string; value: JsonValue }>]
   commit: [writes: Array<{ prop: string; value: JsonValue }>]
   hover: [prop: string | null]
 }>()
@@ -58,29 +65,63 @@ watch(forced, (isForced) => {
   if (isForced) wanted.value = false
 })
 
-function commitUniform(value: JsonValue): void {
-  if (!props.editable || !parseLength(value)) return
+/** The writes a uniform edit makes, or null when it may not be made. */
+function uniformWrites(value: JsonValue): Array<{ prop: string; value: JsonValue }> | null {
+  if (!props.editable || !parseLength(value)) return null
   const writes = props.perCorner
     ? cornerWrites(0).map(({ prop }) => ({ prop, value }))
     : [{ prop: 'cornerRadius', value }]
-  if (writes.some(({ prop }) => props.tokenSource?.bindings[prop])) return
-  emit('commit', writes)
+  if (writes.some(({ prop }) => props.tokenSource?.bindings[prop])) return null
+  return writes
+}
+
+function previewUniform(value: JsonValue): void {
+  const writes = uniformWrites(value)
+  if (writes) emit('preview', writes)
+}
+
+function commitUniform(value: JsonValue): void {
+  const writes = uniformWrites(value)
+  if (writes) emit('commit', writes)
+}
+
+function cornerWrite(
+  prop: string,
+  value: JsonValue,
+): Array<{ prop: string; value: JsonValue }> | null {
+  if (!props.editable || !parseLength(value) || props.tokenSource?.bindings[prop]) return null
+  return [{ prop, value }]
+}
+
+function previewCorner(prop: string, value: JsonValue): void {
+  const writes = cornerWrite(prop, value)
+  if (writes) emit('preview', writes)
 }
 
 function commitCorner(prop: string, value: JsonValue): void {
-  if (!props.editable || !parseLength(value) || props.tokenSource?.bindings[prop]) return
-  emit('commit', [{ prop, value }])
+  const writes = cornerWrite(prop, value)
+  if (writes) emit('commit', writes)
 }
 
-function commitSmoothing(percent: JsonValue): void {
+function smoothingWrite(percent: JsonValue): Array<{ prop: string; value: JsonValue }> | null {
   if (
     typeof percent !== 'number' ||
     !props.editable ||
     !Number.isFinite(percent) ||
     props.tokenSource?.bindings.cornerSmoothing
   )
-    return
-  emit('commit', [{ prop: 'cornerSmoothing', value: Math.min(100, Math.max(0, percent)) / 100 }])
+    return null
+  return [{ prop: 'cornerSmoothing', value: Math.min(100, Math.max(0, percent)) / 100 }]
+}
+
+function previewSmoothing(percent: JsonValue): void {
+  const writes = smoothingWrite(percent)
+  if (writes) emit('preview', writes)
+}
+
+function commitSmoothing(percent: JsonValue): void {
+  const writes = smoothingWrite(percent)
+  if (writes) emit('commit', writes)
 }
 </script>
 
@@ -103,6 +144,7 @@ function commitSmoothing(percent: JsonValue): void {
           :disabled="!editable"
           label="cornerRadius"
           :step="1"
+          @update:model-value="previewUniform"
           @commit="commitUniform"
         >
           <span
@@ -165,6 +207,7 @@ function commitSmoothing(percent: JsonValue): void {
           :disabled="!editable"
           :label="corner.prop"
           :step="1"
+          @update:model-value="(v: JsonValue) => previewCorner(corner.prop, v)"
           @commit="(v: JsonValue) => commitCorner(corner.prop, v)"
         >
           <span
@@ -244,6 +287,7 @@ function commitSmoothing(percent: JsonValue): void {
         :disabled="!editable"
         label="cornerSmoothing"
         :step="1"
+        @update:model-value="previewSmoothing"
         @commit="commitSmoothing"
       >
         <span class="corner-smoothing" v-bind="attrs">

@@ -35,7 +35,7 @@ import {
 } from './vertex-edit'
 import { drawingHint } from './graphics-tools'
 import { resizeVectorPaths } from './vector-resize'
-import type { Rect } from './gesture-model'
+import type { Point, Rect } from './gesture-model'
 import { importSvg, type SvgProblem } from './svg-import'
 import { reorderFor } from './layer-moves'
 import { positioningWrites } from './position-writes'
@@ -338,6 +338,8 @@ const controls = useCanvasControls(canvasEl, editorWithPlacement, {
   },
   writable: () => props.writable !== false,
   onResize: resizeNode,
+  onMove: moveNode,
+  onRotate: rotateNode,
   /**
    * A settled reorder, as one `move-node` — the op the rail already ships.
    *
@@ -1479,6 +1481,73 @@ function resizeNode(
   canvas.renderNow()
 }
 
+/**
+ * A settled drag or arrow nudge (C10a), written the way a panel edit is.
+ *
+ * The gesture's preview has already put the node at `at`, and the patched
+ * graph raises no `node:updated` for a write that changes nothing — so a
+ * settle routed through `editor.updateNode` alone never reached
+ * `recordSceneWrite`, and a drag showed on the canvas, in the panel, and
+ * nowhere in the file. Recorded explicitly, like a resize, and vouched as
+ * the author's: taking a node somewhere *is* choosing its position.
+ */
+function moveNode(id: string, at: Point): void {
+  if (props.writable === false) return
+  const fields = { x: at.x, y: at.y }
+  authoredWrite = { address: id, props: new Set(['x', 'y']) }
+  try {
+    editor.updateNode(id, fields)
+    recordSceneWrite(id, fields)
+  } finally {
+    authoredWrite = null
+  }
+  canvas.renderNow()
+}
+
+/** The angle under the pointer while a rotation is in flight, in pane px. */
+const rotationReadout = ref<{ x: number; y: number; degrees: number } | null>(null)
+
+const formatDegrees = (degrees: number): string => `${Math.round(degrees * 10) / 10}°`
+
+/** Canvas units to pane px — the camera the SDK's own overlays map through. */
+const toPane = (point: Point): Point => ({
+  x: point.x * editor.state.zoom + editor.state.panX,
+  y: point.y * editor.state.zoom + editor.state.panY,
+})
+
+/**
+ * A rotation in flight, settled, or abandoned — `resizeNode`'s three modes,
+ * for `moveNode`'s reason: the settle has to be recorded by hand. The preview
+ * frames also carry the readout beside the pointer, the way the size pill
+ * follows a resize. The grip itself is the renderer's: `drawBoundsHandles`
+ * paints one on a stem above the selection, and the controller's hit-test
+ * (`rotationHandlePoint`) is measured to land on it.
+ */
+function rotateNode(
+  id: string,
+  rotation: number,
+  mode: 'preview' | 'commit' | 'cancel',
+  at: Point,
+): void {
+  if (props.writable === false) return
+  const fields = { rotation }
+  if (mode !== 'commit') {
+    editor.graph.runPreviewUpdates(() => editor.updateNode(id, fields))
+    rotationReadout.value = mode === 'preview' ? { ...toPane(at), degrees: rotation } : null
+    canvas.renderNow()
+    return
+  }
+  rotationReadout.value = null
+  authoredWrite = { address: id, props: new Set(['rotation']) }
+  try {
+    editor.updateNode(id, fields)
+    recordSceneWrite(id, fields)
+  } finally {
+    authoredWrite = null
+  }
+  canvas.renderNow()
+}
+
 function applyProp(
   address: string,
   prop: string,
@@ -1566,8 +1635,15 @@ function applyProp(
     ]),
   }
   // Remembered so a remote document landing mid-scrub can be re-covered by the
-  // value under the author's finger; a commit ends the scrub and lets go.
-  panelPreview = mode === 'preview' ? { address, fields: sized } : null
+  // value under the author's finger; a commit ends the scrub and lets go. A
+  // compound control previews several props per step, so the fields accrue.
+  panelPreview =
+    mode === 'preview'
+      ? {
+          address,
+          fields: panelPreview?.address === address ? { ...panelPreview.fields, ...sized } : sized,
+        }
+      : null
   try {
     if (mode === 'preview') graph.runPreviewUpdates(() => editor.updateNode(address, sized))
     else {
@@ -1945,6 +2021,15 @@ onUnmounted(() => unwatchGraph?.())
     <canvas ref="sceneEl" class="surface" aria-hidden="true" />
     <canvas ref="canvasEl" class="surface" @dragover.prevent @drop="onDrop" />
 
+    <div
+      v-if="rotationReadout"
+      class="rotation-readout"
+      role="status"
+      :style="{ left: `${rotationReadout.x}px`, top: `${rotationReadout.y}px` }"
+    >
+      {{ formatDegrees(rotationReadout.degrees) }}
+    </div>
+
     <!-- Dimmed over the last good render, never instead of it (spec §11). -->
     <div v-if="diagnostics.length" class="overlay">
       <h3>{{ diagnostics.length }} problem{{ diagnostics.length === 1 ? '' : 's' }}</h3>
@@ -2033,6 +2118,19 @@ onUnmounted(() => unwatchGraph?.())
   left: 32px;
   z-index: 1;
   color: var(--text-dim);
+}
+.rotation-readout {
+  position: absolute;
+  z-index: 4;
+  transform: translate(14px, 14px);
+  padding: 2px 6px;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: #fff;
+  font-size: var(--ui-size);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  pointer-events: none;
 }
 .viewport-tools {
   position: absolute;

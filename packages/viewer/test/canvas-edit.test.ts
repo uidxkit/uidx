@@ -7,6 +7,7 @@ import {
   type KeyTarget,
   type ViewportEditor,
 } from '../src/useCanvasControls'
+import { ROTATE_HANDLE_STEM } from '../src/gesture-model'
 
 class FakeTarget implements CanvasLike, KeyTarget {
   handlers = new Map<string, ((event: never) => void)[]>()
@@ -34,7 +35,11 @@ class FakeTarget implements CanvasLike, KeyTarget {
  * `box` sits inside `page`, which lays nothing out — so its position is the
  * author's. `flowed` sits inside `stack`, which does — so its position is not.
  */
-function harness(over: Partial<Record<string, Partial<EditableNode>>> = {}) {
+function harness(
+  over: Partial<Record<string, Partial<EditableNode>>> = {},
+  /** With `hooks`, the host commits moves and rotations, as `CanvasPane` does. */
+  options: { hooks?: boolean } = {},
+) {
   const nodes: Record<string, EditableNode> = {
     page: { id: 'page', x: 0, y: 0, width: 1000, height: 1000, layoutMode: 'NONE' },
     box: {
@@ -281,10 +286,30 @@ function harness(over: Partial<Record<string, Partial<EditableNode>>> = {}) {
     }
   }
   const creations: Array<{ element: string; at: unknown; size: unknown }> = []
+  /** Every settled move the host was handed, when it is the one committing. */
+  const moves: Array<{ id: string; at: { x: number; y: number } }> = []
+  /** Every rotation frame the host was handed, when it is the one committing. */
+  const rotations: Array<{
+    id: string
+    rotation: number
+    mode: 'preview' | 'commit' | 'cancel'
+    at: { x: number; y: number }
+  }> = []
   /** The tool the toolbar has armed, as the controller reads it: a live getter. */
   let tool: string | null = null
   const controller = createCanvasController(canvas, editor, {
     keyTarget: keys,
+    ...(options.hooks
+      ? {
+          onMove: (id: string, at: { x: number; y: number }) => moves.push({ id, at }),
+          onRotate: (
+            id: string,
+            rotation: number,
+            mode: 'preview' | 'commit' | 'cancel',
+            at: { x: number; y: number },
+          ) => rotations.push({ id, rotation, mode, at }),
+        }
+      : {}),
     dropTargetFor,
     onReparent: (id, parentId) => reparents.push({ id, parentId }),
     tool: () => tool,
@@ -335,6 +360,8 @@ function harness(over: Partial<Record<string, Partial<EditableNode>>> = {}) {
     dropTargets,
     creations,
     marquees,
+    moves,
+    rotations,
     arm: (next: string | null) => (tool = next),
     drag,
     select: (id: string) => {
@@ -400,6 +427,61 @@ describe('drag to move', () => {
     h.setHit('flowed')
     h.drag([520, 20], [560, 60])
     expect(h.moveCommits).toHaveLength(1)
+  })
+
+  /**
+   * #19: the preview has already put the node at its settled position, and a
+   * graph write that changes nothing raises no event — so a settle routed
+   * through `updateNode` alone never reached the file. The host records it.
+   */
+  it('hands the settled origin to the host when the host commits', () => {
+    const h = harness({}, { hooks: true })
+    h.select('box')
+    h.drag([150, 150], [190, 170])
+    expect(h.moves).toEqual([{ id: 'box', at: { x: 140, y: 120 } }])
+    expect(h.commits).toHaveLength(0)
+    // Undo still sees one entry.
+    expect(h.moveCommits).toHaveLength(1)
+  })
+
+  it('rounds what it hands over, so a drag at zoom does not settle on fractions', () => {
+    const h = harness({}, { hooks: true })
+    h.editor.state.zoom = 3
+    h.editor.screenToCanvas = (sx, sy) => ({ x: sx / 3, y: sy / 3 })
+    h.select('box')
+    h.drag([450, 450], [490, 470])
+    expect(h.moves.at(-1)!.at).toEqual({ x: 113, y: 107 })
+  })
+})
+
+/**
+ * #15: Figma selects on press. Until this landed nothing happened while the
+ * button was down, and a click that wobbled past the slop moved the thing it
+ * had only meant to select.
+ */
+describe('select on press', () => {
+  it('selects the node under the press before the button comes back up', () => {
+    const h = harness()
+    h.canvas.fire('pointerdown', { button: 0, clientX: 150, clientY: 150, pointerId: 1 })
+    expect([...h.editor.state.selectedIds]).toEqual(['box'])
+    expect(h.commits).toHaveLength(0)
+    expect(h.previews).toHaveLength(0)
+  })
+
+  it('keeps a wobbly click a click', () => {
+    const h = harness()
+    h.drag([150, 150], [154, 153])
+    expect([...h.editor.state.selectedIds]).toEqual(['box'])
+    expect(h.moveCommits).toHaveLength(0)
+    expect(h.nodes.box).toMatchObject({ x: 100, y: 100 })
+  })
+
+  it('still moves once the press has clearly travelled', () => {
+    const h = harness()
+    h.drag([150, 150], [170, 150])
+    expect([...h.editor.state.selectedIds]).toEqual(['box'])
+    expect(h.moveCommits).toHaveLength(1)
+    expect(h.nodes.box).toMatchObject({ x: 120, y: 100 })
   })
 })
 
@@ -744,6 +826,67 @@ describe('rotate', () => {
     expect(h.rotateCommits).toHaveLength(1)
     expect(typeof h.commits.at(-1)!.changes.rotation).toBe('number')
   })
+
+  /** `box` spans (100,100)–(300,200): its top-centre grip is at (200, 100). */
+  const KNOB: [number, number] = [200, 100 - ROTATE_HANDLE_STEM]
+
+  it('offers a knob above the top-centre grip, and says so in the cursor (#16)', () => {
+    const h = harness()
+    h.select('box')
+    h.canvas.fire('pointermove', { clientX: KNOB[0], clientY: KNOB[1], pointerId: 1 })
+    expect(h.canvas.style.cursor).toContain('url(')
+    // Past the knob there is nothing: the empty space above a box is not a
+    // rotate target, which is what made the old gesture undiscoverable.
+    h.setHit(null)
+    h.canvas.fire('pointermove', {
+      clientX: 200,
+      clientY: 100 - 2 * ROTATE_HANDLE_STEM,
+      pointerId: 1,
+    })
+    expect(h.canvas.style.cursor).toBe('default')
+  })
+
+  it('rotates from the knob, about the centre of the box', () => {
+    const h = harness()
+    h.select('box')
+    h.drag(KNOB, [260, 100])
+    expect(h.rotateCommits).toHaveLength(1)
+    const rotation = h.commits.at(-1)!.changes.rotation as number
+    // From straight up to up-and-right about (200, 150): a clockwise turn.
+    expect(rotation).toBeGreaterThan(40)
+    expect(rotation).toBeLessThan(60)
+  })
+
+  it('settles the angle to two decimals, as Figma keeps them', () => {
+    const h = harness()
+    h.select('box')
+    h.drag(KNOB, [260, 100])
+    const rotation = h.commits.at(-1)!.changes.rotation as number
+    expect(rotation).toBe(Math.round(rotation * 100) / 100)
+  })
+
+  it('hands every frame, the settle and the pointer to the host when the host commits', () => {
+    const h = harness({}, { hooks: true })
+    h.select('box')
+    h.drag(KNOB, [260, 100])
+    expect(h.rotations.map((r) => r.mode)).toEqual(['preview', 'commit'])
+    expect(h.rotations.at(-1)!.at).toEqual({ x: 260, y: 100 })
+    // The settle is the last preview, rounded to what the file keeps.
+    expect(h.rotations.at(-1)!.rotation).toBe(Math.round(h.rotations[0]!.rotation * 100) / 100)
+    expect(h.commits).toHaveLength(0)
+    expect(h.previews).toHaveLength(0)
+    expect(h.rotateCommits).toHaveLength(1)
+  })
+
+  it('tells the host to put the angle back when the pointer is cancelled', () => {
+    const h = harness({}, { hooks: true })
+    h.select('box')
+    h.canvas.fire('pointerdown', { button: 0, clientX: KNOB[0], clientY: KNOB[1], pointerId: 1 })
+    h.canvas.fire('pointermove', { clientX: 260, clientY: 100, pointerId: 1 })
+    h.canvas.fire('pointercancel', { pointerId: 1 })
+    expect(h.rotations.map((r) => r.mode)).toEqual(['preview', 'cancel'])
+    expect(h.rotations.at(-1)!.rotation).toBe(0)
+  })
 })
 
 describe('arrow-key nudge', () => {
@@ -760,6 +903,15 @@ describe('arrow-key nudge', () => {
     h.select('box')
     h.keys.fire('keydown', { key: 'ArrowDown', code: 'ArrowDown', shiftKey: true })
     expect(h.nodes.box).toMatchObject({ x: 100, y: 110 })
+  })
+
+  it('hands the nudge to the host when the host commits, like a drag', () => {
+    const h = harness({}, { hooks: true })
+    h.select('box')
+    h.keys.fire('keydown', { key: 'ArrowRight', code: 'ArrowRight' })
+    expect(h.moves).toEqual([{ id: 'box', at: { x: 101, y: 100 } }])
+    expect(h.commits).toHaveLength(0)
+    expect(h.moveCommits).toHaveLength(1)
   })
 
   it('leaves the caret alone when the press came from a text field', () => {

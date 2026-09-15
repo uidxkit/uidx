@@ -7,18 +7,14 @@ name: Dependency Visual Gate
 # risky as a major bump on a 1.x+ package would be. See the 0.1.2 release
 # notes and CONTRIBUTING.md for the incident this exists to catch.
 
+# Every PR, not only those touching dependency files: `gate` is a required
+# status check on main, and a path-filtered workflow never reports on the
+# PRs it skips, which left every non-dependency change unmergeable. The
+# classify job answers "no dependency files changed" cheaply instead, so
+# the check is always present and the canary still only runs when it has
+# something to catch.
 on:
   pull_request:
-    # OR-matched: a PR only needs to touch one of these to trigger, no
-    # matter how many other unrelated files it also changes. patches/ is
-    # included because editing a pinned dependency's patch silently changes
-    # its behavior the same way a version bump does, without necessarily
-    # touching package.json at all.
-    paths:
-      - 'package.json'
-      - 'packages/*/package.json'
-      - 'pnpm-lock.yaml'
-      - 'patches/**'
 
 permissions:
   contents: read
@@ -35,11 +31,32 @@ jobs:
       needs-canary: ${{ steps.decide.outputs.needed }}
       reason: ${{ steps.decide.outputs.reason }}
     steps:
+      # OR-matched: a PR only needs to touch one of these to be gated, no
+      # matter how many other unrelated files it also changes. patches/ is
+      # included because editing a pinned dependency's patch silently changes
+      # its behavior the same way a version bump does, without necessarily
+      # touching package.json at all.
+      - name: Find dependency-sensitive changes
+        id: touched
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          files=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}/files" --paginate --jq '.[].filename')
+          touched=$(printf '%s\n' "$files" | grep -E '^(package\.json|packages/[^/]+/package\.json|pnpm-lock\.yaml|patches/.*)$' || true)
+          if [ -n "$touched" ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+            printf 'dependency-sensitive files changed:\n%s\n' "$touched"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+            echo "no dependency-sensitive files changed"
+          fi
+
       # Only Dependabot PRs carry parseable update-type metadata. A
       # human-authored dependency change gets no such shortcut, and is rare
       # enough that always gating it costs nothing.
       - name: Read Dependabot update metadata
-        if: github.actor == 'dependabot[bot]'
+        if: steps.touched.outputs.any == 'true' && github.actor == 'dependabot[bot]'
         id: metadata
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
@@ -47,10 +64,14 @@ jobs:
 
       - id: decide
         env:
+          TOUCHED: ${{ steps.touched.outputs.any }}
           UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
           DEPENDENCY_NAMES: ${{ steps.metadata.outputs.dependency-names }}
         run: |
-          if [ "${{ github.actor }}" != "dependabot[bot]" ]; then
+          if [ "$TOUCHED" != "true" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "reason=no dependency-sensitive files changed" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.actor }}" != "dependabot[bot]" ]; then
             echo "needed=true" >> "$GITHUB_OUTPUT"
             echo "reason=human-authored dependency change" >> "$GITHUB_OUTPUT"
           elif [ "$UPDATE_TYPE" = "version-update:semver-patch" ]; then

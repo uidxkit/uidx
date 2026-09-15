@@ -354,10 +354,25 @@ describe('selection', () => {
     expect(h.emitted.at(-1)).toEqual(['Card'])
   })
 
-  it('does not select when the pointer travelled — that was a drag', () => {
+  it('selects on press, before the button comes back up', () => {
+    const h = harness()
+    h.canvas.fire('pointerdown', { button: 0, clientX: 200, clientY: 150, pointerId: 1 })
+    expect(h.selectCalls).toHaveLength(1)
+    expect(h.emitted.at(-1)).toEqual(['Card'])
+  })
+
+  it('does not select again on a release that travelled — that was a drag', () => {
     const h = harness()
     click(h, [200, 150], [200 + CLICK_SLOP + 10, 150])
-    expect(h.selectCalls).toHaveLength(0)
+    // The press took it; the release, having travelled, changes nothing.
+    expect(h.selectCalls).toHaveLength(1)
+  })
+
+  it('leaves the selection alone when the release lands on what the press took', () => {
+    const h = harness()
+    click(h, [200, 150], [200, 150])
+    click(h, [200, 150], [200, 150])
+    expect(h.selectCalls).toHaveLength(1)
   })
 
   it('tolerates a tiny wobble', () => {

@@ -3,7 +3,10 @@ import { isPositionAuthored, isSizeAuthored } from '@uidx/schema'
 import {
   grabRadius,
   handleAt,
+  handlePointsOf,
   nearestHandle,
+  rotationHandlePoint,
+  ROTATE_HANDLE_RADIUS,
   resizeCursor,
   rotateAbout,
   movedRect,
@@ -69,17 +72,25 @@ import {
 export const ZOOM_SENSITIVITY = 0.0015
 export const MIN_ZOOM = 0.02
 export const MAX_ZOOM = 256
-/** Pointer travel, in px, still treated as a click rather than a drag. */
-export const CLICK_SLOP = 4
+/**
+ * Pointer travel, in px, still treated as a click rather than a drag.
+ *
+ * Wide enough that a hand that wobbles on the way down still clicks: a press
+ * selects on its own now, so the only thing a small travel can add is an
+ * accidental move of the thing just selected.
+ */
+export const CLICK_SLOP = 6
 /** How far outside a corner the rotate grip reaches, in canvas units at 100%. */
 export const ROTATE_ZONE = 16
 
 /**
  * Figma's rotate cursor, as data.
  *
- * The zone is a small patch of empty space just outside a corner — invisible,
- * and so undiscoverable that the gesture may as well not exist without this.
- * There is no standard CSS cursor for rotation, so the glyph is drawn here and
+ * The primary rotate target is the grip the renderer draws above the
+ * selection; the corner zones stay as Figma's shortcut for hands that know
+ * it, and they are invisible, so this cursor is the only thing that says
+ * they are there. There
+ * is no standard CSS cursor for rotation, so the glyph is drawn here and
  * carried inline.
  */
 const ROTATE_CURSOR =
@@ -403,6 +414,30 @@ export function createCanvasController(
       mode: 'preview' | 'commit' | 'cancel',
       widthOnly: boolean,
     ) => void
+
+    /**
+     * A settled move or nudge: where the node's origin lands, in its own
+     * coordinates.
+     *
+     * The host commits it rather than the controller, for the reason
+     * `onResize` exists: the preview has already put the node there, and a
+     * scene write that changes nothing raises no event — so a settle routed
+     * through `editor.updateNode` alone never reached the file. Absent, the
+     * controller writes the graph itself as it always did.
+     */
+    onMove?: (id: string, at: Point) => void
+
+    /**
+     * A rotation in flight, settled, or abandoned — the same three modes as
+     * `onResize`, and the same reason. `at` is the pointer, in canvas
+     * coordinates, so the host can put a readout beside it.
+     */
+    onRotate?: (
+      id: string,
+      rotation: number,
+      mode: 'preview' | 'commit' | 'cancel',
+      at: Point,
+    ) => void
   } = {},
 ): CanvasController {
   const keyTarget = options.keyTarget ?? (globalThis as unknown as KeyTarget)
@@ -560,6 +595,18 @@ export function createCanvasController(
     if (hit && editor.graph?.getNode(hit.id)) {
       armed = { point, id: hit.id, handle: null, rotate: false }
       canvas.setPointerCapture?.(event.pointerId)
+    }
+    /*
+     * Select on press, the way Figma does. The outline and the panel answer
+     * the moment the button goes down, so there is no "did it take?" beat,
+     * and a drag that follows moves something already selected — which is
+     * what the hand expects. Empty space still deselects on release only, so
+     * the tail of a pan cannot change the selection.
+     */
+    if (hit && !editor.state.selectedIds.has(hit.id)) {
+      editor.select([hit.id])
+      emitSelection()
+      notify()
     }
   }
 
@@ -958,12 +1005,26 @@ export function createCanvasController(
     return handleAt(screenRectOf(node), point, editor.state.zoom, screenRotationOf(node))
   }
 
+  /** The eight grips as drawn, or derived from the rect for a host that cannot say. */
+  const handlesFor = (node: EditableNode): HandlePoints =>
+    editor.handlesOf?.(node.id) ?? handlePointsOf(screenRectOf(node), screenRotationOf(node))
+
+  /** Whether a point is on the rotation grip the renderer draws above the selection. */
+  const onRotateHandle = (node: EditableNode, point: Point): boolean => {
+    const knob = rotationHandlePoint(handlesFor(node), editor.state.zoom)
+    const reach = ROTATE_HANDLE_RADIUS / Math.max(editor.state.zoom, 0.01)
+    return Math.hypot(point.x - knob.x, point.y - knob.y) <= reach
+  }
+
   /**
-   * Just outside a corner is Figma's rotate grip. Measured from the drawn
-   * corners where the graph can say, so the zone turns with the node; the
-   * rect-derived fallback covers a host that cannot.
+   * The rotation grip the renderer draws above the top-centre is the rotate
+   * target the eye can find — until this it was painted but never listened
+   * for; just outside a corner is Figma's, kept for hands that know it.
+   * Measured from the drawn corners where the graph can say, so the zone
+   * turns with the node; the rect-derived fallback covers a host that cannot.
    */
   const nearRotateGrip = (node: EditableNode, point: Point): boolean => {
+    if (onRotateHandle(node, point)) return true
     const drawn = editor.handlesOf?.(node.id)
     if (!drawn) return inRotateZone(screenRectOf(node), point, screenRotationOf(node))
     const reach = ROTATE_ZONE / Math.max(editor.state.zoom, 0.01)
@@ -1145,7 +1206,8 @@ export function createCanvasController(
         gesture.rotation,
         event.shiftKey === true,
       )
-      preview(gesture.id, { rotation })
+      if (options.onRotate) options.onRotate(gesture.id, rotation, 'preview', point)
+      else preview(gesture.id, { rotation })
     }
   }
 
@@ -1246,7 +1308,9 @@ export function createCanvasController(
         const next = movedRect(active.rect, delta, event.shiftKey === true)
         // Rounded: a drag at zoom lands on fractions like 64.825 nobody chose,
         // and the file keeps them forever. Figma rounds the settle; so do we.
-        editor.updateNode(active.id, { x: Math.round(next.x), y: Math.round(next.y) })
+        const settled = { x: Math.round(next.x), y: Math.round(next.y) }
+        if (options.onMove) options.onMove(active.id, settled)
+        else editor.updateNode(active.id, settled)
         editor.commitMove?.(new Map([[active.id, { x: active.rect.x, y: active.rect.y }]]))
       }
     } else if (active.kind === 'resize') {
@@ -1268,14 +1332,20 @@ export function createCanvasController(
       else editor.updateNode(active.id, resizeWrites(node, settled, { widthOnly }))
       editor.commitResize?.(active.id, active.rect)
     } else {
-      const rotation = rotationFor(
-        active.centre,
-        active.origin,
-        point,
-        active.rotation,
-        event.shiftKey === true,
-      )
-      editor.updateNode(active.id, { rotation })
+      // Two decimals, as Figma keeps them: the file should not hold the
+      // fifteen digits an atan2 happens to produce.
+      const rotation =
+        Math.round(
+          rotationFor(
+            active.centre,
+            active.origin,
+            point,
+            active.rotation,
+            event.shiftKey === true,
+          ) * 100,
+        ) / 100
+      if (options.onRotate) options.onRotate(active.id, rotation, 'commit', point)
+      else editor.updateNode(active.id, { rotation })
       editor.commitRotation?.(active.id, active.rotation)
     }
     showDropTarget(null)
@@ -1285,9 +1355,9 @@ export function createCanvasController(
   /**
    * What a press here would do, shown as a cursor.
    *
-   * This is the only affordance the gestures have: the grips are drawn by the
-   * renderer and the rotate zone is not drawn at all, so without it an author
-   * has to guess where the invisible targets are.
+   * The grips and the rotation grip are drawn, so the cursor confirms them;
+   * the corner rotate zones are not drawn at all, so for those it is the only
+   * affordance there is.
    */
   const updateCursor = (point: Point): void => {
     const style = canvas.style
@@ -1344,7 +1414,8 @@ export function createCanvasController(
     const next = nudged({ x: node.x, y: node.y }, event.key, event.shiftKey === true)
     if (!next) return false
     event.preventDefault?.()
-    editor.updateNode?.(node.id, next)
+    if (options.onMove) options.onMove(node.id, next)
+    else editor.updateNode?.(node.id, next)
     editor.commitMove?.(new Map([[node.id, { x: node.x, y: node.y }]]))
     notify()
     return true
@@ -1395,8 +1466,11 @@ export function createCanvasController(
     }
     armed = null
 
-    // Select on release rather than press, and only when the pointer barely
-    // moved — otherwise the tail of a pan would also change the selection.
+    // The press already selected what it landed on. The release only settles
+    // what a press could not: a click on empty space deselects, a modified
+    // click narrows to the leaf, a click on one of several selected keeps just
+    // that one — and only when the pointer barely moved, so the tail of a pan
+    // cannot change the selection.
     if (!pressAt) return
     const travelled = Math.hypot(event.clientX - pressAt.x, event.clientY - pressAt.y)
     pressAt = null
@@ -1404,6 +1478,9 @@ export function createCanvasController(
 
     const point = toCanvas(event)
     const hit = pick(point.x, point.y, isDeep(event))
+    const alreadySole =
+      hit !== null && editor.state.selectedIds.size === 1 && editor.state.selectedIds.has(hit.id)
+    if (alreadySole) return
     if (hit) editor.select([hit.id])
     else {
       // Clicking empty space steps back out rather than only deselecting, which
@@ -1597,7 +1674,11 @@ export function createCanvasController(
               gesture.handle === 'e' || gesture.handle === 'w',
             )
           else preview(gesture.id, gesture.rect)
-        } else if (gesture?.kind === 'rotate') preview(gesture.id, { rotation: gesture.rotation })
+        } else if (gesture?.kind === 'rotate') {
+          if (options.onRotate)
+            options.onRotate(gesture.id, gesture.rotation, 'cancel', gesture.origin)
+          else preview(gesture.id, { rotation: gesture.rotation })
+        }
         gesture = null
         lastAdvance = null
         slot = null
@@ -1773,6 +1854,13 @@ export function useCanvasControls(
       rect: Rect,
       mode: 'preview' | 'commit' | 'cancel',
       widthOnly: boolean,
+    ) => void
+    onMove?: (id: string, at: Point) => void
+    onRotate?: (
+      id: string,
+      rotation: number,
+      mode: 'preview' | 'commit' | 'cancel',
+      at: Point,
     ) => void
   } = {},
 ): CanvasControls {
