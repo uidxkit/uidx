@@ -6,6 +6,14 @@ describe migrations when an existing document or integration is affected.
 
 ## Unreleased
 
+- The prebuilt viewer is served by `@uidx/server`'s own static server instead
+  of `vite preview`. Vite, and the platform-specific native binaries Vite 8
+  runs on (rolldown, lightningcss), are no longer runtime dependencies of
+  `@uidxkit/uidx`; an install whose optional native packages did not match the
+  machine — a lockfile made on another OS, optional dependencies switched off,
+  an unsupported libc — failed with `ERR_MODULE_NOT_FOUND` on the first `uidx`
+  command. Installs are also about 30 MB smaller. `--viewer-dev` still boots a
+  Vite dev server from a source checkout.
 - Windows: `uidx read`, `uidx render` and the agent tools find the document
   again. Manifest discovery answered forward-slash paths that never matched
   the backslash root, so every command reported no `uidx.json` under a project

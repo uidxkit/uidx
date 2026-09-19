@@ -316,7 +316,7 @@ The first independently useful product: a live spec previewer. No write-back.
 > As an **Author**, I want `uidx open ./button.uidx` to start a local server and
 > open my browser, so that previewing a component takes one command.
 
-- `@uidx/server` boots Vite programmatically and serves the prebuilt viewer.
+- `@uidx/server` serves the prebuilt viewer with its own static server; Vite is loaded only for `--viewer-dev` in a source checkout.
 - `--port` (default 4400) auto-increments when busy.
 - No user-facing build step; the viewer ships as `dist/`.
 - No network calls at runtime (G7).

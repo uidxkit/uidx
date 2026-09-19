@@ -1,5 +1,5 @@
 import type { IncomingMessage } from 'node:http'
-import type { Plugin, ViteDevServer } from 'vite'
+import type { MiddlewareHost, ViewerPlugin } from './static-viewer.js'
 
 /** Browser requests may only come from this exact local viewer origin. */
 export function allowsLocalRequest(request: IncomingMessage): boolean {
@@ -26,8 +26,8 @@ export function allowsLocalRequest(request: IncomingMessage): boolean {
   }
 }
 
-export function localAccessPlugin(): Plugin {
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+export function localAccessPlugin(): ViewerPlugin {
+  const configure = (server: MiddlewareHost): void => {
     server.middlewares.use((request, response, next) => {
       if (allowsLocalRequest(request)) return next()
       response.writeHead(403, {
