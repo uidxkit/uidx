@@ -588,3 +588,59 @@ diff --git a/dist/canvas/text/index.js b/dist/canvas/text/index.js
  	}
  }
  function textFontVariations(variations) {
+diff --git a/dist/canvaskit.js b/dist/canvaskit.js
+index e361cd132ff4213456194a125256ce2ac1b11bc4..a2358d4a19ded4a7cee0274bdebcf3989c3745a0 100644
+--- a/dist/canvaskit.js
++++ b/dist/canvaskit.js
+@@ -1,13 +1,22 @@
+ import { IS_BROWSER } from "./constants.js";
+ import CanvasKitInit from "canvaskit-wasm";
+ //#region src/canvaskit.ts
++// Patched (uidx): a file URL's pathname is not a filesystem path on Windows —
++// it reads "/D:/…" with forward slashes, and CanvasKit resolved that against
++// the current drive to "D:\D:\…" (ENOENT). Converted by hand rather than
++// through node:url, because this module is also bundled for the browser.
++function fileUrlToPath(url) {
++	let path = decodeURIComponent(url.pathname);
++	if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1).replace(/\//g, "\\");
++	return path;
++}
+ let instance = null;
+ async function getCanvasKit(options) {
+ 	if (instance) return instance;
+ 	const defaultLocate = (file) => {
+ 		if (!IS_BROWSER) {
+ 			const ckPath = import.meta.resolve("canvaskit-wasm");
+-			return decodeURIComponent(new URL(file, ckPath).pathname);
++			return fileUrlToPath(new URL(file, ckPath));
+ 		}
+ 		const base = "env" in import.meta ? import.meta.env.BASE_URL : "/";
+ 		return `${base === "/" ? "" : base.replace(/\/$/, "")}/${file}`;
+diff --git a/dist/io/formats/raster/headless.js b/dist/io/formats/raster/headless.js
+index 8d4162ee17694f97461b0f0ebb0a64e713a018fc..6eb81d2515bc53e49ade16b653ca7ad093f9d01a 100644
+--- a/dist/io/formats/raster/headless.js
++++ b/dist/io/formats/raster/headless.js
+@@ -1,13 +1,22 @@
+ import { renderNodesToImage, renderThumbnail } from "./render.js";
+ import { SkiaRenderer } from "../../../canvas/renderer.js";
+ //#region src/io/formats/raster/headless.ts
++// Patched (uidx): a file URL's pathname is not a filesystem path on Windows —
++// it reads "/D:/…" with forward slashes, and CanvasKit resolved that against
++// the current drive to "D:\D:\…" (ENOENT). Converted by hand rather than
++// through node:url, because this module is also bundled for the browser.
++function fileUrlToPath(url) {
++	let path = decodeURIComponent(url.pathname);
++	if (/^\/[A-Za-z]:\//.test(path)) path = path.slice(1).replace(/\//g, "\\");
++	return path;
++}
+ let cachedCk = null;
+ let cachedRenderer = null;
+ async function initCanvasKit() {
+ 	if (cachedCk) return cachedCk;
+ 	const CanvasKitInit = (await import("canvaskit-wasm/full")).default;
+ 	const ckPath = import.meta.resolve("canvaskit-wasm/full");
+-	const binDir = new URL(".", ckPath).pathname;
++	const binDir = fileUrlToPath(new URL(".", ckPath));
+ 	cachedCk = await CanvasKitInit({ locateFile: (file) => binDir + file });
+ 	return cachedCk;
+ }

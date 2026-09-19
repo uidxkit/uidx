@@ -4,6 +4,16 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## Unreleased
+
+- Windows: `uidx read`, `uidx render` and the agent tools find the document
+  again. Manifest discovery answered forward-slash paths that never matched
+  the backslash root, so every command reported no `uidx.json` under a project
+  that had one.
+- Windows: rendering no longer aborts with `ENOENT … D:\D:\…canvaskit.wasm`.
+  The bundled drawing SDK turned the CanvasKit file URL into a path through
+  `URL.pathname`, which is not a filesystem path on Windows.
+
 ## 0.1.4 — 2026-09-15
 
 - Canvas: a press selects the element under it immediately, the way Figma
