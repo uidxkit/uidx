@@ -51,7 +51,11 @@ export async function discoverManifests(roots: readonly string[]): Promise<Found
       absolute: true,
       ignore: ['**/node_modules/**', '**/dist/**', '**/.git/**', '**/.uidx-agent/**'],
     })
-    const manifests = [...new Set([...legacy, ...projects])]
+    // `resolve` puts every path in the platform's own spelling: tinyglobby
+    // answers with forward slashes even on Windows, where `resolveDocumentRoot`
+    // and every caller speak backslashes, so a `dir` compared as a string
+    // never matched and no document was ever found there.
+    const manifests = [...new Set([...legacy, ...projects].map((path) => resolve(path)))]
     for (const path of manifests.sort()) {
       if (found.some((doc) => doc.path === path)) continue
       // Discovery is best-effort: it is scanning directories it does not own,

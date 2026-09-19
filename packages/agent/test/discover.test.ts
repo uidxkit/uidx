@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 import { discoverManifests, matchDocument } from '../src/workspace/discover.js'
@@ -172,5 +172,21 @@ describe('matchDocument', () => {
   it('says so plainly when nothing matches', async () => {
     const found = await discoverManifests([await fixture()])
     expect(() => matchDocument(found, { id: 'nope' })).toThrow(/no uidx document/i)
+  })
+})
+
+describe('discovered paths', () => {
+  /**
+   * Windows: tinyglobby answers with forward slashes while `resolveDocumentRoot`
+   * and the callers speak backslashes, so a `dir` compared as a string never
+   * matched and `openDocument` reported no manifest under a root that had one.
+   */
+  it('are in the platform spelling, so they compare equal to a resolved root', async () => {
+    const root = await fixture()
+    for (const doc of await discoverManifests([root])) {
+      expect(doc.path).toBe(resolve(doc.path))
+      expect(doc.dir).toBe(resolve(doc.dir))
+      expect(doc.path).toBe(resolve(doc.dir, 'uidx.json'))
+    }
   })
 })

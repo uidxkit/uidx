@@ -1,3 +1,4 @@
+import { resolve } from 'node:path'
 import { resolveDocumentRoot } from '../workspace/root.js'
 export { resolveDocumentRoot } from '../workspace/root.js'
 import type { UidxDocument } from '@uidx/format'
@@ -46,7 +47,9 @@ export interface OpenedDocument {
 /** Opens the document rooted at `root` (the directory holding `uidx.json`). */
 export async function openDocument(root: string): Promise<OpenedDocument> {
   const dir = await resolveDocumentRoot(root)
-  const found = (await discoverManifests([dir])).find((doc) => doc.dir === dir)
+  // Compared in one spelling: the discovered `dir` and the resolved root can
+  // differ only in separator on Windows, and that is not a different document.
+  const found = (await discoverManifests([dir])).find((doc) => resolve(doc.dir) === resolve(dir))
   if (!found) throw new Error(`no uidx.json under ${root}`)
   const workspace = await openWorkspace(found)
   return {
