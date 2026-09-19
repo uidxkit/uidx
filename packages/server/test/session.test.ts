@@ -127,7 +127,10 @@ describe('FileSession', () => {
    * the single-write tests above.
    */
   it('recovers automatically on the next valid save', async () => {
-    await session.start()
+    // The initial read only — `start()` would also attach the watcher, whose
+    // delayed event for the first write can land after the second write and
+    // reload it first, leaving the explicit reload below nothing to report.
+    await session.reload()
 
     await writeFile(file, BROKEN)
     expect((await session.reload())?.type).toBe('file:error')
