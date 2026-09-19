@@ -1,6 +1,6 @@
 import { lstat, mkdir, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
-import type { Plugin, ViteDevServer } from 'vite'
+import type { MiddlewareHost, ViewerPlugin } from './static-viewer.js'
 import picomatch from 'picomatch'
 import { parseOrThrow } from '@uidx/format'
 import { membershipRoots, type Workspace } from './workspace.js'
@@ -90,8 +90,8 @@ async function createPage(workspace: Workspace, value: unknown): Promise<string>
   return file
 }
 
-export function pagesRoutePlugin(holder: { current: Workspace | null }): Plugin {
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+export function pagesRoutePlugin(holder: { current: Workspace | null }): ViewerPlugin {
+  const configure = (server: MiddlewareHost): void => {
     server.middlewares.use('/__uidx/pages', (request, response) => {
       const answer = (status: number, body: object): void => {
         response.writeHead(status, {

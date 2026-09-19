@@ -1,11 +1,5 @@
-import type { IncomingMessage, ServerResponse } from 'node:http'
+import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http'
 import type { UidxPatch } from '@uidx/format'
-import {
-  createServer as createViteServer,
-  preview as previewVite,
-  type Plugin,
-  type ViteDevServer,
-} from 'vite'
 
 import { ASSET_ROUTE, assetReply } from './assets.js'
 import { fontRoutePlugin } from './fonts.js'
@@ -19,15 +13,23 @@ import { Workspace } from './workspace.js'
 import { isClientMessage, WS_PATH, type NodePatchMessage, type ServerMessage } from './protocol.js'
 import { SELECTION_ROUTE, selectionReply, type SelectionState } from './selection.js'
 import { removeDiscovery, writeDiscovery } from './discovery.js'
+import { createStaticViewer, type MiddlewareHost, type ViewerPlugin } from './static-viewer.js'
 
 export interface UidxServerOptions {
   /** The `.uidx` file this server is about. */
   file: string
   /** Preferred port; taken ports are skipped (spec §8). */
   port?: number
-  /** Viewer project root. Omit to run headless — sockets only, no Vite. */
+  /**
+   * Viewer *source* root, for a Vite dev server with hot reload — a source
+   * checkout only. Omit both this and `viewerDist` to run headless: sockets
+   * only, no HTTP.
+   */
   root?: string
-  /** Prebuilt viewer assets. Uses static serving without loading project Vite configuration. */
+  /**
+   * The prebuilt viewer, served by this package's own static server. No Vite
+   * is loaded — or needed — on this path, which is the one consumers get.
+   */
   viewerDist?: string
   /** Project-bound MCP hosted on the viewer's HTTP server. */
   mcp?: {
@@ -60,7 +62,11 @@ export interface UidxServer {
 }
 
 const MAX_PORT_ATTEMPTS = 20
-type ViewerServer = Pick<ViteDevServer, 'httpServer' | 'close'>
+/** What the socket rides on, whichever server is underneath. */
+interface ViewerServer {
+  httpServer: HttpServer | null
+  close(): Promise<void>
+}
 
 /**
  * The document the target file belongs to, or null if it is not in one.
@@ -83,14 +89,15 @@ async function openWorkspace(options: UidxServerOptions): Promise<Workspace | nu
 }
 
 /**
- * Vite dev server plus the UIDX socket (spec §4.3).
+ * The viewer's HTTP server plus the UIDX socket (spec §4.3).
  *
- * The socket rides on Vite's HTTP server but answers on its own path, because
- * Vite's HMR channel is already using the default one. Without `root` no Vite
- * server is started at all, which is what the tests use.
+ * The socket rides on the viewer's HTTP server but answers on its own path,
+ * because Vite's HMR channel, on the dev path, is already using the default
+ * one. With neither `viewerDist` nor `root` no HTTP server is started at all,
+ * which is what the headless tests use.
  */
 export async function createUidxServer(options: UidxServerOptions): Promise<UidxServer> {
-  // Vite boots while the document parses, not after it.
+  // The HTTP server boots while the document parses, not after it.
   //
   // Loading a document is CPU-bound parsing — measured at ~6.4ms per 130-line
   // page, so a large design system spends real time here and every millisecond
@@ -118,18 +125,19 @@ export async function createUidxServer(options: UidxServerOptions): Promise<Uidx
   // `uidx apply` — hand their edits to the session instead of writing the file
   // themselves (viewer-at-scale spec §3). Filled once the sessions exist.
   const patchHolder: PatchRouteHolder = { apply: null }
-  const booting = options.root
-    ? listenOnFreePort(
-        options.root,
-        options.port ?? 4400,
-        manifestHolder,
-        selectionHolder,
-        patchHolder,
-        workspaceHolder,
-        options.viewerDist,
-        options.mcp,
-      )
-    : null
+  const booting =
+    options.root || options.viewerDist
+      ? listenOnFreePort(
+          options.root,
+          options.port ?? 4400,
+          manifestHolder,
+          selectionHolder,
+          patchHolder,
+          workspaceHolder,
+          options.viewerDist,
+          options.mcp,
+        )
+      : null
   // Listening can fail while the document is still parsing. Observe the error
   // immediately; attach still awaits the original promise and reports it.
   void booting?.catch(() => undefined)
@@ -154,7 +162,7 @@ export async function createUidxServer(options: UidxServerOptions): Promise<Uidx
 
     return await attach(options, booting, workspace, entry, session, selectionHolder, patchHolder)
   } catch (err) {
-    // A Vite server that is already listening has to be closed, or a failure
+    // An HTTP server that is already listening has to be closed, or a failure
     // here leaves the port bound for the life of the process.
     await booting?.then(({ vite }) => vite.close()).catch(() => undefined)
     if (workspace) await workspace.close()
@@ -330,7 +338,8 @@ async function attach(
   const { vite, port } = await booting
 
   vite.httpServer?.on('upgrade', (request, socket, head) => {
-    // Anything that is not ours is left for Vite's own HMR handler.
+    // Anything that is not ours is left to the server underneath: Vite's HMR
+    // handler on the dev path, and a refusal on the static one.
     const path = (request.url ?? '/').split('?')[0]
     if (path !== WS_PATH) return
     if (!allowsLocalRequest(request)) {
@@ -383,8 +392,8 @@ async function attach(
  * the internet, and this is the viewer asking its own server for a file the
  * document declares — the same way it already gets its wasm and its fonts.
  */
-function assetRoutePlugin(manifest: { current: FoundManifest | null }): Plugin {
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+function assetRoutePlugin(manifest: { current: FoundManifest | null }): ViewerPlugin {
+  const configure = (server: MiddlewareHost): void => {
     // No trailing slash: connect strips the mount path and requires what is
     // left to begin with one, so `/__uidx/asset/` never matches a child.
     server.middlewares.use(ASSET_ROUTE.replace(/\/$/, ''), (request, response, next) => {
@@ -419,8 +428,8 @@ function assetRoutePlugin(manifest: { current: FoundManifest | null }): Plugin {
  * same reason as the asset route: registered after boot it would sit behind
  * Vite's SPA fallback and answer as `index.html`.
  */
-function selectionRoutePlugin(selection: { current: SelectionState | null }): Plugin {
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+function selectionRoutePlugin(selection: { current: SelectionState | null }): ViewerPlugin {
+  const configure = (server: MiddlewareHost): void => {
     server.middlewares.use(SELECTION_ROUTE, (_request, response) => {
       response.setHeader('content-type', 'application/json')
       response.setHeader('cache-control', 'no-store')
@@ -451,8 +460,8 @@ export interface PatchRouteHolder {
  * source hash the write produced, so a turn can attribute the revision to
  * itself. A plugin for the same reason as the other two routes.
  */
-function patchRoutePlugin(holder: PatchRouteHolder): Plugin {
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+function patchRoutePlugin(holder: PatchRouteHolder): ViewerPlugin {
+  const configure = (server: MiddlewareHost): void => {
     server.middlewares.use(PATCH_ROUTE, (request, response) => {
       const answer = (status: number, body: Record<string, unknown>): void => {
         response.statusCode = status
@@ -507,7 +516,7 @@ function patchRoutePlugin(holder: PatchRouteHolder): Plugin {
 }
 
 async function listenOnFreePort(
-  root: string,
+  root: string | undefined,
   preferred: number,
   manifest: { current: FoundManifest | null },
   selection: { current: SelectionState | null },
@@ -525,7 +534,7 @@ async function listenOnFreePort(
     pagesRoutePlugin(workspace),
   ]
   if (mcp) {
-    const configure = (server: Pick<ViteDevServer, 'middlewares'>) => {
+    const configure = (server: MiddlewareHost): void => {
       server.middlewares.use('/mcp', (request, response) => {
         void mcp.handleRequest(request, response).catch((error: unknown) => {
           if (!response.headersSent) response.writeHead(500)
@@ -542,38 +551,27 @@ async function listenOnFreePort(
   let lastError: unknown
   for (let port = preferred; port < Math.min(preferred + MAX_PORT_ATTEMPTS, 65536); port++) {
     if (viewerDist) {
+      const viewer = createStaticViewer({ dist: viewerDist, plugins, socketPath: WS_PATH })
       try {
-        const preview = await previewVite({
-          root,
-          configFile: false,
-          envFile: false,
-          plugins,
-          build: { outDir: viewerDist },
-          preview: { port, strictPort: true, host: 'localhost', open: false },
-        })
-        return {
-          port,
-          vite: {
-            httpServer: preview.httpServer,
-            close: () =>
-              new Promise<void>((resolve, reject) => {
-                preview.httpServer.close((error) => (error ? reject(error) : resolve()))
-              }),
-          },
-        }
+        await viewer.listen(port, 'localhost')
+        return { port, vite: viewer }
       } catch (error) {
         lastError = error
         if (!isPortTaken(error)) throw error
         continue
       }
     }
+    if (!root) throw new Error('a viewer source root is needed when no prebuilt viewer is given')
+    // Loaded here and nowhere else: Vite is a dev-time tool for a source
+    // checkout, and a consumer's install must not need it — or the native
+    // binaries it runs on — to serve the prebuilt viewer above.
+    const { createServer: createViteServer } = await import('vite')
     const vite = await createViteServer({
       root,
       plugins,
       // Left to auto-discovery so the viewer root owns its own config — it needs
       // its framework plugin, which the server has no business knowing about.
       // Inline options below still win over the discovered file.
-      // (Once the viewer ships prebuilt, this becomes static asset serving.)
       server: { port, strictPort: true, host: 'localhost', fs: { allow: [root, process.cwd()] } },
       // @open-pencil/yoga-layout initialises its WASM with a top-level await,
       // which esbuild rejects under the default dep-optimizer target.
@@ -584,7 +582,12 @@ async function listenOnFreePort(
     })
     try {
       await vite.listen()
-      return { vite, port }
+      // Plain HTTP by configuration, so the server underneath is `http.Server`;
+      // the type admits an HTTP/2 server this code never creates.
+      return {
+        port,
+        vite: { httpServer: vite.httpServer as HttpServer | null, close: () => vite.close() },
+      }
     } catch (err) {
       lastError = err
       await vite.close()

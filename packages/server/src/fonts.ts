@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { join } from 'node:path'
-import type { Plugin, ViteDevServer } from 'vite'
+import type { MiddlewareHost, ViewerPlugin } from './static-viewer.js'
 import type { FoundManifest } from './document.js'
 
 export const FONT_ROUTE = '/__uidx/fonts'
@@ -269,7 +269,7 @@ export async function downloadGoogleFont(
   return limitedBody(response.body as unknown as AsyncIterable<Uint8Array>)
 }
 
-export function fontRoutePlugin(manifest: { current: FoundManifest | null }): Plugin {
+export function fontRoutePlugin(manifest: { current: FoundManifest | null }): ViewerPlugin {
   let library: FontLibrary | undefined
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
     response.setHeader('cache-control', 'no-store')
@@ -338,7 +338,7 @@ export function fontRoutePlugin(manifest: { current: FoundManifest | null }): Pl
       )
     }
   }
-  const configure = (server: Pick<ViteDevServer, 'middlewares'>): void => {
+  const configure = (server: MiddlewareHost): void => {
     server.middlewares.use(FONT_ROUTE, (req, res) => {
       void handle(req, res)
     })
