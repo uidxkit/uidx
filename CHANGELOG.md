@@ -4,7 +4,7 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
-## Unreleased
+## 0.1.5 — 2026-09-20
 
 - The prebuilt viewer is served by `@uidx/server`'s own static server instead
   of `vite preview`. Vite, and the platform-specific native binaries Vite 8
