@@ -53,10 +53,13 @@ doesn't exist. Existing scripts, configuration, and designs are preserved.
 The CLI, server, viewer, WASM, and bundled fonts live in your project's
 `node_modules`; a global UIDX installation is not required.
 
-If npm install scripts are disabled, initialize once with
-`npx --no-install uidx init`. If your project already uses a script named `uidx`,
-choose another with `npx --no-install uidx init --script design`, then run
-`npm run design`.
+Recent npm versions do not run a package's install script until you approve
+it, and warn with `install scripts not yet covered by allowScripts`. Nothing is
+lost: the first `npx uidx dev` performs the same setup itself and says so, or
+approve the script with `npm install-scripts approve @uidxkit/uidx` and
+reinstall. To set up explicitly, run `npx --no-install uidx init`. If your
+project already uses a script named `uidx`, choose another with
+`npx --no-install uidx init --script design`, then run `npm run design`.
 
 ## Your design workspace
 

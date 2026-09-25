@@ -21,10 +21,12 @@ merges `.mcp.json`, and installs portable skills. Existing designs, configuratio
 MCP servers and skills are preserved. The CLI, server, built viewer, WASM and
 fonts live in your project's `node_modules`; no global installation is needed.
 
-Use `-D` / `--save-dev` to save `@uidxkit/uidx` as a development dependency. If install
-scripts are disabled or `UIDX_SKIP_INIT=1` is set, run `npx --no-install uidx init`
-after installation. When a script name is already taken, use
-`npx --no-install uidx init --script design` and then `npm run design`.
+Use `-D` / `--save-dev` to save `@uidxkit/uidx` as a development dependency. Recent
+npm versions do not run install scripts until they are approved, so the first
+`npx uidx dev` performs the same setup itself; alternatively approve the script with
+`npm install-scripts approve @uidxkit/uidx`, or run `npx --no-install uidx init` after
+installation (also the path when `UIDX_SKIP_INIT=1` is set). When a script name is
+already taken, use `npx --no-install uidx init --script design` and then `npm run design`.
 
 ## Configuration and designs
 
