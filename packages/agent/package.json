@@ -58,7 +58,7 @@
     "ai-sdk-ollama": "^4.3.0",
     "chokidar": "^4.0.3",
     "dotenv": "^17.4.2",
-    "hono": "^4.13.5",
+    "hono": "^4.13.8",
     "picomatch": "^4.0.2",
     "tinyglobby": "^0.2.10",
     "zod": "^4.6.1"
