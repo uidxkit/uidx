@@ -37,10 +37,10 @@
     "@modelcontextprotocol/sdk": "^1.30.0"
   },
   "devDependencies": {
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.2",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
-    "vitest": "^5.0.0"
+    "vitest": "^5.0.1"
   },
   "description": "Project-local, file-first UI design workspace",
   "engines": {
