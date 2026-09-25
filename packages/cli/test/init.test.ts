@@ -200,15 +200,17 @@ describe('project setup', () => {
   })
 
   it('reports missing setup and invalid ports clearly', async () => {
-    expect(await invoke(['dev', '--no-open'])).toMatchObject({
-      code: 1,
-      out: expect.stringContaining('uidx init'),
-    })
     expect(await invoke(['dev', '--port', '70000'])).toMatchObject({
       code: 1,
       err: expect.stringContaining('65535'),
     })
+    // Inside an npm project a missing workspace is set up by `dev` itself
+    // (see open.test.ts); outside one there is nothing to set up, so it says how.
     await rm(join(dir, 'package.json'))
+    expect(await invoke(['dev', '--no-open'])).toMatchObject({
+      code: 1,
+      out: expect.stringContaining('uidx init'),
+    })
     expect(await invoke(['init'])).toMatchObject({
       code: 1,
       err: expect.stringContaining('package.json'),

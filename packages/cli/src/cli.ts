@@ -216,7 +216,7 @@ async function runOpen(argv: string[], io: Io): Promise<number> {
   }
 
   try {
-    const { server, url } = await open(file, {
+    const { server, url, initialized } = await open(file, {
       port,
       root: parsed.values.root,
       viewerDev: parsed.values['viewer-dev'],
@@ -224,6 +224,12 @@ async function runOpen(argv: string[], io: Io): Promise<number> {
       verbose: parsed.values.verbose,
       cwd: io.cwd,
     })
+    if (initialized) {
+      io.out(
+        `No .uidx workspace was found, so uidx set one up in ${initialized} — the setup npm's install script does when it is allowed to run.\n` +
+          'Added the uidx and uidx:mcp scripts to package.json, an entry to .mcp.json, and the skills.\n',
+      )
+    }
     io.out(url ? `uidx serving ${file} at ${url}\n` : `uidx watching ${file} (no viewer root)\n`)
     await waitForInterrupt(server)
     return 0

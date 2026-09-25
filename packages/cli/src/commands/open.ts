@@ -17,7 +17,8 @@ import {
   type LoadedDocument,
 } from '@uidx/server/document'
 
-import { exists, projectContentRoot } from '../project.js'
+import { exists, findProjectRoot, PROJECT_DIR, projectContentRoot } from '../project.js'
+import { initProject } from './init.js'
 
 export interface OpenOptions {
   port?: number
@@ -37,6 +38,13 @@ export interface OpenOptions {
 }
 
 export interface OpenResult {
+  /**
+   * The project root whose workspace this run created, or null when one
+   * already existed. npm now blocks install scripts unless they are approved,
+   * so the postinstall that used to do this setup cannot be relied on; the
+   * first `uidx dev` does it instead, and says so.
+   */
+  initialized: string | null
   server: UidxServer
   url: string | null
   /** Null only when `requireDocument` is false. */
@@ -60,7 +68,7 @@ export async function open(file = '.', options: OpenOptions = {}): Promise<OpenR
   const cwd = options.cwd ?? process.cwd()
   const target = resolve(cwd, file)
   const browse = (await stat(target).catch(() => null))?.isDirectory() ?? false
-  const path = await resolveEntry(target)
+  const { path, initialized } = await resolveEntry(target)
 
   let source: string
   try {
@@ -117,7 +125,7 @@ export async function open(file = '.', options: OpenOptions = {}): Promise<OpenR
     url = pageUrl.toString()
   }
   if (options.launchBrowser && url) launch(url)
-  return { server, url, document }
+  return { server, url, document, initialized }
 }
 
 /** Fail before boot when a page cannot resolve its document-wide symbols. */
@@ -171,16 +179,32 @@ function resolveViewerRoot(): { root: string; dist: string } | undefined {
 }
 
 /** Resolve a project or document directory without depending on its first filename. */
-async function resolveEntry(target: string): Promise<string> {
+async function resolveEntry(target: string): Promise<{ path: string; initialized: string | null }> {
   const info = await stat(target).catch(() => null)
-  if (!info?.isDirectory()) return target
-  const content = (await exists(resolve(target, '.uidx', MANIFEST_NAME)))
+  if (!info?.isDirectory()) return { path: target, initialized: null }
+  let content = (await exists(resolve(target, '.uidx', MANIFEST_NAME)))
     ? resolve(target, '.uidx')
     : (await exists(resolve(target, MANIFEST_NAME)))
       ? target
       : await projectContentRoot(target)
+  let initialized: string | null = null
   if (!content) {
-    throw new BootError(['No uidx workspace found. Run uidx init inside your project first.'])
+    // An npm project with no workspace yet: the install script that would
+    // have set it up did not run — npm blocks install scripts unless they
+    // are approved — so the first run does the same setup itself.
+    const root = await findProjectRoot(target)
+    if (!root) {
+      throw new BootError(['No uidx workspace found. Run uidx init inside your project first.'])
+    }
+    try {
+      initialized = await initProject(target)
+    } catch (error) {
+      throw new BootError([
+        `No uidx workspace found, and setting one up failed: ${(error as Error).message}`,
+        'Run uidx init inside your project, with --script <name> if the default script name is taken.',
+      ])
+    }
+    content = resolve(initialized, PROJECT_DIR)
   }
   const path = resolve(content, MANIFEST_NAME)
   const found = { path, dir: content, manifest: await readManifest(path) }
@@ -190,9 +214,9 @@ async function resolveEntry(target: string): Promise<string> {
   for (const member of members) {
     const file = resolve(content, member)
     const result = parse(await readFile(file, 'utf8'))
-    if (!result.doc || result.doc.tree.element !== 'Tokens') return file
+    if (!result.doc || result.doc.tree.element !== 'Tokens') return { path: file, initialized }
   }
-  if (members[0]) return resolve(content, members[0])
+  if (members[0]) return { path: resolve(content, members[0]), initialized }
   throw new BootError([`No .uidx pages are declared in ${path}. Add a page inside ${content}.`])
 }
 

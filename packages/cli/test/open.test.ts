@@ -76,6 +76,42 @@ describe('uidx open', () => {
     expect(await readFile(file, 'utf8')).toBe(VALID)
   })
 
+  /**
+   * npm blocks install scripts unless they are approved, so the postinstall
+   * that set the workspace up is no longer something an install can count on.
+   * The first run has to do the same setup itself, or the documented path —
+   * install, then `npm run uidx` — dead-ends with "no workspace".
+   */
+  it('sets the workspace up on the first run when the install script did not', async () => {
+    const app = join(dir, 'app')
+    await mkdir(app)
+    await writeFile(join(app, 'package.json'), '{"name":"fresh-app"}')
+    const result = await open('.', { cwd: app, launchBrowser: false })
+    server = result.server
+    expect(result.initialized).toBe(app)
+    expect(result.document?.dir).toBe(join(app, '.uidx'))
+    expect(result.document?.pages.map((page) => page.file)).toEqual(['welcome.uidx'])
+    expect(JSON.parse(await readFile(join(app, 'package.json'), 'utf8')).scripts).toMatchObject({
+      uidx: 'uidx dev',
+      'uidx:mcp': 'uidx mcp',
+    })
+    expect(result.url).toBe(server.url)
+  })
+
+  it('still refuses a directory that is not an npm project', async () => {
+    const loose = join(dir, 'loose')
+    await mkdir(loose)
+    await expect(open('.', { cwd: loose, launchBrowser: false })).rejects.toBeInstanceOf(BootError)
+  })
+
+  it('reports an existing workspace as not newly set up', async () => {
+    await writeFile(join(dir, 'package.json'), '{"name":"app"}')
+    await initProject(dir)
+    const result = await open('.', { cwd: dir, launchBrowser: false })
+    server = result.server
+    expect(result.initialized).toBeNull()
+  })
+
   it('parses once and starts watching', async () => {
     const result = await open(file, { launchBrowser: false })
     server = result.server

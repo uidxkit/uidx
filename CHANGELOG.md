@@ -4,6 +4,14 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## Unreleased
+
+- The first `uidx dev` sets up the workspace itself when the install script did
+  not run: recent npm versions block a package's install scripts until they are
+  approved, which left a fresh install with no `.uidx/`, no `uidx` scripts and
+  no skills. The setup is the same one the install script performs, and the
+  command says what it added.
+
 ## 0.1.5 — 2026-09-20
 
 - The prebuilt viewer is served by `@uidx/server`'s own static server instead
