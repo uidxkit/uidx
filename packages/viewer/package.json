@@ -17,7 +17,7 @@
     "@uidx/schema": "workspace:*",
     "@uidx/server": "workspace:*",
     "ai": "^7.0.99",
-    "canvaskit-wasm": "0.40.0",
+    "canvaskit-wasm": "0.42.0",
     "svgpath": "^2.6.0",
     "vue": "^3.5.42",
     "@types/node": "^26.5.1",
