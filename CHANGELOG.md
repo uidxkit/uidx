@@ -4,7 +4,7 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
-## Unreleased
+## 0.1.6 — 2026-09-25
 
 - The first `uidx dev` sets up the workspace itself when the install script did
   not run: recent npm versions block a package's install scripts until they are

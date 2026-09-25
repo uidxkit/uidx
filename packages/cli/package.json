@@ -1,6 +1,6 @@
 {
   "name": "@uidxkit/uidx",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "type": "module",
   "bin": {
     "uidx": "./dist/uidx.js"
