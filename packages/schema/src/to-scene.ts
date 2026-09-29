@@ -5,6 +5,7 @@ import {
   mapLengthLeaves,
   isUnitLength,
   UNITLESS_NUMBER_PROPS,
+  type PropSpec,
 } from '@uidx/format'
 import {
   computeAllLayouts,
@@ -719,14 +720,51 @@ function declaredDefaults(component: UidxNode, sampleIndex = 0): Map<string, Jso
  * here they are simply not applied, so the instance falls back to the default
  * and still draws.
  */
-function instanceValues(instance: UidxNode, definition: UidxNode): Map<string, JsonValue> {
+function instanceValues(
+  instance: UidxNode,
+  definition: UidxNode,
+  resolveAlias?: AliasResolver,
+): Map<string, JsonValue> {
   const declared = componentProps(definition).declared
+  const contract = new Map(
+    (definition.spec?.contract?.props ?? []).map((prop) => [prop.name, prop] as const),
+  )
   const out = new Map<string, JsonValue>()
-  for (const [name, value] of declaredInstanceValues(instance).values) {
+  for (const [name, raw] of declaredInstanceValues(instance).values) {
+    // `props={{ label: '{label}' }}` passes the consuming component's own
+    // property through (ADR 0017 §3), so an alias here is the *consumer's*
+    // — resolved in its scope, before the value enters the definition's. A
+    // token alias resolves the same way. One that resolves to nothing is
+    // left unset, so the instance falls back to the definition's default.
+    const target = aliasTarget(raw)
+    const value = target === null ? raw : resolveAlias?.(target)
+    if (value === undefined) continue
     const declaration = declared.get(name)
-    if (declaration && matchesType(declaration.type, value)) out.set(name, value)
+    if (declaration) {
+      if (matchesType(declaration.type, value)) out.set(name, value)
+      continue
+    }
+    // A component declared by its contract alone (ADR 0013 §5) has no `props`
+    // attribute to be found in; its `<Prop>` elements are the declaration.
+    const prop = contract.get(name)
+    if (prop && matchesSpecType(prop, value)) out.set(name, value)
   }
   return out
+}
+
+/**
+ * Whether a value fits a contract prop's TypeScript-ish type, to the depth a
+ * renderer needs: a boolean where the contract says `boolean`, a number for
+ * `number`, a string for `string` or a string enum. Anything else — a model,
+ * an array, a union nobody spelt — is trusted; `uidx check` is the audit.
+ */
+function matchesSpecType(prop: PropSpec, value: JsonValue): boolean {
+  if (prop.model || prop.type === undefined) return true
+  if (prop.type === 'boolean') return typeof value === 'boolean'
+  if (prop.type === 'number') return typeof value === 'number'
+  if (prop.type === 'string' || /^'[^']*'(\s*\|\s*'[^']*')*$/.test(prop.type))
+    return typeof value === 'string'
+  return true
 }
 
 /* ------------------------------------------------- instances (story F3) */
@@ -915,7 +953,7 @@ function expandInstance(
       options.resolveAlias,
       new Map([
         ...declaredDefaults(definition, options.sampleIndex),
-        ...instanceValues(node, definition),
+        ...instanceValues(node, definition, options.resolveAlias),
       ]),
     ),
   }
@@ -1114,7 +1152,10 @@ export function generatedChildProps(
     ...options,
     resolveAlias: withProperties(
       options.resolveAlias,
-      new Map([...declaredDefaults(definition), ...instanceValues(instance, definition)]),
+      new Map([
+        ...declaredDefaults(definition),
+        ...instanceValues(instance, definition, options.resolveAlias),
+      ]),
     ),
   }
   const root = variantFor(definition, instance) ?? definition
@@ -1270,7 +1311,11 @@ export function scenePropsFor(
   }
 
   return {
-    ...(node.element === 'Component' ? componentSizing(node) : {}),
+    // A slot "inherits frame-like properties" (ADR 0007 §1), and the one that
+    // matters when it says nothing about its size is this: its box is its
+    // placeholder content, not the engine's 100x100 default — which would
+    // hold a one-line placeholder in a square and push everything below it.
+    ...(node.element === 'Component' || node.element === 'Slot' ? componentSizing(node) : {}),
     ...(hasVariants(node) ? variantDefinitions(node) : {}),
     ...(node.element === 'Text' ? textSizing(node) : {}),
     name: node.name,
@@ -1306,6 +1351,31 @@ function variantDefinitions(component: UidxNode): Partial<SceneNode> {
 
 /** Attrs whose array entries may carry a `color` alias (spec §4). */
 const PAINT_PROPS: ReadonlySet<string> = new Set(['fills', 'strokes', 'effects'])
+
+/** A Figma colour: `{ r, g, b }` in 0–1, alpha optional. */
+function isColor(value: JsonValue): boolean {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+  const { r, g, b } = value as Record<string, JsonValue>
+  return typeof r === 'number' && typeof g === 'number' && typeof b === 'number'
+}
+
+/**
+ * Follows a whole-attribute alias on a paint list. `strokes="{border#default}"`
+ * names a COLOR token, and a colour is not a paint list, so it becomes the one
+ * solid paint it means. An alias naming a paint list resolves to that list. An
+ * unresolved alias comes back untouched: `scenePropFor` reports it, and the
+ * caller's array check drops it. Shared by `scenePropFor` and the stroke
+ * composition in `scenePropsFor`, which must agree — the composition is what
+ * folds `strokeWeight` into each stroke, and a stroke it never saw is drawn
+ * with no weight at all.
+ */
+function wholePaintAlias(value: JsonValue, resolveAlias: AliasResolver | undefined): JsonValue {
+  const target = aliasTarget(value)
+  if (target === null) return value
+  const bound = resolveAlias?.(target)
+  if (bound === undefined) return value
+  return isColor(bound) ? [{ type: 'SOLID', color: bound }] : bound
+}
 
 /**
  * Resolves `color` aliases inside paint/effect entries. An entry whose token
@@ -1395,7 +1465,11 @@ export function scenePropFor(
       warnings.push(`${at}: unresolved token "${target}"`)
       return null
     }
-    authored = bound
+    // `fills="{surface#accent}"` names a COLOR token for the whole paint list
+    // (ADR 0016 §2 writes every style row this way). A colour is not a paint
+    // list, so it becomes the one solid paint it means; the per-entry form,
+    // `[{ type: 'SOLID', color: '{token}' }]`, still resolves below.
+    authored = PAINT_PROPS.has(prop) && isColor(bound) ? [{ type: 'SOLID', color: bound }] : bound
   }
 
   if (UNITLESS_NUMBER_PROPS.has(prop) && isUnitLength(authored)) {
@@ -1512,7 +1586,7 @@ function overridesFor(
   if (node.attrs.strokes) {
     const strokes = composeStrokes(
       resolvePaintAliases(
-        node.attrs.strokes.value,
+        wholePaintAlias(node.attrs.strokes.value, resolveAlias),
         resolveAlias,
         warnings,
         node.address || '<root>',

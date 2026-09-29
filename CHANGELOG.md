@@ -11,8 +11,10 @@ describe migrations when an existing document or integration is affected.
   `## Behavior` guidelines, `## Models` and `## Examples` after its visual
   contract, and a `<Styles>` table beside the root. Declarations only: nothing
   in the file computes. The viewer draws a styles table as the variant set it
-  derives, resolves `{item.field}` bindings to a model's samples, and expands
-  `<Repeat>` into sample rows. `uidx check` audits the regions against each
+  derives, resolves `{item.field}` bindings to a model's samples and `{prop}`
+  to the prop's `sample` or default, expands `<Repeat>` into sample rows, and
+  resolves an instance's `props={{ label: '{label}' }}` in the consuming
+  component's scope. A `<Slot>` that states no size hugs its placeholder. `uidx check` audits the regions against each
   other and the tree; `uidx contract` prints them as JSON.
 - `@uidx/codegen` and `uidx codegen`: HTML/CSS and React rendered from the
   identities over headless custom elements, with props, events and slots from

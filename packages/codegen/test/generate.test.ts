@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CODES } from '@uidx/format'
+import { CODES, parseOrThrow } from '@uidx/format'
 import { generate, tsType, componentModel, partTag } from '../src/index.js'
 import { CHECKBOX, CONTACT_ITEM, CONTACT_LIST, FIELD, MANIFEST, TOKENS } from './fixtures.js'
 
@@ -109,6 +109,43 @@ describe('the HTML/CSS target', () => {
     expect(html).toContain('<span data-node="email">ada@example.com</span>')
     expect(html).toContain('<span data-node="email"></span>')
     expect(html.split('<hwc-radio>')).toHaveLength(3)
+  })
+})
+
+describe('a composition in the HTML target', () => {
+  it("renders the instance it holds with this page's props laid over its samples", () => {
+    const page = parseOrThrow(`---
+id: checkbox-field
+---
+
+A checkbox with its words.
+
+## Visual Contract
+
+<Page>
+  <Component name="CheckboxField" status="stable">
+    <Instance name="field" component="Field" props={{ label: '{label}', description: 'Helper for this one' }}>
+      <Slot name="control"><Instance name="box" component="Checkbox" /></Slot>
+    </Instance>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Remember me">The option's name.</Prop>
+</Props>
+<Composes with="Field, Checkbox" />
+`)
+    const out = generate({
+      pages: [...PAGES, { file: 'checkbox-field.uidx', doc: page }],
+      tokens: [TOKENS],
+      manifest: MANIFEST,
+    })
+    const html = out.files.get('html/checkbox-field.html')!
+    expect(html).toContain('<hwc-field-label>Remember me</hwc-field-label>')
+    expect(html).toContain('<hwc-field-description>Helper for this one</hwc-field-description>')
+    expect(html).toContain('<hwc-checkbox>')
   })
 })
 

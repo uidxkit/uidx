@@ -33,7 +33,7 @@ Lets a user toggle one option.
 <Props>
   <Prop name="checked" type="boolean" default={false} controllable visual>Whether the option is selected.</Prop>
   <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
-  <Prop name="name" type="string">Form field name.</Prop>
+  <Prop name="name" type="string" sample="choice">Form field name.</Prop>
 </Props>
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires once per user toggle.</Event>
@@ -109,6 +109,7 @@ describe('spec regions', () => {
       ['email', false, true],
     ])
     expect(contact.fields[2]!.sample).toEqual(['ada@example.com', null])
+    expect(spec.contract!.props.find((p) => p.name === 'name')!.sample).toBe('choice')
 
     expect(spec.examples).toMatchObject([
       {

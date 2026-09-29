@@ -113,11 +113,36 @@ hwc-button:hover {
 }
 
 hwc-button:hover[variant="secondary"] {
+  background-color: var(--surface-raised);
   border: 1px solid var(--border-hover);
 }
 
 hwc-button:hover[variant="outline"] {
+  background-color: var(--surface-control);
   border: 1px solid var(--border-hover);
+}
+
+hwc-button:hover[variant="ghost"] {
+  background-color: var(--surface-raised);
+  border: 1px solid var(--surface-raised);
+}
+
+hwc-button:hover[variant="destructive"] {
+  background-color: var(--surface-danger);
+  border: 1px solid var(--surface-danger);
+}
+
+hwc-button:hover[variant="link"] {
+  background-color: var(--surface-control);
+  border: 1px solid var(--surface-control);
+}
+
+hwc-button:hover[variant="link"] hwc-button-label {
+  color: var(--surface-accentHover);
+}
+
+hwc-button:hover[variant="link"] hwc-button-leading-icon {
+  color: var(--surface-accentHover);
 }
 
 hwc-button:focus-visible {

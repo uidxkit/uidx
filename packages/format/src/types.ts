@@ -486,6 +486,12 @@ export interface PropSpec {
   /** A `{models#Name}` reference, for a prop that receives a model. */
   model?: string
   default?: JsonValue
+  /**
+   * A demonstration value for the canvas and generated markup, shown where
+   * the prop is bound (ADR 0015 §1: samples are for demonstration only). Not
+   * the default: a required text prop has no default and still needs words.
+   */
+  sample?: JsonValue
   controllable: boolean
   visual: boolean
   description: string

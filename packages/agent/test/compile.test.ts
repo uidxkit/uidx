@@ -64,6 +64,7 @@ describe('editOpsSchema', () => {
       'Instance',
       'Variant',
       'Slot',
+      'Repeat',
     ])
   })
 

@@ -171,6 +171,7 @@ export function cssDeclarations(
       case 'layoutGrow':
         set('flex-grow', cssNumber(value))
         break
+      case 'layoutAlign':
       case 'layoutAlignSelf':
         if (value === 'STRETCH') out['align-self'] = 'stretch'
         break

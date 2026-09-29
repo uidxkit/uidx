@@ -28,7 +28,10 @@ function Demo() {
       </section>
       <section>
         <h2>CheckboxField</h2>
-        <CheckboxField label="Remember me" description="Stay signed in on this device for 30 days." />
+        <CheckboxField
+          label="Remember me"
+          description="Stay signed in on this device for 30 days."
+        />
         <Field
           label="Newsletter"
           description="One email a month."
@@ -51,7 +54,11 @@ function Demo() {
           items={people}
           name="assignee"
           renderItem={(person) => (
-            <ContactOptionRow person={person} chosen={chosen === person.id} onChoose={() => setChosen(person.id)} />
+            <ContactOptionRow
+              person={person}
+              chosen={chosen === person.id}
+              onChoose={() => setChosen(person.id)}
+            />
           )}
           empty={<span>No contacts yet</span>}
         />
@@ -63,8 +70,23 @@ function Demo() {
 
 import { ContactOption } from '../generated/react'
 
-function ContactOptionRow({ person, chosen, onChoose }: { person: Contact; chosen: boolean; onChoose: () => void }) {
-  return <ContactOption item={person} value={person.id} checked={chosen} onChange={({ checked }) => checked && onChoose()} />
+function ContactOptionRow({
+  person,
+  chosen,
+  onChoose,
+}: {
+  person: Contact
+  chosen: boolean
+  onChoose: () => void
+}) {
+  return (
+    <ContactOption
+      item={person}
+      value={person.id}
+      checked={chosen}
+      onChange={({ checked }) => checked && onChoose()}
+    />
+  )
 }
 
 export function mountReactDemo(container: HTMLElement): void {

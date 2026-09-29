@@ -16,7 +16,9 @@ const out = resolve(root, 'generated')
 
 const pages = []
 const tokens = []
-for (const name of (await readdir(resolve(root, '.uidx'))).filter((n) => n.endsWith('.uidx')).sort()) {
+for (const name of (await readdir(resolve(root, '.uidx')))
+  .filter((n) => n.endsWith('.uidx'))
+  .sort()) {
   const file = `.uidx/${name}`
   const { doc, diagnostics } = parse(await readFile(resolve(root, file), 'utf8'))
   for (const d of diagnostics) console.error(formatDiagnostic(d, file))
@@ -24,7 +26,9 @@ for (const name of (await readdir(resolve(root, '.uidx'))).filter((n) => n.endsW
   if (doc.tree.element === 'Tokens') tokens.push(doc)
   else pages.push({ file, doc })
 }
-const manifest = JSON.parse(await readFile(resolve(root, 'vendor/hwc/custom-elements.json'), 'utf8'))
+const manifest = JSON.parse(
+  await readFile(resolve(root, 'vendor/hwc/custom-elements.json'), 'utf8'),
+)
 const result = generate({ pages, tokens, manifest })
 for (const d of result.diagnostics) console.error(formatDiagnostic(d, d.file))
 if (result.diagnostics.some((d) => d.severity === 'error')) process.exit(1)

@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url'
  * this repository needs nothing outside it.
  */
 const root = fileURLToPath(new URL('..', import.meta.url))
-const source = resolve(process.env.HWC_DIR ?? resolve(root, '../../../headless-web-components/packages/components'))
+const source = resolve(
+  process.env.HWC_DIR ?? resolve(root, '../../../headless-web-components/packages/components'),
+)
 const target = resolve(root, 'vendor/hwc')
 
 await rm(target, { recursive: true, force: true })

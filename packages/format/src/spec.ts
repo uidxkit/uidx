@@ -286,6 +286,7 @@ export class SpecLowerer {
             if (type) prop.type = type
             if (model) prop.model = model
             if (child.attrs.default !== undefined) prop.default = child.attrs.default
+            if (child.attrs.sample !== undefined) prop.sample = child.attrs.sample
             spec.props.push(prop)
           }
           break

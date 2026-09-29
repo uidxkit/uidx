@@ -19,21 +19,24 @@
         "controllable": false,
         "visual": false,
         "description": "The option's name.",
-        "type": "string"
+        "type": "string",
+        "sample": "Remember me"
       },
       {
         "name": "description",
         "controllable": false,
         "visual": false,
         "description": "Helper text under the label.",
-        "type": "string"
+        "type": "string",
+        "sample": "Stay signed in on this device."
       },
       {
         "name": "errorMessage",
         "controllable": false,
         "visual": false,
         "description": "Validation text, shown while in error.",
-        "type": "string"
+        "type": "string",
+        "sample": "Choose one option."
       },
       {
         "name": "error",

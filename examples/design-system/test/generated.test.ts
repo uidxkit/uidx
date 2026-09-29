@@ -15,14 +15,18 @@ const root = resolve(import.meta.dirname, '..')
 async function load() {
   const pages = []
   const tokens = []
-  for (const name of (await readdir(resolve(root, '.uidx'))).filter((n) => n.endsWith('.uidx')).sort()) {
+  for (const name of (await readdir(resolve(root, '.uidx')))
+    .filter((n) => n.endsWith('.uidx'))
+    .sort()) {
     const file = `.uidx/${name}`
     const { doc, diagnostics } = parse(await readFile(resolve(root, file), 'utf8'))
     expect(diagnostics, file).toEqual([])
     if (doc!.tree.element === 'Tokens') tokens.push(doc!)
     else pages.push({ file, doc: doc! })
   }
-  const manifest = JSON.parse(await readFile(resolve(root, 'vendor/hwc/custom-elements.json'), 'utf8'))
+  const manifest = JSON.parse(
+    await readFile(resolve(root, 'vendor/hwc/custom-elements.json'), 'utf8'),
+  )
   return { pages, tokens, manifest }
 }
 

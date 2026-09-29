@@ -40,9 +40,12 @@ parser recognised there before is unchanged; the new regions are parsed into
 ```
 
 - `Prop`: `name`, `type` (a TypeScript-ish type string, or `model`), `default`,
-  `controllable` (framework adapters add controlled/uncontrolled handling),
-  `visual` (may drive appearance: an axis in ADR 0016 and a Figma variant
-  property). Text content is the description and is required.
+  `sample` (a demonstration value for the canvas and generated markup, in the
+  sense of ADR 0015 §1 — a required text prop has no default and still needs
+  words to draw; it changes nothing in generated code), `controllable`
+  (framework adapters add controlled/uncontrolled handling), `visual` (may
+  drive appearance: an axis in ADR 0016 and a Figma variant property). Text
+  content is the description and is required.
 - `Event`: `name`, `detail`; description required.
 - `States`: `structural` states mount or unmount parts; `styling` states only
   change appearance. Both are the headless root's states.

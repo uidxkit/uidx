@@ -10,7 +10,8 @@ Contact.
 
 <Page>
   <Component name="ContactOption" status="stable" implements="hwc-radio"
-    layoutMode="HORIZONTAL" itemSpacing="{space#sm}" counterAxisAlignItems="CENTER"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    itemSpacing="{space#sm}" counterAxisAlignItems="CENTER"
     paddingLeft="{space#sm}" paddingRight="{space#sm}" paddingTop="{space#xs}" paddingBottom="{space#xs}"
     cornerRadius="{radius#md}" fills="{surface#control}">
     <Frame name="ring" width={16} height={16} cornerRadius="{radius#full}"
@@ -19,7 +20,7 @@ Contact.
       <Vector name="dot" part="checked-indicator" visible={false} width={8} height={8} fills="{surface#accent}"
         vectorPaths={[{ windingRule: 'NONZERO', data: 'M4 0a4 4 0 110 8 4 4 0 010-8z' }]} />
     </Frame>
-    <Frame name="who" layoutMode="VERTICAL">
+    <Frame name="who" layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
       <Text name="name" characters="{item.name}" fontSize={14} fills="{text#default}" />
       <Text name="email" characters="{item.email}" fontSize={12} fills="{text#muted}" />
     </Frame>

@@ -73,6 +73,11 @@ describe('a styles table derives the variant set (ADR 0016)', () => {
     ])
   })
 
+  it('leaves the set itself unpainted: paint and layout live on each root', () => {
+    expect(set.fills ?? []).toEqual([])
+    expect(set.layoutMode).toBe('NONE')
+  })
+
   it('applies the matching rows to the root and the bound parts', () => {
     const root = (name: string) => scene.graph.getNode(`Checkbox#${name}/root`)!
     expect(root('size=md, state=default').fills![0]!.color).toMatchObject({ r: 1, g: 1, b: 1 })
@@ -180,6 +185,103 @@ describe('models bind samples into the tree (ADR 0015)', () => {
     expect(scene.graph.getNode('ContactItem#email')!.text).toBe('ada@example.com')
     expect(scene.graph.getNode('ContactItem#city')!.text).toBe('London')
     expect(scene.warnings).toEqual([])
+  })
+
+  it('shows a prop by its sample before its default, and a text with neither stays empty', () => {
+    const scene = toSceneGraph(
+      parseOrThrow(
+        page(
+          'labelled',
+          `  <Component name="Labelled" status="draft" layoutMode="VERTICAL">
+    <Text name="a" characters="{label}" />
+    <Text name="b" characters="{hint}" />
+    <Text name="c" characters="{note}" />
+  </Component>`,
+          `
+## Contract
+
+<Props>
+  <Prop name="label" type="string" default="Button" sample="Save changes">Text.</Prop>
+  <Prop name="hint" type="string" default="A hint">Text.</Prop>
+  <Prop name="note" type="string">Text.</Prop>
+</Props>
+`,
+        ),
+      ),
+    )
+    expect(scene.graph.getNode('Labelled#a')!.text).toBe('Save changes')
+    expect(scene.graph.getNode('Labelled#b')!.text).toBe('A hint')
+    expect(scene.graph.getNode('Labelled#c')!.text).toBe('')
+  })
+})
+
+describe('a composition passes its own props through (ADR 0017 §3)', () => {
+  const field = parseOrThrow(
+    page(
+      'field',
+      `  <Component name="Field" status="stable" implements="hwc-field" layoutMode="VERTICAL">
+    <Slot name="control" />
+    <Text name="label" part="label" characters="{label}" />
+  </Component>`,
+      `
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email">The control's name.</Prop>
+</Props>
+<Parts>label</Parts>
+<Slots><Slot name="control">The control.</Slot></Slots>
+`,
+    ),
+  )
+  const outer = (props: string) =>
+    parseOrThrow(
+      page(
+        'checkbox-field',
+        `  <Component name="CheckboxField" status="stable">
+    <Instance name="field" component="Field" props={${props}} />
+  </Component>`,
+        `
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Remember me">The option's name.</Prop>
+</Props>
+<Composes with="Field" />
+`,
+      ),
+    )
+  const build = (props: string) => {
+    const doc = outer(props)
+    const index = componentIndex(doc, field)
+    return toSceneGraph(doc, { resolveComponent: (name) => index.get(name) })
+  }
+
+  it("resolves '{label}' in the consumer's scope, not the definition's", () => {
+    const scene = build(`{ label: '{label}' }`)
+    expect(scene.graph.getNode('CheckboxField#field/label')!.text).toBe('Remember me')
+    expect(scene.warnings).toEqual([])
+  })
+
+  it('accepts a literal for a prop the contract alone declares', () => {
+    expect(build(`{ label: 'Hi' }`).graph.getNode('CheckboxField#field/label')!.text).toBe('Hi')
+  })
+
+  it('keeps the default when the passed value is of the wrong type or unresolved', () => {
+    expect(build(`{ label: true }`).graph.getNode('CheckboxField#field/label')!.text).toBe('Email')
+    expect(build(`{ label: '{nothing}' }`).graph.getNode('CheckboxField#field/label')!.text).toBe(
+      'Email',
+    )
+  })
+})
+
+describe('a slot that says nothing about its size', () => {
+  it('hugs its placeholder rather than sitting in the engine default box', () => {
+    const scene = toSceneGraph(parseOrThrow(LIST_SOURCE))
+    const empty = scene.graph.getNode('ContactList#empty')
+    expect(empty).toBeDefined()
+    expect(empty!.primaryAxisSizing).toBe('HUG')
+    expect(empty!.counterAxisSizing).toBe('HUG')
   })
 })
 
@@ -292,5 +394,32 @@ describe('contractJson', () => {
       'size',
       'disabled',
     ])
+  })
+})
+
+describe('a whole-attribute paint alias', () => {
+  it('resolves a COLOR token on fills and strokes to one solid paint', () => {
+    const doc = parseOrThrow(
+      page(
+        'paint',
+        `  <Frame name="box" fills="{color#brand}" strokes="{color#brand}" strokeWeight={2} />`,
+      ),
+    )
+    const scene = toSceneGraph(doc, {
+      resolveAlias: (address) =>
+        address === 'color#brand' ? { r: 0, g: 0.5, b: 1, a: 1 } : undefined,
+    })
+    const box = scene.graph.getNode('box')!
+    expect(box.fills).toHaveLength(1)
+    expect(box.fills![0]).toMatchObject({ type: 'SOLID', color: { r: 0, g: 0.5, b: 1, a: 1 } })
+    // Strokes go through the composition that folds `strokeWeight` in; a
+    // stroke that skipped it would keep the colour and lose its weight, and
+    // draw as nothing.
+    expect(box.strokes?.[0]).toMatchObject({
+      color: { r: 0, g: 0.5, b: 1, a: 1 },
+      weight: 2,
+      align: 'INSIDE',
+    })
+    expect(scene.warnings).toEqual([])
   })
 })

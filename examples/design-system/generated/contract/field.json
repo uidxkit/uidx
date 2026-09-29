@@ -28,21 +28,24 @@
         "controllable": false,
         "visual": false,
         "description": "The control's name, shown beside it.",
-        "type": "string"
+        "type": "string",
+        "sample": "Email"
       },
       {
         "name": "description",
         "controllable": false,
         "visual": false,
         "description": "Secondary text: hints and consequences.",
-        "type": "string"
+        "type": "string",
+        "sample": "We never share it."
       },
       {
         "name": "errorMessage",
         "controllable": false,
         "visual": false,
         "description": "Validation text, shown only while in error.",
-        "type": "string"
+        "type": "string",
+        "sample": "Enter a valid address."
       },
       {
         "name": "error",

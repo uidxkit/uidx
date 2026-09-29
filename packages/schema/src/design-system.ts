@@ -94,7 +94,13 @@ export function specBindings(
   for (const prop of spec.contract.props) {
     const model = modelByRef(spec, prop.model)
     if (model) bindModel(prop.name, model, 0)
-    else if (prop.default !== undefined) out.set(prop.name, prop.default)
+    else {
+      // The sample is what a demonstration shows; the default is what the
+      // contract promises. A prop with neither stays unbound, and a text
+      // bound to it renders empty on the canvas.
+      const shown = prop.sample ?? prop.default
+      if (shown !== undefined) out.set(prop.name, shown)
+    }
   }
   return out
 }
@@ -314,9 +320,17 @@ export function deriveVariants(component: UidxNode): UidxNode {
   const declaration: JsonValue = Object.fromEntries(
     [...axes].map(([axis, values]) => [axis, values]),
   )
+  // The set keeps only what names and describes the component. Its paint and
+  // layout moved onto every variant's root; left here too, the set would draw
+  // the component's fill behind its own variants (ADR 0005 §5: a set has no
+  // geometry of its own, it is sized by the arrangement).
+  const setAttrs: Record<string, UidxAttr> = {}
+  for (const [name, attr] of Object.entries(component.attrs)) {
+    if (!(name in ownAttrs)) setAttrs[name] = attr
+  }
   return {
     ...component,
-    attrs: { ...component.attrs, variants: synthAttr('variants', declaration, component) },
+    attrs: { ...setAttrs, variants: synthAttr('variants', declaration, component) },
     children: variants,
   }
 }

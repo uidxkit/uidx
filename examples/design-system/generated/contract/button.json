@@ -40,7 +40,8 @@
         "controllable": false,
         "visual": false,
         "description": "The button's text.",
-        "type": "string"
+        "type": "string",
+        "sample": "Save changes"
       },
       {
         "name": "variant",
@@ -243,6 +244,7 @@
       },
       "values": {
         "root": {
+          "fills": "{surface#raised}",
           "strokes": "{border#hover}"
         }
       }
@@ -254,7 +256,50 @@
       },
       "values": {
         "root": {
+          "fills": "{surface#control}",
           "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "ghost"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}",
+          "strokes": "{surface#raised}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "destructive"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#danger}",
+          "strokes": "{surface#danger}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "link"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{surface#accentHover}"
+        },
+        "leading-icon": {
+          "fills": "{surface#accentHover}"
         }
       }
     },

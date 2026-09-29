@@ -11,9 +11,10 @@ where it sits; the consumer supplies the words.
 
 <Page>
   <Component name="Field" status="stable" implements="hwc-field"
-    layoutMode="HORIZONTAL" itemSpacing="{space#sm}" counterAxisAlignItems="MIN">
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    itemSpacing="{space#sm}" counterAxisAlignItems="MIN">
     <Slot name="control" />
-    <Frame name="text" layoutMode="VERTICAL" itemSpacing="{space#xs}">
+    <Frame name="text" layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO" itemSpacing="{space#xs}">
       <Text name="label" part="label" characters="{label}" fontSize={14} fills="{text#default}" />
       <Text name="description" part="description" characters="{description}" fontSize={12} fills="{text#muted}" />
       <Text name="error" part="error" characters="{errorMessage}" visible={false} fontSize={12} fills="{text#danger}" />
@@ -28,9 +29,9 @@ where it sits; the consumer supplies the words.
 ## Contract
 
 <Props>
-  <Prop name="label" type="string">The control's name, shown beside it.</Prop>
-  <Prop name="description" type="string">Secondary text: hints and consequences.</Prop>
-  <Prop name="errorMessage" type="string">Validation text, shown only while in error.</Prop>
+  <Prop name="label" type="string" sample="Email">The control's name, shown beside it.</Prop>
+  <Prop name="description" type="string" sample="We never share it.">Secondary text: hints and consequences.</Prop>
+  <Prop name="errorMessage" type="string" sample="Enter a valid address.">Validation text, shown only while in error.</Prop>
   <Prop name="error" type="boolean" default={false} visual>Whether the field is in its error state.</Prop>
 </Props>
 <States structural={['error']} styling={[]} />

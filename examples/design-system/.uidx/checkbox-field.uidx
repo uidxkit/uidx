@@ -21,9 +21,9 @@ come from the Field identity, the box from the Checkbox identity.
 ## Contract
 
 <Props>
-  <Prop name="label" type="string">The option's name.</Prop>
-  <Prop name="description" type="string">Helper text under the label.</Prop>
-  <Prop name="errorMessage" type="string">Validation text, shown while in error.</Prop>
+  <Prop name="label" type="string" sample="Remember me">The option's name.</Prop>
+  <Prop name="description" type="string" sample="Stay signed in on this device.">Helper text under the label.</Prop>
+  <Prop name="errorMessage" type="string" sample="Choose one option.">Validation text, shown while in error.</Prop>
   <Prop name="error" type="boolean" default={false}>Whether the field is in its error state.</Prop>
 </Props>
 <Composes with="Field, Checkbox" />

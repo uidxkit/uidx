@@ -16,5 +16,11 @@
       "@hwc/components/*": ["./vendor/hwc/dist/*"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "generated/react/**/*.ts", "generated/react/**/*.tsx", "test/**/*.ts"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.tsx",
+    "generated/react/**/*.ts",
+    "generated/react/**/*.tsx",
+    "test/**/*.ts"
+  ]
 }

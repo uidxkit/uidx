@@ -14,7 +14,10 @@ import { mountReactDemo } from './react-demo'
 const sections: [string, string][] = [
   ['Checkbox', checkbox],
   ['CheckboxField', checkboxField],
-  ['Button', `${button}\n${button.replace('<hwc-button>', '<hwc-button variant="secondary">')}\n${button.replace('<hwc-button>', '<hwc-button variant="outline" size="small">')}`],
+  [
+    'Button',
+    `${button}\n${button.replace('<hwc-button>', '<hwc-button variant="secondary">')}\n${button.replace('<hwc-button>', '<hwc-button variant="outline" size="small">')}`,
+  ],
   ['ContactList', contactList],
 ]
 const html = document.getElementById('html-target')!

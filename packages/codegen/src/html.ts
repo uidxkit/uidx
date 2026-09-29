@@ -202,15 +202,19 @@ function markup(
           ),
         )
       }
-      return markup(
-        target,
-        target.node,
-        ctx,
-        specBindings(target.spec, index),
-        depth,
-        index,
-        filled,
-      )
+      // What this page passes lies over the target's own samples: a `{label}`
+      // is this page's prop, resolved in *this* page's samples (ADR 0017 §3),
+      // a literal is a literal.
+      const passed = new Map(specBindings(target.spec, index))
+      const declared = node.attrs.props?.value
+      if (declared && typeof declared === 'object' && !Array.isArray(declared)) {
+        for (const [key, value] of Object.entries(declared as Record<string, JsonValue>)) {
+          const own = boundProp(model, value)
+          const resolved = own ? samples.get(own.name) : value
+          if (resolved !== undefined && resolved !== null) passed.set(key, resolved)
+        }
+      }
+      return markup(target, target.node, ctx, passed, depth, index, filled)
     }
     case 'Slot': {
       const fill = fills.get(node.name)
