@@ -28,22 +28,24 @@ states, referencing tokens only:
 
 ```mdx
 <Styles>
-  <Style emphasis="primary"   root.fills="{surface#accent}" label.fills="{text#onAccent}" />
-  <Style emphasis="secondary" root.fills="{surface#raised}" root.strokes="{border#default}" />
-  <Style size="sm" root.height={28} label.font="{type#labelSm}" />
-  <Style state="hover" emphasis="primary" root.fills="{surface#accentHover}" />
-  <Style state="checked" checked-indicator.visible={true} />
-  <Style state="disabled" root.opacity="{opacity#disabled}" />
+  <Style emphasis="primary"   root:fills="{surface#accent}" label:fills="{text#onAccent}" />
+  <Style emphasis="secondary" root:fills="{surface#raised}" root:strokes="{border#default}" />
+  <Style size="sm" root:height={28} label:fontSize={12} />
+  <Style state="hover" emphasis="primary" root:fills="{surface#accentHover}" />
+  <Style state="checked" checked-indicator:visible={true} />
+  <Style state="disabled" root:opacity={0.4} />
 </Styles>
 ```
 
-- A row's keys are axis assignments; its other attributes are `part.prop`
-  pairs. `root` is the component's own frame; other names are declared parts.
+- A row's keys are axis assignments; its other attributes are `part:prop`
+  pairs (a colon, because JSX allows a namespaced attribute name and not a
+  dotted one). `root` is the component's own frame; other names are declared
+  parts.
 - Resolution is by specificity: the base tree, then rows matching one key,
   then rows matching more. Equal specificity resolves in file order.
 - Values are tokens, or literals where the prop has no token type (`visible`,
   `height`). No new parts and no new props may be introduced by a row.
-- Presence of a part under a state is `part.visible={true}` in a row, which
+- Presence of a part under a state is `part:visible={true}` in a row, which
   is what replaces a `when` attribute.
 
 ### 3. Structural variants: an authored tree

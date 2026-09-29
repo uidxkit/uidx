@@ -93,6 +93,33 @@ export const CODES = {
   PIN_NOT_ALLOWED_HERE: 'UIDX135',
   /** `SCALE` is a ratio and needs fractional geometry, which is story H5. */
   PIN_SCALE_UNSUPPORTED: 'UIDX136',
+  // design system (ADRs 0012–0017)
+  /** A `## X` heading after the visual contract that is not a known region. */
+  UNKNOWN_REGION: 'UIDX140',
+  /** A region written twice. */
+  DUPLICATE_REGION: 'UIDX141',
+  /** An element a spec region does not know. */
+  UNKNOWN_SPEC_ELEMENT: 'UIDX142',
+  /** A spec element with a missing or mistyped attribute, or no description. */
+  BAD_SPEC: 'UIDX143',
+  /** A behaviour bullet with no `id:` prefix. */
+  BAD_BEHAVIOR_RULE: 'UIDX144',
+  /** A `<Repeat>` without a slot, without a positive count, or not holding one child. */
+  BAD_REPEAT: 'UIDX145',
+  /** A declared part with no `part="…"` node, or a `part` naming none. */
+  PART_BINDING: 'UIDX146',
+  /** A styles-table row naming an unknown part, prop or axis value. */
+  STYLE_ROW: 'UIDX147',
+  /** An axis value with no style row and no variant tree. */
+  AXIS_UNCOVERED: 'UIDX148',
+  /** A slot in the contract with no `<Slot>` in the tree, or the reverse. */
+  SLOT_BINDING: 'UIDX149',
+  /** A model field without a description or a required sample, or a model with no key. */
+  MODEL_FIELD: 'UIDX150',
+  /** A `{prop.field}` binding that names no model prop or no field of its model. */
+  BINDING: 'UIDX151',
+  /** A contract that disagrees with the headless manifest it implements. */
+  CONFORMANCE: 'UIDX152',
   // attribute grammar
   BAD_VALUE: 'UIDX200',
   SHORTHAND_ATTR: 'UIDX201',

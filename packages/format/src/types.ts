@@ -28,6 +28,13 @@ export const ELEMENTS = [
   // which is what makes "a slot's layout belongs to the definition" a grammar
   // rule rather than a convention.
   'Slot',
+  // ADR 0017 §2. A `<Repeat>` is a visual-only instruction: its one child, an
+  // instance of a component the slot accepts, is drawn `count` times with the
+  // n-th sample of the slot's model. It carries no `name`; its address segment
+  // is derived from the slot it fills, exactly as a `<Variant>`'s is from its
+  // coordinates. Code targets never see it — the contract's `repeats` slot is
+  // what they read.
+  'Repeat',
   // Token files (story G5). A `.uidx` with `<Tokens>` at the root is a set of
   // Figma variable collections rather than a scene — same extension, same
   // parser, same frontmatter, same `uidx check`.
@@ -59,6 +66,8 @@ export const CONTAINER_ELEMENTS: ReadonlySet<string> = new Set([
   // this is a container at all: a `<Slot>` fill. `INSTANCE_CHILD_ELEMENTS` is
   // what keeps the exception to that one element.
   'Instance',
+  // ADR 0017 §2: a repeat holds the one instance it multiplies.
+  'Repeat',
   'Tokens',
   'Collection',
   // A moded variable holds one `<Mode>` per column (G8).
@@ -195,6 +204,8 @@ export const NODE_CHILD_ELEMENTS: ReadonlySet<string> = new Set([
   // `checkSlotPosition` refuses those with the reason, since a table of element
   // names can say *that* but not *why*.
   'Slot',
+  // ADR 0017 §2 — a repeat sits wherever its slot's content would.
+  'Repeat',
 ])
 
 /**
@@ -226,6 +237,7 @@ export const COMPONENT_CHILD_ELEMENTS: ReadonlySet<string> = new Set([
   ...SCENE_CHILD_ELEMENTS,
   'Variant',
   'Slot',
+  'Repeat',
 ])
 
 /**
@@ -328,6 +340,13 @@ export interface UidxNode {
   /** Leading whitespace on the line this element starts on. */
   indent: string
   /**
+   * The file's spec regions, attached to each `<Component>` the file declares
+   * (ADR 0013). On the node rather than only on the document so an instance
+   * expanded from another file's definition can resolve that component's
+   * model bindings and derive its variants without a second lookup.
+   */
+  spec?: DocumentSpec
+  /**
    * True for the `<Page>` implied by a bare `<Component>` root (ADR 0003 §4).
    * The node has no source span of its own, so nothing may be inserted into it
    * or removed from it until `uidx fmt` materialises the wrapper.
@@ -339,6 +358,18 @@ export interface UidxDocument {
   frontmatter: Record<string, unknown>
   intent: { raw: string; loc: Range }
   tree: UidxNode
+  /**
+   * The regions after the visual contract (ADR 0012): the component contract,
+   * behaviour guidelines, models, examples, and the styles table. Absent for
+   * a file that declares none, which is every file written before ADR 0013.
+   */
+  spec?: DocumentSpec
+  /**
+   * The source text of those regions, verbatim, from the first region heading
+   * to the end of the file. `emitDocument` prints it back unchanged, so a
+   * `uidx fmt` never loses a region it does not reformat.
+   */
+  trailing?: { raw: string; loc: Range }
   source: string
   /**
    * Cheap change-detection digest, not a cryptographic one. The server's echo
@@ -428,4 +459,124 @@ export interface Diagnostic {
 export interface ParseResult {
   doc: UidxDocument | null
   diagnostics: Diagnostic[]
+}
+
+/* ------------------------------------------------ design system (ADR 0012–0017) */
+
+/**
+ * One element of a spec region, lowered generically: a name, evaluated
+ * attributes, the text between its tags, and its children. The typed shapes
+ * below are built from these; the generic tree is what `uidx contract`
+ * prints, so a generator sees exactly what was written.
+ */
+export interface SpecNode {
+  name: string
+  attrs: Record<string, JsonValue>
+  /** Text content with surrounding whitespace trimmed; the description. */
+  text: string
+  children: SpecNode[]
+  loc: Range
+}
+
+/** A `<Prop>` of the contract (ADR 0013 §2). */
+export interface PropSpec {
+  name: string
+  /** A TypeScript-ish type string, or undefined when `model` is set. */
+  type?: string
+  /** A `{models#Name}` reference, for a prop that receives a model. */
+  model?: string
+  default?: JsonValue
+  controllable: boolean
+  visual: boolean
+  description: string
+  loc: Range
+}
+
+export interface EventSpec {
+  name: string
+  detail?: string
+  description: string
+  loc: Range
+}
+
+/** A consumer-filled position (ADR 0013 §2, ADR 0017 §1). */
+export interface SlotSpec {
+  name: string
+  repeats: boolean
+  /** The model each filling receives, for a repeating slot. */
+  model?: string
+  /** The headless root a filling must implement, for a repeating slot. */
+  accepts?: string
+  description: string
+  loc: Range
+}
+
+export interface ContractSpec {
+  props: PropSpec[]
+  events: EventSpec[]
+  states: { structural: string[]; styling: string[] }
+  parts: string[]
+  slots: SlotSpec[]
+  form?: { participates: boolean; submits?: string }
+  accessibility?: Record<string, JsonValue>
+  composes: string[]
+  loc: Range
+}
+
+/** One bullet of `## Behavior` (ADR 0014). */
+export interface BehaviorRule {
+  id: string
+  text: string
+  loc: Range
+}
+
+export interface FieldSpec {
+  name: string
+  type: string
+  key: boolean
+  optional: boolean
+  /** A value, or a list of values for varied repeats; absent when not given. */
+  sample?: JsonValue
+  description: string
+  loc: Range
+}
+
+export interface ModelSpec {
+  name: string
+  description: string
+  fields: FieldSpec[]
+  loc: Range
+}
+
+/** One `<Set>` of an example: what it changes and where (ADR 0015 §3). */
+export interface ExampleSet {
+  slot?: string
+  count?: number
+  at?: string
+  state?: string
+  value?: JsonValue
+  loc: Range
+}
+
+export interface ExampleSpec {
+  name: string
+  sets: ExampleSet[]
+  loc: Range
+}
+
+/** One row of the styles table (ADR 0016 §2). */
+export interface StyleRow {
+  /** Axis assignments: prop values and `state`. */
+  keys: Record<string, string>
+  /** part → prop → value, from `part:prop` attributes; `root` is the component's own frame. */
+  values: Record<string, Record<string, JsonValue>>
+  loc: Range
+}
+
+export interface DocumentSpec {
+  contract?: ContractSpec
+  behavior?: BehaviorRule[]
+  models?: ModelSpec[]
+  examples?: ExampleSpec[]
+  styles?: StyleRow[]
 }

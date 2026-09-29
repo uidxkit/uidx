@@ -10,6 +10,7 @@ import { mdxMd } from 'micromark-extension-mdx-md'
 import { parse as parseYaml } from 'yaml'
 
 import { CODES, diagnostic, UidxError } from './diagnostics.js'
+import { buildSpec, REGION_NAMES, type MdastLike, type Region } from './spec.js'
 import { parseExpression, ValueError } from './values.js'
 import { fitsVariableType, isAlias, variableTypeOf } from './alias.js'
 import { componentProps, instanceProps } from './component-props.js'
@@ -307,6 +308,24 @@ export class Lowerer {
         )
       }
       name = rootName
+    } else if (element === 'Repeat') {
+      // ADR 0017 §2: a repeat is named by the slot it multiplies, the way a
+      // variant is named by its coordinates — nothing an author could misspell.
+      const slot = attrs.slot?.value
+      const count = attrs.count?.value
+      if (typeof slot !== 'string' || slot === '') {
+        this.error(
+          CODES.BAD_REPEAT,
+          '<Repeat> needs a "slot" naming a repeating slot of the contract',
+          loc,
+        )
+        return null
+      }
+      if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
+        this.error(CODES.BAD_REPEAT, '<Repeat> needs a non-negative integer "count"', loc)
+        return null
+      }
+      name = `repeat(${slot})`
     } else if (element === 'Variant') {
       // ADR 0005 §3: a variant has no name of its own. Deriving it here rather
       // than reading one means the microformat this ADR exists to delete —
@@ -482,6 +501,15 @@ export class Lowerer {
       this.error(
         CODES.COMPONENT_ARITY,
         `<Variant> must have exactly one child, found ${node.children.length}`,
+        loc,
+      )
+    }
+    // ADR 0017 §2: one filling, multiplied. Two children would leave the
+    // question of which one repeats.
+    if (element === 'Repeat' && node.children.length !== 1) {
+      this.error(
+        CODES.BAD_REPEAT,
+        `<Repeat> holds exactly one child, the instance it multiplies; found ${node.children.length}`,
         loc,
       )
     }
@@ -1431,8 +1459,62 @@ export function parse(source: string): ParseResult {
 
   // ---- contract region --------------------------------------------------
   const lowerer = new Lowerer(source)
-  const contractNodes = children.filter((c) => c.position.start.offset >= headingLoc.end)
-  const roots = contractNodes.filter((c) => c.type === 'mdxJsxFlowElement')
+  const after = children.filter((c) => c.position.start.offset >= headingLoc.end)
+  // The visual contract ends at the next depth-2 heading (ADR 0013 §1); what
+  // follows are the spec regions, each named by its heading.
+  const firstRegion = after.findIndex((c) => c.type === 'heading' && c.depth === 2)
+  const contractNodes = firstRegion === -1 ? after : after.slice(0, firstRegion)
+  const regions: Region[] = []
+  let region: Region | null = null
+  for (const node of firstRegion === -1 ? [] : after.slice(firstRegion)) {
+    if (node.type === 'heading' && node.depth === 2) {
+      const name = textContent(node).trim()
+      region = null
+      if (!(REGION_NAMES as readonly string[]).includes(name)) {
+        diagnostics.push(
+          diagnostic(
+            source,
+            CODES.UNKNOWN_REGION,
+            `unknown region "## ${name}" after the Visual Contract; known regions: ${REGION_NAMES.join(', ')}`,
+            rangeOf(node),
+          ),
+        )
+        continue
+      }
+      if (regions.some((r) => r.name === name)) {
+        diagnostics.push(
+          diagnostic(
+            source,
+            CODES.DUPLICATE_REGION,
+            `"## ${name}" is written twice`,
+            rangeOf(node),
+          ),
+        )
+        continue
+      }
+      region = { name: name as Region['name'], nodes: [], loc: rangeOf(node) }
+      regions.push(region)
+      continue
+    }
+    region?.nodes.push(node as unknown as MdastLike)
+  }
+  // The styles table (ADR 0016 §2) sits beside the root, in the visual
+  // contract, because it is visual data — but it is not a scene node, so it
+  // is lowered with the spec regions rather than as part of the tree.
+  const styleTables = contractNodes.filter(
+    (c) => c.type === 'mdxJsxFlowElement' && c.name === 'Styles',
+  )
+  if (styleTables.length > 1) {
+    diagnostics.push(
+      diagnostic(
+        source,
+        CODES.DUPLICATE_REGION,
+        'one <Styles> table per file; merge the rows',
+        rangeOf(styleTables[1]),
+      ),
+    )
+  }
+  const roots = contractNodes.filter((c) => c.type === 'mdxJsxFlowElement' && c.name !== 'Styles')
 
   for (const node of contractNodes) {
     if (node.type === 'mdxJsxFlowElement') continue
@@ -1481,7 +1563,14 @@ export function parse(source: string): ParseResult {
     rootEl.name === 'Component'
       ? lowerer.syntheticPage(rootEl, rootName)
       : lowerer.element(rootEl, null, null, rootName)
-  const all = [...diagnostics, ...lowerer.diagnostics].sort((a, b) => a.loc.start - b.loc.start)
+  const { spec, diagnostics: specDiagnostics } = buildSpec(
+    source,
+    regions,
+    (styleTables[0] as unknown as MdastLike | undefined) ?? null,
+  )
+  const all = [...diagnostics, ...lowerer.diagnostics, ...specDiagnostics].sort(
+    (a, b) => a.loc.start - b.loc.start,
+  )
 
   if (!treeRoot || all.some((d) => d.severity === 'error')) {
     return { doc: null, diagnostics: all }
@@ -1493,6 +1582,14 @@ export function parse(source: string): ParseResult {
     tree: treeRoot,
     source,
     sourceHash: fnv1a(source),
+  }
+  if (spec) {
+    doc.spec = spec
+    for (const child of treeRoot.children) if (child.element === 'Component') child.spec = spec
+  }
+  if (regions.length) {
+    const start = regions[0]!.loc.start
+    doc.trailing = { raw: source.slice(start), loc: { start, end: source.length } }
   }
 
   assertOffsetInvariant(doc)

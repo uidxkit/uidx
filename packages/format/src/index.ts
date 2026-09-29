@@ -103,6 +103,19 @@ export {
   type UidxNode,
   type UidxNodeSpec,
   type UidxPatch,
+  type BehaviorRule,
+  type ContractSpec,
+  type DocumentSpec,
+  type EventSpec,
+  type ExampleSet,
+  type ExampleSpec,
+  type FieldSpec,
+  type ModelSpec,
+  type PropSpec,
+  type SlotSpec,
+  type SpecNode,
+  type StyleRow,
 } from './types.js'
+export { buildSpec, REGION_NAMES, SpecLowerer, type Region, type RegionName } from './spec.js'
 export { SCOPE_FOR_PROP, scopesForProp } from './scope-for-prop.js'
 export * from './lengths.js'
