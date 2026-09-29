@@ -1,3 +1,4 @@
+import { derivedDocument } from './design-system.js'
 import { rootFontSizeOf, DEFAULT_ROOT_FONT_SIZE } from '@uidx/format'
 import { SceneGraph, type NodeType, type SceneNode } from '@open-pencil/scene-graph'
 import {
@@ -135,6 +136,10 @@ export function diffDocuments(
 ): SceneChange[] | null {
   if (prev.frontmatter.id !== next.frontmatter.id) return null
   if (rootFontSizeOf(prev) !== rootFontSizeOf(next)) return null
+  // The same expansion the builder applied (ADR 0016 §4): a diff between a
+  // derived scene and an underived document would remove every variant.
+  prev = derivedDocument(prev)
+  next = derivedDocument(next)
   const rootFontSize = rootFontSizeOf(next)
 
   const before = indexNodes(prev)

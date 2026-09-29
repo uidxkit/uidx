@@ -113,3 +113,23 @@ export {
   strokeEndpointValue,
   type StrokeEndpointProp,
 } from './stroke-endpoints.js'
+export { auditDesignSystem } from './design-system-audit.js'
+export {
+  axesOf,
+  contractJson,
+  DEFAULT_STATE,
+  defaultVariantName,
+  deriveVariants,
+  derivedDocument,
+  derivesVariants,
+  enumValues,
+  modelByRef,
+  partNode,
+  propSpec,
+  ROOT_PART,
+  sampleAt,
+  specBindings,
+  STATE_AXIS,
+  stateAxis,
+  visualAxes,
+} from './design-system.js'

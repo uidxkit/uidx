@@ -28,6 +28,13 @@ export const STRUCTURAL_PROPS: readonly string[] = [
   'props',
   'modes',
   'rootFontSize',
+  // ADR 0013 §3: the headless root a component implements, and the part a
+  // node binds. ADR 0017 §2: a `<Repeat>`'s slot and count. Bindings to the
+  // contract, never scene fields.
+  'implements',
+  'part',
+  'slot',
+  'count',
 ]
 
 /**

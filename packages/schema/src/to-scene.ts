@@ -42,6 +42,7 @@ import { resolvePins } from './pin-pass.js'
 import { composeStrokes, isIdentityProp, mappingFor, normalizeFills } from './prop-table.js'
 import { withStrokeEndpoints } from './stroke-endpoints.js'
 import { arrangeVariants, type VariantBox } from './variant-layout.js'
+import { deriveVariants, derivedDocument, specBindings } from './design-system.js'
 
 export const NODE_TYPE: Record<SceneElement, NodeType> = {
   // The graph's own page node. `<Page>` is never constructed — it is mapped
@@ -55,6 +56,10 @@ export const NODE_TYPE: Record<SceneElement, NodeType> = {
   Rectangle: 'RECTANGLE',
   Ellipse: 'ELLIPSE',
   Vector: 'VECTOR',
+  // ADR 0017 §2. Never constructed: a `<Repeat>` is expanded into clones of
+  // its child, so the builder returns before this entry is read. Present so
+  // the table stays total over the scene elements.
+  Repeat: 'FRAME',
   // ADR 0007 §1. The SDK has no slot node — measured, not assumed: `NodeType`
   // is eighteen values and none is one — so a slot is unconditionally a frame.
   // Unlike `Component`, which `nodeTypeFor` makes conditional, there is no
@@ -183,6 +188,16 @@ export interface SceneOptions {
    * no index, `uidx check` among them, still wants.
    */
   tokens?: { resolver: TokenResolver; index: TokenIndex }
+  /**
+   * Which sample a model binding resolves to (ADR 0015 §2): the n-th clone
+   * of a `<Repeat>` draws the n-th sample of every bound field.
+   */
+  sampleIndex?: number
+  /**
+   * True inside a `<Repeat>` clone: the nodes are generated, so nothing they
+   * hold links into the bimap — the same rule an instance's children follow.
+   */
+  generated?: boolean
 }
 
 export interface SceneResult {
@@ -226,6 +241,10 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
       'a <Tokens> document declares variable collections, not a scene — use applyTokens',
     )
   }
+  // A component with a styles table is drawn as the set of trees the table
+  // derives (ADR 0016 §4). Done here, and in `diffDocuments`, so the build
+  // and the update path see one tree.
+  doc = derivedDocument(doc)
   options = { ...options, rootFontSize: options.rootFontSize ?? rootFontSizeOf(doc) }
   const graph = new SceneGraph()
   // `new SceneGraph()` already provisions a page; adding another leaves the
@@ -261,7 +280,36 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     scope: SceneOptions,
     tuple: ModeTuple | null,
   ): void => {
-    addresses.link(node.address, node.address)
+    // ADR 0017 §2: a repeat is its one instance, drawn `count` times, each
+    // clone resolving the slot's model at its own sample index. The clones
+    // are generated content and never link (the instance rule, D4).
+    if (node.element === 'Repeat') {
+      const child = node.children[0]
+      const count = node.attrs.count?.value
+      if (!child || typeof count !== 'number') return
+      if (child.element !== 'Instance') {
+        warnings.push(
+          `${node.address}: a <Repeat> multiplies an <Instance>; found <${child.element}>`,
+        )
+        return
+      }
+      for (let index = 0; index < count; index++) {
+        const id = addressOf(parentId, `${child.name}-${index + 1}`)
+        const indexed: SceneOptions = { ...scope, sampleIndex: index, generated: true }
+        const clone = { ...child, address: id, synthetic: true as const }
+        pins.link(id, pinFrom(clone.attrs, indexed.rootFontSize, indexed.resolveAlias))
+        graph.createNodeWithId(
+          id,
+          nodeTypeFor(clone),
+          parentId,
+          instanceProps(clone, warnings, indexed),
+        )
+        expandInstance(graph, addresses, pins, clone, warnings, indexed)
+      }
+      return
+    }
+    // Derived and generated nodes have no source span to patch (ADR 0016 §4).
+    if (!node.synthetic && !scope.generated) addresses.link(node.address, node.address)
 
     // Figma's explicitVariableModes layered over resolvedVariableModes: the
     // attribute is what this node sets, the tuple is what it ends up with.
@@ -283,7 +331,10 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     // this rebuilds from the token layer rather than from `inner` — but from
     // the *mode-aware* token layer, so a component under a dark frame is dark.
     if (node.element === 'Component') {
-      inner = { ...inner, resolveAlias: withProperties(aliasFor(next), declaredDefaults(node)) }
+      inner = {
+        ...inner,
+        resolveAlias: withProperties(aliasFor(next), declaredDefaults(node, scope.sampleIndex)),
+      }
     }
 
     pins.link(node.address, pinFrom(node.attrs, inner.rootFontSize, inner.resolveAlias))
@@ -643,12 +694,17 @@ export function withModes(
   return (address) => (address.includes('#') ? values.get(address) : base?.(address))
 }
 
-/** What a component's own subtree resolves `{name}` to: the declared defaults. */
-function declaredDefaults(component: UidxNode): Map<string, JsonValue> {
+/**
+ * What a component's own subtree resolves `{name}` to: the declared defaults
+ * — from the `props` attribute (F6) and from the contract (ADR 0013 §5),
+ * which also answers `{item.field}` with a model's sample (ADR 0015 §2).
+ */
+function declaredDefaults(component: UidxNode, sampleIndex = 0): Map<string, JsonValue> {
   const out = new Map<string, JsonValue>()
   for (const [name, declaration] of componentProps(component).declared) {
     out.set(name, declaration.default)
   }
+  for (const [name, value] of specBindings(component.spec, sampleIndex)) out.set(name, value)
   return out
 }
 
@@ -776,7 +832,19 @@ function componentFor(
     warnings.push(`${node.address}: no component named "${name}" in this document`)
     return undefined
   }
-  return found
+  // A definition from another file arrives as written; its styles table has
+  // to be expanded here too, so an instance picks a derived variant exactly
+  // as it picks an authored one (ADR 0016 §4).
+  return derivedOf(found)
+}
+
+const derivedDefinitions = new WeakMap<UidxNode, UidxNode>()
+function derivedOf(definition: UidxNode): UidxNode {
+  const cached = derivedDefinitions.get(definition)
+  if (cached) return cached
+  const derived = deriveVariants(definition)
+  derivedDefinitions.set(definition, derived)
+  return derived
 }
 
 /**
@@ -845,7 +913,10 @@ function expandInstance(
     ...options,
     resolveAlias: withProperties(
       options.resolveAlias,
-      new Map([...declaredDefaults(definition), ...instanceValues(node, definition)]),
+      new Map([
+        ...declaredDefaults(definition, options.sampleIndex),
+        ...instanceValues(node, definition),
+      ]),
     ),
   }
 
@@ -866,7 +937,7 @@ function expandInstance(
    */
   const authored = (source: UidxNode, parentSceneId: string): void => {
     const sceneId = addressOf(parentSceneId, source.name)
-    addresses.link(source.address, sceneId)
+    if (!options.generated) addresses.link(source.address, sceneId)
     pins.link(sceneId, pinFrom(source.attrs, options.rootFontSize, options.resolveAlias))
     graph.createNodeWithId(
       sceneId,
@@ -902,6 +973,27 @@ function expandInstance(
     relative: string,
     inherited: Partial<SceneNode> = {},
   ): void => {
+    // ADR 0017 §2 inside a definition being instanced: the same expansion the
+    // top-level build does, in the definition's scope at each sample index.
+    if (source.element === 'Repeat') {
+      const child = source.children[0]
+      const count = source.attrs.count?.value
+      if (!child || typeof count !== 'number' || child.element !== 'Instance') return
+      for (let index = 0; index < count; index++) {
+        const id = addressOf(parentId, `${child.name}-${index + 1}`)
+        const indexed: SceneOptions = { ...scope, sampleIndex: index, generated: true }
+        const copy = { ...child, address: id, synthetic: true as const }
+        pins.link(id, pinFrom(copy.attrs, indexed.rootFontSize, indexed.resolveAlias))
+        graph.createNodeWithId(
+          id,
+          nodeTypeFor(copy),
+          parentId,
+          instanceProps(copy, warnings, indexed),
+        )
+        expandInstance(graph, addresses, pins, copy, warnings, indexed, chain)
+      }
+      return
+    }
     const id = addressOf(parentId, source.name)
     const props = instanceProps(source, warnings, scope)
     const changed = overrides.get(relative)

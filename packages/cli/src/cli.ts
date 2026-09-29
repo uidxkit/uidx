@@ -18,6 +18,7 @@ import { applyFmt, fmt, renderFmt } from './commands/fmt.js'
 import { runMigrateTokens } from './commands/migrate-tokens.js'
 import { runMcp } from './commands/mcp.js'
 import { runInit } from './commands/init.js'
+import { runContract } from './commands/contract.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -32,6 +33,7 @@ Usage:
   uidx mcp [--root dir]  connect MCP tools to this project and its viewer
   uidx check <glob...>    parse and validate; exit 1 on any error
   uidx fmt <glob...>      rewrite files in canonical style
+  uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx migrate tokens <file...>
                           write the type every <Variable> now declares
 
@@ -139,6 +141,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return runMcp(rest, io)
       case 'init':
         return runInit(rest, io)
+      case 'contract':
+        return await runContract(rest, io)
       case 'dev':
         return runOpen(rest, io)
       case 'audit':

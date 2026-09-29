@@ -16,6 +16,7 @@ import {
   type UidxNode,
 } from '@uidx/format'
 import { isKnownProp } from '@uidx/schema/known-props'
+import { auditDesignSystem } from '@uidx/schema/design-system-audit'
 import {
   assetProblem,
   documentAssets,
@@ -84,6 +85,9 @@ export async function check(patterns: string[], options: CheckOptions = {}): Pro
 
     if (doc) {
       all.push(...lintUnknownProps(doc))
+      // The design-system regions have to agree with the tree and with each
+      // other (ADRs 0013–0017); the parser checked each region's own shape.
+      all.push(...auditDesignSystem(doc))
       parsed.push({ file, doc })
     }
 

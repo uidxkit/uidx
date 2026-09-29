@@ -26,11 +26,12 @@ import { toSceneGraph } from './to-scene.js'
  * `Variant` is deliberately absent, and the type says so rather than the table
  * carrying a fixture nobody probes: a `<Variant>` has no geometry of its own at
  * all (ADR 0005 §5, and D4's predicate that follows from it), so there is no
- * unset row for the inspector to show dimmed. Excluding it by type keeps the
- * exhaustiveness that makes this table honest for every element that *does*
- * have one.
+ * unset row for the inspector to show dimmed. `Repeat` is absent for the same
+ * reason (ADR 0017 §2): it is expanded, never constructed. Excluding both by
+ * type keeps the exhaustiveness that makes this table honest for every element
+ * that *does* have one.
  */
-const BARE: Record<Exclude<SceneElement, 'Variant'>, string> = {
+const BARE: Record<Exclude<SceneElement, 'Variant' | 'Repeat'>, string> = {
   Page: '<Page />',
   Component: '<Component name="probe" status="draft"><Frame name="child" /></Component>',
   Frame: '<Frame name="probe" />',
@@ -76,7 +77,7 @@ const ENGINE_SILENT: Record<string, JsonValue> = {
 /** Element -> prop -> resolved value, built once on first use. */
 let table: Map<string, Map<string, JsonValue>> | null = null
 
-function probe(element: Exclude<SceneElement, 'Variant'>): Map<string, JsonValue> {
+function probe(element: Exclude<SceneElement, 'Variant' | 'Repeat'>): Map<string, JsonValue> {
   const values = new Map<string, JsonValue>()
   const body = BARE[element]
   const wrapped = element === 'Page' || element === 'Component' ? body : `<Page>${body}</Page>`
@@ -113,7 +114,7 @@ function probe(element: Exclude<SceneElement, 'Variant'>): Map<string, JsonValue
 function ensure(): Map<string, Map<string, JsonValue>> {
   if (table) return table
   table = new Map()
-  for (const element of Object.keys(BARE) as Exclude<SceneElement, 'Variant'>[]) {
+  for (const element of Object.keys(BARE) as Exclude<SceneElement, 'Variant' | 'Repeat'>[]) {
     table.set(element, probe(element))
   }
   return table
