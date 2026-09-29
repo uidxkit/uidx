@@ -19,6 +19,7 @@ import { runMigrateTokens } from './commands/migrate-tokens.js'
 import { runMcp } from './commands/mcp.js'
 import { runInit } from './commands/init.js'
 import { runContract } from './commands/contract.js'
+import { runCodegen } from './commands/codegen.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -34,6 +35,8 @@ Usage:
   uidx check <glob...>    parse and validate; exit 1 on any error
   uidx fmt <glob...>      rewrite files in canonical style
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
+  uidx codegen <glob...> --out <dir>
+                          render HTML/CSS, React and contract JSON from the pages
   uidx migrate tokens <file...>
                           write the type every <Variable> now declares
 
@@ -143,6 +146,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return runInit(rest, io)
       case 'contract':
         return await runContract(rest, io)
+      case 'codegen':
+        return await runCodegen(rest, io)
       case 'dev':
         return runOpen(rest, io)
       case 'audit':

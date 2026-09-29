@@ -1,0 +1,62 @@
+---
+id: checkbox
+---
+
+Lets a user toggle one option. Indeterminate summarises mixed children. The
+box and its marks are the design system's; the label comes from a Field.
+
+## Visual Contract
+
+<Page>
+  <Component name="Checkbox" status="stable" implements="hwc-checkbox"
+    width={20} height={20} cornerRadius="{radius#sm}"
+    fills="{surface#control}" strokes="{border#default}" strokeWeight={1}
+    layoutMode="HORIZONTAL" primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER">
+    <Vector name="check" part="checked-indicator" visible={false} width={12} height={12}
+      fills="{text#onAccent}"
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 6.5 L5 9.5 L10.5 3' }]} />
+    <Vector name="dash" part="indeterminate-indicator" visible={false} width={12} height={12}
+      fills="{text#onAccent}"
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 5.25 H10 V6.75 H2 Z' }]} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" root:fills="{surface#accent}" root:strokes="{surface#accent}" checked-indicator:visible={true} />
+  <Style state="indeterminate" root:fills="{surface#accent}" root:strokes="{surface#accent}" indeterminate-indicator:visible={true} />
+  <Style state="hover" root:strokes="{border#hover}" />
+  <Style state="focus" root:strokes="{border#focus}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} controllable visual>Whether the option is selected.</Prop>
+  <Prop name="indeterminate" type="boolean" default={false} controllable visual>Mixed state for a parent summarising children.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+  <Prop name="name" type="string">Form field name.</Prop>
+  <Prop name="value" type="string" default="on">Submitted while checked.</Prop>
+</Props>
+<Events>
+  <Event name="change" detail="{ checked: boolean }">Fires once per user toggle, never when set from code.</Event>
+</Events>
+<States structural={['checked', 'indeterminate']} styling={['hover', 'focus', 'disabled']} />
+<Parts>checked-indicator, indeterminate-indicator</Parts>
+<Form participates submits="value while checked, nothing otherwise" />
+<Accessibility role="checkbox" keyboard="Space toggles" />
+<Composes with="Field" />
+
+## Behavior
+
+- toggle: click or Space flips `checked`; a click while `indeterminate` sets `checked` and clears `indeterminate`.
+- change-event: `change` fires once per user toggle, never when `checked` is set from code.
+- disabled: no interaction and no events while `disabled`; still focusable for assistive technology, as native.
+- form: submits `value` while checked and nothing otherwise, matching native `<input type=checkbox>`.
+- label: composes with Field; clicking the label toggles, per Field's rules.
+
+## Examples
+
+<Example name="checked">
+  <Set at="root" state="checked" />
+</Example>

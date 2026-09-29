@@ -1,0 +1,282 @@
+{
+  "id": "button",
+  "components": [
+    {
+      "name": "Button",
+      "implements": "hwc-button",
+      "status": "stable",
+      "boundParts": [
+        "leading-icon",
+        "label"
+      ],
+      "treeSlots": [],
+      "axes": {
+        "variant": [
+          "primary",
+          "secondary",
+          "outline",
+          "ghost",
+          "destructive",
+          "link"
+        ],
+        "size": [
+          "medium",
+          "small",
+          "large"
+        ],
+        "state": [
+          "default",
+          "hover",
+          "focus",
+          "disabled"
+        ]
+      }
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "controllable": false,
+        "visual": false,
+        "description": "The button's text.",
+        "type": "string"
+      },
+      {
+        "name": "variant",
+        "controllable": false,
+        "visual": true,
+        "description": "Emphasis.",
+        "type": "'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link'",
+        "default": "primary"
+      },
+      {
+        "name": "size",
+        "controllable": false,
+        "visual": true,
+        "description": "Padding and type scale.",
+        "type": "'small' | 'medium' | 'large'",
+        "default": "medium"
+      },
+      {
+        "name": "disabled",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "name": "type",
+        "controllable": false,
+        "visual": false,
+        "description": "What activation does to the enclosing form.",
+        "type": "'button' | 'submit' | 'reset'",
+        "default": "button"
+      }
+    ],
+    "events": [],
+    "states": {
+      "structural": [],
+      "styling": [
+        "hover",
+        "focus",
+        "disabled"
+      ]
+    },
+    "parts": [
+      "leading-icon",
+      "label"
+    ],
+    "slots": [],
+    "composes": [],
+    "form": {
+      "participates": false,
+      "submits": "nothing of its own; type=submit calls the form's requestSubmit, type=reset resets it"
+    },
+    "accessibility": {
+      "role": "button",
+      "keyboard": "Enter and Space activate"
+    }
+  },
+  "behavior": [
+    {
+      "id": "activation",
+      "text": "click, Enter or Space activates; type=\"submit\" calls requestSubmit on the enclosing form, type=\"reset\" resets it, type=\"button\" does nothing to the form."
+    },
+    {
+      "id": "disabled",
+      "text": "no activation and no events while disabled."
+    },
+    {
+      "id": "icon",
+      "text": "the leading icon is hidden unless the design turns it on; it never carries the accessible name, the label does."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "variant": "secondary"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}",
+          "strokes": "{border#default}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "outline"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{border#default}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "ghost"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "destructive"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#danger}",
+          "strokes": "{surface#danger}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "link"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{surface#accent}"
+        },
+        "leading-icon": {
+          "fills": "{surface#accent}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "small"
+      },
+      "values": {
+        "root": {
+          "paddingLeft": "{space#sm}",
+          "paddingRight": "{space#sm}",
+          "paddingTop": "{space#xs}",
+          "paddingBottom": "{space#xs}"
+        },
+        "label": {
+          "fontSize": 12
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "large"
+      },
+      "values": {
+        "root": {
+          "paddingLeft": "{space#lg}",
+          "paddingRight": "{space#lg}",
+          "paddingTop": "{space#md}",
+          "paddingBottom": "{space#md}"
+        },
+        "label": {
+          "fontSize": 16
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#accentHover}",
+          "strokes": "{surface#accentHover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "secondary"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "outline"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#focus}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ]
+}

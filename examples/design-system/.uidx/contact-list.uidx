@@ -1,0 +1,62 @@
+---
+id: contact-list
+---
+
+Pick one person from a list. A radio group whose options are ContactOption
+rows: the list owns selection and keyboard navigation, each row shows one
+Contact.
+
+## Visual Contract
+
+<Page>
+  <Component name="ContactList" status="stable" implements="hwc-radio-group"
+    layoutMode="VERTICAL" itemSpacing="{space#xs}" width={280}>
+    <Repeat slot="option" count={3}>
+      <Instance name="row" component="ContactOption" />
+    </Repeat>
+    <Slot name="empty">
+      <Text name="nobody" characters="No contacts yet" fontSize={13} fills="{text#muted}" />
+    </Slot>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Contact[]">The people to choose from, in order.</Prop>
+  <Prop name="name" type="string">Form field name shared by every option.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Every option inert.</Prop>
+</Props>
+<States structural={[]} styling={['disabled']} />
+<Slots>
+  <Slot name="option" repeats model="{models#Contact}" accepts="hwc-radio">One option per element of `items`.</Slot>
+  <Slot name="empty">Shown instead of the options while `items` is empty.</Slot>
+</Slots>
+<Accessibility role="radiogroup" keyboard="Arrow keys move the choice" />
+<Composes with="ContactOption, Field" />
+
+## Models
+
+<Model name="Contact">
+  One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.
+  <Field name="id" type="string" key sample={['ada', 'grace', 'linus']}>Stable identity, used for keys and as the submitted value.</Field>
+  <Field name="name" type="string" sample={['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds']}>Full display name.</Field>
+  <Field name="email" type="string" optional sample={['ada@example.com', null, 'linus@example.com']}>Omitted when unknown; the row hides the line.</Field>
+</Model>
+
+## Behavior
+
+- one-choice: exactly one option is chosen at a time; choosing one unchooses the rest.
+- keyboard: arrow keys move the choice through the options; Tab leaves the group.
+- empty: with no items the `empty` slot shows and nothing is chosen.
+
+## Examples
+
+<Example name="second-chosen">
+  <Set slot="option" count={3} />
+  <Set at="option[1]" state="checked" />
+</Example>

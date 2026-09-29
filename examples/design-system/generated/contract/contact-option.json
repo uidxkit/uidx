@@ -1,0 +1,187 @@
+{
+  "id": "contact-option",
+  "components": [
+    {
+      "name": "ContactOption",
+      "implements": "hwc-radio",
+      "status": "stable",
+      "boundParts": [
+        "checked-indicator"
+      ],
+      "treeSlots": [],
+      "axes": {
+        "state": [
+          "default",
+          "checked",
+          "hover",
+          "focus",
+          "disabled"
+        ]
+      }
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "item",
+        "controllable": false,
+        "visual": false,
+        "description": "The person this option stands for. Display-ready; nothing is derived here.",
+        "model": "{models#Contact}"
+      },
+      {
+        "name": "checked",
+        "controllable": true,
+        "visual": true,
+        "description": "Whether this option is the chosen one.",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "name": "disabled",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "type": "boolean",
+        "default": false
+      },
+      {
+        "name": "value",
+        "controllable": false,
+        "visual": false,
+        "description": "Submitted when chosen; normally the contact's id.",
+        "type": "string"
+      },
+      {
+        "name": "name",
+        "controllable": false,
+        "visual": false,
+        "description": "Form field name, shared with the group.",
+        "type": "string"
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires when this option becomes the chosen one.",
+        "detail": "{ checked: boolean }"
+      }
+    ],
+    "states": {
+      "structural": [
+        "checked"
+      ],
+      "styling": [
+        "hover",
+        "focus",
+        "disabled"
+      ]
+    },
+    "parts": [
+      "checked-indicator"
+    ],
+    "slots": [],
+    "composes": [
+      "ContactList"
+    ]
+  },
+  "models": [
+    {
+      "name": "Contact",
+      "description": "One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "key": true,
+          "optional": false,
+          "description": "Stable identity, used for keys and as the submitted value.",
+          "sample": [
+            "ada",
+            "grace",
+            "linus"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "key": false,
+          "optional": false,
+          "description": "Full display name.",
+          "sample": [
+            "Ada Lovelace",
+            "Grace Hopper",
+            "Linus Torvalds"
+          ]
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "key": false,
+          "optional": true,
+          "description": "Omitted when unknown; the row hides the line.",
+          "sample": [
+            "ada@example.com",
+            null,
+            "linus@example.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "behavior": [
+    {
+      "id": "choose",
+      "text": "click, or arrow keys within the group, makes this the chosen option and unchooses the others."
+    },
+    {
+      "id": "form",
+      "text": "the group submits the chosen option's value under the shared name."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "checked"
+      },
+      "values": {
+        "ring": {
+          "strokes": "{surface#accent}"
+        },
+        "checked-indicator": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "ring": {
+          "strokes": "{border#focus}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ]
+}

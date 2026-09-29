@@ -50,7 +50,7 @@ async function bundleDependency(source) {
 try {
   // pnpm translates workspace references and selects only published files.
   // Stage our packages together so every consumer uses one patched SDK instance.
-  for (const name of ['cli', 'format', 'schema', 'server', 'agent', 'viewer']) {
+  for (const name of ['cli', 'format', 'schema', 'server', 'agent', 'viewer', 'codegen']) {
     const cwd = resolve(root, 'packages', name)
     const pkg = await manifest(cwd)
     if (pkg.private) throw new Error(`${pkg.name} is private`)

@@ -11,7 +11,7 @@
     "postinstall": "node scripts/setup-assets.mjs",
     "setup:assets": "node scripts/setup-assets.mjs",
     "viewer": "pnpm dev",
-    "build": "pnpm -r --filter \"@uidx/format\" --filter \"@uidx/schema\" --filter \"@uidx/server\" build",
+    "build": "pnpm -r --filter \"@uidx/format\" --filter \"@uidx/schema\" --filter \"@uidx/server\" --filter \"@uidx/codegen\" build",
     "build:cli": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter @uidx/viewer build && pnpm --filter @uidxkit/uidx build",
     "test": "pnpm -r --workspace-concurrency=1 test",
     "typecheck": "pnpm -r typecheck",

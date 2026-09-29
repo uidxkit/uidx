@@ -1,0 +1,65 @@
+{
+  "id": "checkbox-field",
+  "components": [
+    {
+      "name": "CheckboxField",
+      "implements": null,
+      "status": "stable",
+      "boundParts": [],
+      "treeSlots": [
+        "control"
+      ],
+      "axes": {}
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "controllable": false,
+        "visual": false,
+        "description": "The option's name.",
+        "type": "string"
+      },
+      {
+        "name": "description",
+        "controllable": false,
+        "visual": false,
+        "description": "Helper text under the label.",
+        "type": "string"
+      },
+      {
+        "name": "errorMessage",
+        "controllable": false,
+        "visual": false,
+        "description": "Validation text, shown while in error.",
+        "type": "string"
+      },
+      {
+        "name": "error",
+        "controllable": false,
+        "visual": false,
+        "description": "Whether the field is in its error state.",
+        "type": "boolean",
+        "default": false
+      }
+    ],
+    "events": [],
+    "states": {
+      "structural": [],
+      "styling": []
+    },
+    "parts": [],
+    "slots": [],
+    "composes": [
+      "Field",
+      "Checkbox"
+    ]
+  },
+  "behavior": [
+    {
+      "id": "delegation",
+      "text": "everything the label does, Field does; everything the box does, Checkbox does. This component adds layout only."
+    }
+  ]
+}

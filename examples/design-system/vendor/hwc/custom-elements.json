@@ -1,0 +1,2739 @@
+{
+  "schemaVersion": "1.0.0",
+  "readme": "",
+  "modules": [
+    {
+      "kind": "javascript-module",
+      "path": "button/button-label.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure positional seam (root README's \"positional seams\" category) —\nalways present, giving a theme a stable, addressable box for the\nbutton's text content instead of an anonymous projected text node no\nstylesheet can reach. Carries no state of its own and consumes none:\nunlike Checkbox's indicators, nothing about a label's presence or\nappearance depends on hwc-button's state — it's a direct child by\nconstruction (GUIDELINES.md rule 4's carve-out). Disabled dimming\nreaches it for free through ordinary CSS inheritance of `color`, since\nhwc-button's own disabled state-to-token mapping sets `color` on itself\nrather than a property this element would need to independently mirror.\n\nNot self-registering — call ButtonLabel.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "ButtonLabel",
+          "slots": [
+            {
+              "description": "The button's own text content.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-button-label\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-button-label",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "ButtonLabel",
+          "declaration": {
+            "name": "ButtonLabel",
+            "module": "button/button-label.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "button/button-leading-icon.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure positional seam (root README's \"positional seams\" category) —\npresent only when the consumer projects one, giving a theme a fixed,\naddressable box to size and center regardless of what's projected (an\nSVG, an `<img>`, a glyph). Carries no state and consumes none: it's a\ndirect child by construction (GUIDELINES.md rule 4's carve-out), and\ndisabled dimming reaches a `currentColor`-based icon for free through\nordinary CSS inheritance from hwc-button's own `color`.\n\nNot self-registering — call ButtonLeadingIcon.define() (optionally with\na tag name of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "ButtonLeadingIcon",
+          "slots": [
+            {
+              "description": "The consumer's own icon (an SVG, an `<img>`, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-button-leading-icon\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-button-leading-icon",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "ButtonLeadingIcon",
+          "declaration": {
+            "name": "ButtonLeadingIcon",
+            "module": "button/button-leading-icon.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "button/button-trailing-icon.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure positional seam (root README's \"positional seams\" category) —\npresent only when the consumer projects one, giving a theme a fixed,\naddressable box to size and center regardless of what's projected (an\nSVG, an `<img>`, a glyph). Carries no state and consumes none: it's a\ndirect child by construction (GUIDELINES.md rule 4's carve-out), and\ndisabled dimming reaches a `currentColor`-based icon for free through\nordinary CSS inheritance from hwc-button's own `color`.\n\nNot self-registering — call ButtonTrailingIcon.define() (optionally with\na tag name of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "ButtonTrailingIcon",
+          "slots": [
+            {
+              "description": "The consumer's own icon (an SVG, an `<img>`, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-button-trailing-icon\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-button-trailing-icon",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "ButtonTrailingIcon",
+          "declaration": {
+            "name": "ButtonTrailingIcon",
+            "module": "button/button-trailing-icon.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "button/button.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Headless button root — state, behavior, and accessibility only.\nSee button/SPEC.md for the composition contract and GUIDELINES.md for\nwhy there's no native `<button>` underneath.\n\nA pure form *operator* (GUIDELINES.md rule 8, category 2), not a\nvalue-bearing control: formAssociated exists solely to acquire\ninternals.form — setFormValue() is never called, so hwc-button never\nappears in FormData under any name. On activation, type=\"submit\" calls\ninternals.form?.requestSubmit() (never submit(), so the submit event\nfires and validation runs) and type=\"reset\" calls internals.form?.reset();\ntype=\"button\" (the default — a deliberate divergence from native's\nsubmit-by-default) touches the form not at all. Fieldset disable arrives\nthrough formDisabledCallback, OR'd with the consumer's own disabled\nattribute exactly like Checkbox/Radio.\n\nNot self-registering — call Button.define() (optionally with a tag name\nof your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "Button",
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-button\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "formAssociated",
+              "type": {
+                "text": "boolean"
+              },
+              "static": true,
+              "default": "true"
+            },
+            {
+              "kind": "field",
+              "name": "variant",
+              "type": {
+                "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\" | \"link\""
+              },
+              "default": "\"primary\"",
+              "attribute": "variant",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "size",
+              "type": {
+                "text": "\"small\" | \"medium\" | \"large\""
+              },
+              "default": "\"medium\"",
+              "attribute": "size",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "disabled",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "type",
+              "type": {
+                "text": "\"button\" | \"submit\" | \"reset\""
+              },
+              "default": "\"button\"",
+              "attribute": "type",
+              "reflects": true
+            },
+            {
+              "kind": "method",
+              "name": "formDisabledCallback",
+              "parameters": [
+                {
+                  "name": "disabled",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "attributes": [
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"primary\" | \"secondary\" | \"outline\" | \"ghost\" | \"destructive\" | \"link\""
+              },
+              "default": "\"primary\"",
+              "fieldName": "variant"
+            },
+            {
+              "name": "size",
+              "type": {
+                "text": "\"small\" | \"medium\" | \"large\""
+              },
+              "default": "\"medium\"",
+              "fieldName": "size"
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "disabled"
+            },
+            {
+              "name": "type",
+              "type": {
+                "text": "\"button\" | \"submit\" | \"reset\""
+              },
+              "default": "\"button\"",
+              "fieldName": "type"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-button",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Button",
+          "declaration": {
+            "name": "Button",
+            "module": "button/button.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "button/index.ts",
+      "declarations": [],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Button",
+          "declaration": {
+            "name": "Button",
+            "module": "./button.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "ButtonLeadingIcon",
+          "declaration": {
+            "name": "ButtonLeadingIcon",
+            "module": "./button-leading-icon.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "ButtonLabel",
+          "declaration": {
+            "name": "ButtonLabel",
+            "module": "./button-label.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "ButtonTrailingIcon",
+          "declaration": {
+            "name": "ButtonTrailingIcon",
+            "module": "./button-trailing-icon.js"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "checkbox/checkbox-checked-indicator.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure slot — the projected content owns the actual mark's shape; this\nelement only owns filling/centering itself in its parent box and mapping\nits own state to design tokens (GUIDELINES.md rule 3), both of which are\ntag-name-agnostic via :host and so survive a consumer renaming the tag.\n\nConsumes hwc-checkbox's state over context and mirrors it into custom\nstates on its own ElementInternals — never as attributes, so the light\nDOM stays entirely the consumer's (GUIDELINES.md rule 4). Not\nself-registering — call CheckboxCheckedIndicator.define() (optionally\nwith a tag name of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "CheckboxCheckedIndicator",
+          "slots": [
+            {
+              "description": "The consumer's own check mark (an SVG, a glyph, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-checkbox-checked-indicator\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-checkbox-checked-indicator",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "CheckboxCheckedIndicator",
+          "declaration": {
+            "name": "CheckboxCheckedIndicator",
+            "module": "checkbox/checkbox-checked-indicator.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "checkbox/checkbox-context.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "checkboxContext",
+          "description": "Broadcasts hwc-checkbox's state to its indicator children so each one can\ndecide its own visibility. Nothing here identifies a descendant by tag\nname — see GUIDELINES.md rules 4 and 5 for why that matters once tag\nnames are consumer-configurable."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "checkboxContext",
+          "declaration": {
+            "name": "checkboxContext",
+            "module": "checkbox/checkbox-context.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "checkbox/checkbox-indeterminate-indicator.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure slot — the projected content owns the actual mark's shape; this\nelement only owns filling/centering itself in its parent box and mapping\nits own state to design tokens (GUIDELINES.md rule 3), both of which are\ntag-name-agnostic via :host and so survive a consumer renaming the tag.\n\nConsumes hwc-checkbox's state over context and mirrors it into custom\nstates on its own ElementInternals — never as attributes, so the light\nDOM stays entirely the consumer's (GUIDELINES.md rule 4). Not\nself-registering — call CheckboxIndeterminateIndicator.define()\n(optionally with a tag name of your own choosing) before use. See\nGUIDELINES.md rule 5.",
+          "name": "CheckboxIndeterminateIndicator",
+          "slots": [
+            {
+              "description": "The consumer's own indeterminate mark (an SVG, a glyph, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-checkbox-indeterminate-indicator\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-checkbox-indeterminate-indicator",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "CheckboxIndeterminateIndicator",
+          "declaration": {
+            "name": "CheckboxIndeterminateIndicator",
+            "module": "checkbox/checkbox-indeterminate-indicator.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "checkbox/checkbox.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Headless checkbox root — state, behavior, and accessibility only.\nSee checkbox/SPEC.md for the composition contract and GUIDELINES.md\nfor why there's no native `<input type=\"checkbox\">` underneath.\n\nForm-associated (GUIDELINES.md rule 8): submits `value` under `name`\nwhile checked and nothing while unchecked, honors form.reset() and\n`<fieldset disabled>`, and restores state on session restore — all\nthrough the same ElementInternals handle the context indicators use.\nOutside a form every one of those is a silent no-op.\n\nNot self-registering — call Checkbox.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "Checkbox",
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-checkbox\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "formAssociated",
+              "type": {
+                "text": "boolean"
+              },
+              "static": true,
+              "default": "true"
+            },
+            {
+              "kind": "field",
+              "name": "checked",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "checked",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "indeterminate",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "indeterminate",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "disabled",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "value",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"on\"",
+              "attribute": "value"
+            },
+            {
+              "kind": "field",
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "attribute": "name",
+              "reflects": true
+            },
+            {
+              "kind": "method",
+              "name": "formResetCallback"
+            },
+            {
+              "kind": "method",
+              "name": "formDisabledCallback",
+              "parameters": [
+                {
+                  "name": "disabled",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "method",
+              "name": "formStateRestoreCallback",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string | File | FormData | null"
+                  }
+                },
+                {
+                  "name": "_mode",
+                  "type": {
+                    "text": "\"restore\" | \"autocomplete\""
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "events": [
+            {
+              "name": "change",
+              "type": {
+                "text": "Event"
+              },
+              "description": "Dispatched after checked/indeterminate changes from a click or Space keypress."
+            }
+          ],
+          "attributes": [
+            {
+              "name": "checked",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "checked"
+            },
+            {
+              "name": "indeterminate",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "indeterminate"
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "disabled"
+            },
+            {
+              "name": "value",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"on\"",
+              "fieldName": "value"
+            },
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "fieldName": "name"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-checkbox",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Checkbox",
+          "declaration": {
+            "name": "Checkbox",
+            "module": "checkbox/checkbox.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "checkbox/index.ts",
+      "declarations": [],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Checkbox",
+          "declaration": {
+            "name": "Checkbox",
+            "module": "./checkbox.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "CheckboxCheckedIndicator",
+          "declaration": {
+            "name": "CheckboxCheckedIndicator",
+            "module": "./checkbox-checked-indicator.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "CheckboxIndeterminateIndicator",
+          "declaration": {
+            "name": "CheckboxIndeterminateIndicator",
+            "module": "./checkbox-indeterminate-indicator.js"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field-context.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "fieldContext"
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "fieldContext",
+          "declaration": {
+            "name": "fieldContext",
+            "module": "field/field-context.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field-description.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "The field's description part — a pure slot for secondary text (format\nhints, consequences, helper text). Joins the claimed control's\naria-describedby through the field root, and dims itself while that\ncontrol is disabled, via a custom state consumed over the field context\n(GUIDELINES.md rule 4).\n\nNot self-registering — call FieldDescription.define() (optionally with\na tag name of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "FieldDescription",
+          "slots": [
+            {
+              "description": "The description text for the field's control.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "field",
+              "name": "kind",
+              "type": {
+                "text": "FieldPartKind"
+              },
+              "privacy": "protected",
+              "readonly": true,
+              "default": "\"description\"",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-field-description\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "_field",
+              "type": {
+                "text": "FieldContextValue | undefined"
+              },
+              "privacy": "protected",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "FieldPart",
+            "module": "/field/field-part.js"
+          },
+          "tagName": "hwc-field-description",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FieldDescription",
+          "declaration": {
+            "name": "FieldDescription",
+            "module": "field/field-description.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field-error.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "The field's error-message part — state-mounted: renders only while the\nfield root's `error` is set, hidden until context proves otherwise, the\nsame custom-state visibility mechanism as Checkbox's indicators\n(GUIDELINES.md rules 3 and 4). Deliberately no live region — no\nrole=\"alert\" — announcement timing is validation policy, which belongs\nto the application; a consumer who wants immediate announcement puts\nrole=\"alert\" on the content they project (see field/SPEC.md).\n\nNot self-registering — call FieldError.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "FieldError",
+          "slots": [
+            {
+              "description": "The validation message shown while the field is in error.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "field",
+              "name": "kind",
+              "type": {
+                "text": "FieldPartKind"
+              },
+              "privacy": "protected",
+              "readonly": true,
+              "default": "\"error\"",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-field-error\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "_field",
+              "type": {
+                "text": "FieldContextValue | undefined"
+              },
+              "privacy": "protected",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "FieldPart",
+            "module": "/field/field-part.js"
+          },
+          "tagName": "hwc-field-error",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FieldError",
+          "declaration": {
+            "name": "FieldError",
+            "module": "field/field-error.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field-label.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "The field's label part — a pure slot the consumer projects the label\ntext into. Not focusable, no role: it's text. Owns label activation —\nclicking it focuses and clicks the field's claimed control, native\n`<label>` parity, inert while that control is disabled — and dims itself\nwhile the control is disabled via a custom state consumed over the\nfield context (GUIDELINES.md rule 4). Registration, id self-management,\nand the disabled state come from FieldPart.\n\nNot self-registering — call FieldLabel.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "FieldLabel",
+          "slots": [
+            {
+              "description": "The label text naming the field's control.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "field",
+              "name": "kind",
+              "type": {
+                "text": "FieldPartKind"
+              },
+              "privacy": "protected",
+              "readonly": true,
+              "default": "\"label\"",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-field-label\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "_field",
+              "type": {
+                "text": "FieldContextValue | undefined"
+              },
+              "privacy": "protected",
+              "inheritedFrom": {
+                "name": "FieldPart",
+                "module": "field/field-part.ts"
+              }
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "FieldPart",
+            "module": "/field/field-part.js"
+          },
+          "tagName": "hwc-field-label",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FieldLabel",
+          "declaration": {
+            "name": "FieldLabel",
+            "module": "field/field-label.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field-part.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Shared behavior of the three field text parts (label, description,\nerror) — not itself a custom element. Each part registers itself with\nthe nearest field root over context (never discovered by tag name —\nGUIDELINES.md rule 5), assigns itself an id for the IDREF wiring if the\nconsumer didn't (the same self-managed-host-attribute pattern as a\ncontrol setting its own role and tabindex), and mirrors the context's\nclaimed-control state into custom states on its own ElementInternals\nfor styling (GUIDELINES.md rule 4).",
+          "name": "FieldPart",
+          "members": [
+            {
+              "kind": "field",
+              "name": "kind",
+              "type": {
+                "text": "FieldPartKind"
+              },
+              "privacy": "protected",
+              "readonly": true
+            },
+            {
+              "kind": "field",
+              "name": "_field",
+              "type": {
+                "text": "FieldContextValue | undefined"
+              },
+              "privacy": "protected"
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          }
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FieldPart",
+          "declaration": {
+            "name": "FieldPart",
+            "module": "field/field-part.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/field.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Headless field root — the shared label/description/error wrapper every\nlabeled control composes with. Owns no widget behavior; its job is\nassociation, run entirely over context (field-context.ts): parts\nregister themselves, and the first field-aware control to claim gets\nthe parts wired to it — never discovered by tag name (GUIDELINES.md\nrules 4 and 5). See field/SPEC.md for the full contract.\n\nNot self-registering — call Field.define() (optionally with a tag name\nof your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "Field",
+          "slots": [
+            {
+              "description": "The field's parts and its one control, in any order.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-field\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "error",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "error",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "attributes": [
+            {
+              "name": "error",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "error"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-field",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Field",
+          "declaration": {
+            "name": "Field",
+            "module": "field/field.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "field/index.ts",
+      "declarations": [],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Field",
+          "declaration": {
+            "name": "Field",
+            "module": "./field.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "FieldLabel",
+          "declaration": {
+            "name": "FieldLabel",
+            "module": "./field-label.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "FieldDescription",
+          "declaration": {
+            "name": "FieldDescription",
+            "module": "./field-description.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "FieldError",
+          "declaration": {
+            "name": "FieldError",
+            "module": "./field-error.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "FieldClaimController",
+          "declaration": {
+            "name": "FieldClaimController",
+            "module": "../internal/field-claim-controller.js"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "internal/define-once.ts",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "defineOnce",
+          "parameters": [
+            {
+              "name": "tagName",
+              "type": {
+                "text": "string"
+              }
+            },
+            {
+              "name": "ctor",
+              "type": {
+                "text": "CustomElementConstructor"
+              }
+            }
+          ],
+          "description": "Registers `ctor` under `tagName` unless that name is already taken, or\n`ctor` was already registered under a different name — the native\nregistry throws if the same constructor is defined twice under any name,\nso a repeat call (e.g. two entry points importing the same component)\nmust be a safe no-op, not a crash. See GUIDELINES.md rule 5."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "defineOnce",
+          "declaration": {
+            "name": "defineOnce",
+            "module": "internal/define-once.ts"
+          }
+        },
+        {
+          "kind": "custom-element-definition",
+          "name": "tagName",
+          "declaration": {
+            "name": "ctor",
+            "module": "internal/define-once.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "internal/field-claim-controller.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "The entire control side of the field contract (field/SPEC.md), shared\nby every field-aware control — a component opts in with a single line:\n\n  private _fieldClaim = new FieldClaimController(this, () => this._effectiveDisabled);\n\nThe controller claims the nearest field on connect (first claimant\nwins — and it retries whenever a broadcast shows the seat empty, so a\nremoved claimant's seat passes to whoever remains), writes\naria-labelledby/aria-describedby IDREFs on the host from the field's\ndelivered parts, reports the host's effective disabled back so the text\nparts can dim, and releases on disconnect. One place to change when the\ncontract evolves; a component that must not claim (Button, Panel)\nsimply never instantiates it.",
+          "name": "FieldClaimController",
+          "members": [
+            {
+              "kind": "method",
+              "name": "hostDisconnected"
+            },
+            {
+              "kind": "method",
+              "name": "hostUpdated"
+            }
+          ]
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "FieldClaimController",
+          "declaration": {
+            "name": "FieldClaimController",
+            "module": "internal/field-claim-controller.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "internal/slotted-element.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Base class for every custom element in this package — enforces\nGUIDELINES.md rule 3: a shadow root renders nothing but `<slot>`.\nSubclasses add reactive properties and behavior, never markup.\n\nAlso owns the element's one `ElementInternals` handle (`attachInternals()`\nthrows if called twice, so it has to live in exactly one place) and a\n`toggleState()` helper, because `CustomStateSet` ships `add`/`delete` but\nno `toggleAttribute`-style toggle. Custom states are how a component\nexposes *derived* state to its own `:host(:state(...))` CSS — state the\nconsumer sets stays a reflected attribute instead. See GUIDELINES.md\nrule 4.",
+          "name": "SlottedElement",
+          "members": [
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ]
+            }
+          ],
+          "superclass": {
+            "name": "LitElement",
+            "package": "lit"
+          },
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "SlottedElement",
+          "declaration": {
+            "name": "SlottedElement",
+            "module": "internal/slotted-element.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/index.ts",
+      "declarations": [],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Radio",
+          "declaration": {
+            "name": "Radio",
+            "module": "./radio.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "RadioCheckedIndicator",
+          "declaration": {
+            "name": "RadioCheckedIndicator",
+            "module": "./radio-checked-indicator.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "RadioGroup",
+          "declaration": {
+            "name": "RadioGroup",
+            "module": "./radio-group.js"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio-checked-indicator.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure slot — the projected content owns the actual dot's shape; this\nelement only owns filling/centering itself in its parent box and mapping\nits own state to design tokens (GUIDELINES.md rule 3), both of which are\ntag-name-agnostic via :host and so survive a consumer renaming the tag.\n\nConsumes hwc-radio's state over context and mirrors it into custom\nstates on its own ElementInternals — never as attributes, so the light\nDOM stays entirely the consumer's (GUIDELINES.md rule 4). Because the\nvisibility runs entirely on the radio's own state, a lone\n`<hwc-radio checked>` — no group, no form, no name — always renders its\ndot correctly. Not self-registering — call\nRadioCheckedIndicator.define() (optionally with a tag name of your own\nchoosing) before use. See GUIDELINES.md rule 5.",
+          "name": "RadioCheckedIndicator",
+          "slots": [
+            {
+              "description": "The consumer's own selection dot (an SVG, a glyph, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-radio-checked-indicator\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-radio-checked-indicator",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "RadioCheckedIndicator",
+          "declaration": {
+            "name": "RadioCheckedIndicator",
+            "module": "radio-button/radio-checked-indicator.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio-context.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "radioContext",
+          "description": "Broadcasts hwc-radio's state to its checked-indicator child so it can\ndecide its own visibility — the same root-to-indicator pattern as\ncheckbox-context.ts. Nothing here identifies a descendant by tag name —\nsee GUIDELINES.md rules 4 and 5 for why that matters once tag names are\nconsumer-configurable."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "radioContext",
+          "declaration": {
+            "name": "radioContext",
+            "module": "radio-button/radio-context.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio-group-context.ts",
+      "declarations": [
+        {
+          "kind": "variable",
+          "name": "radioGroupContext",
+          "description": "Provided by hwc-radio-group to descendant radios: the shared (or\nauto-generated) name and a group-wide disabled. Context rather than\ndirect parentage because a radio is commonly wrapped in a hwc-field for\nits label — the field sits between group and radio without knowing\neither exists (GUIDELINES.md rule 4). A radio's own explicit `name`\nattribute always wins over the context-provided one: the consumer's\nattribute is the input API."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "radioGroupContext",
+          "declaration": {
+            "name": "radioGroupContext",
+            "module": "radio-button/radio-group-context.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio-group.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "An optional convenience container for radios — not the grouping\nmechanism itself. The registry (radio-registry.ts) owns mutual\nexclusion, roving tabindex, and arrow keys; this element's job is to\nhand descendants a shared name (auto-generated when absent) and a\ngroup-wide disabled over context, plus carry role=\"radiogroup\". Context\nrather than direct parentage because a radio is commonly wrapped in a\nhwc-field for its label (GUIDELINES.md rule 4).\n\nNot self-registering — call RadioGroup.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "RadioGroup",
+          "slots": [
+            {
+              "description": "The group's radios, at any depth — commonly each wrapped in a field.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-radio-group\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "attribute": "name",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "disabled",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "attributes": [
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "fieldName": "name"
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "disabled"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-radio-group",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "RadioGroup",
+          "declaration": {
+            "name": "RadioGroup",
+            "module": "radio-button/radio-group.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio-registry.ts",
+      "declarations": [
+        {
+          "kind": "function",
+          "name": "joinSet",
+          "parameters": [
+            {
+              "name": "member",
+              "type": {
+                "text": "RadioMembership"
+              }
+            },
+            {
+              "name": "scope",
+              "type": {
+                "text": "Node"
+              }
+            },
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              }
+            }
+          ],
+          "description": "Adds `member` to the set for (scope, name), leaving any previous set\nfirst. An empty name means \"unnamed\" — the member belongs to no set.\nRe-joining the same key is a no-op."
+        },
+        {
+          "kind": "function",
+          "name": "leaveSet",
+          "return": {
+            "type": {
+              "text": "RadioMembership[]"
+            }
+          },
+          "parameters": [
+            {
+              "name": "member",
+              "type": {
+                "text": "RadioMembership"
+              }
+            }
+          ],
+          "description": "Removes `member` from its set, returning the remaining members in DOM\norder so the caller can hand the departed member's tab stop to someone\nelse. No-op (empty array) if the member wasn't in a set."
+        },
+        {
+          "kind": "function",
+          "name": "setMembers",
+          "return": {
+            "type": {
+              "text": "RadioMembership[]"
+            }
+          },
+          "parameters": [
+            {
+              "name": "member",
+              "type": {
+                "text": "RadioMembership"
+              }
+            }
+          ],
+          "description": "The member's whole set in DOM order; empty if it's unnamed (no set)."
+        },
+        {
+          "kind": "function",
+          "name": "applyExclusion",
+          "parameters": [
+            {
+              "name": "member",
+              "type": {
+                "text": "RadioMembership"
+              }
+            }
+          ],
+          "description": "Mutual exclusion: checking `member` unchecks every other member of its set."
+        },
+        {
+          "kind": "function",
+          "name": "syncTabStops",
+          "parameters": [
+            {
+              "name": "members",
+              "type": {
+                "text": "RadioMembership[]"
+              }
+            }
+          ],
+          "description": "Roving tabindex: exactly one member per set is in the tab order — the\nchecked one, or the first non-disabled in DOM order when none is checked\n— so Tab crosses the whole set in one stop."
+        },
+        {
+          "kind": "function",
+          "name": "step",
+          "return": {
+            "type": {
+              "text": "RadioMembership | null"
+            }
+          },
+          "parameters": [
+            {
+              "name": "member",
+              "type": {
+                "text": "RadioMembership"
+              }
+            },
+            {
+              "name": "delta",
+              "type": {
+                "text": "1 | -1"
+              }
+            }
+          ],
+          "description": "The nearest non-disabled member `delta` steps away in DOM order,\nwrapping at the ends; null when the member is alone, unnamed, or every\nother member is disabled."
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "joinSet",
+          "declaration": {
+            "name": "joinSet",
+            "module": "radio-button/radio-registry.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "leaveSet",
+          "declaration": {
+            "name": "leaveSet",
+            "module": "radio-button/radio-registry.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "setMembers",
+          "declaration": {
+            "name": "setMembers",
+            "module": "radio-button/radio-registry.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "applyExclusion",
+          "declaration": {
+            "name": "applyExclusion",
+            "module": "radio-button/radio-registry.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "syncTabStops",
+          "declaration": {
+            "name": "syncTabStops",
+            "module": "radio-button/radio-registry.ts"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "step",
+          "declaration": {
+            "name": "step",
+            "module": "radio-button/radio-registry.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "radio-button/radio.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Headless radio root — state, behavior, and accessibility only.\nSee radio-button/SPEC.md for the composition contract and GUIDELINES.md\nfor why there's no native `<input type=\"radio\">` underneath.\n\nGrouping runs through the name registry (radio-registry.ts), scoped by\n(internals.form ?? root node, name) exactly like native radios. A name\narrives from the consumer's attribute, or from a surrounding\nhwc-radio-group over context — the attribute always wins. With no name\nat all the radio is controlled: activation fires `change` without\nmutating state, and the consumer commits `checked` themselves.\n\nForm-associated (GUIDELINES.md rule 8): the checked member of a named\nset submits `value` under the shared name, honors form.reset() and\n`<fieldset disabled>`, and restores state on session restore. Outside a\nform every one of those is a silent no-op.\n\nNot self-registering — call Radio.define() (optionally with a tag name\nof your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "Radio",
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-radio\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "formAssociated",
+              "type": {
+                "text": "boolean"
+              },
+              "static": true,
+              "default": "true"
+            },
+            {
+              "kind": "field",
+              "name": "checked",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "checked",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "disabled",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "value",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"on\"",
+              "attribute": "value"
+            },
+            {
+              "kind": "field",
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "attribute": "name",
+              "reflects": true
+            },
+            {
+              "kind": "method",
+              "name": "formResetCallback"
+            },
+            {
+              "kind": "method",
+              "name": "formDisabledCallback",
+              "parameters": [
+                {
+                  "name": "disabled",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "method",
+              "name": "formStateRestoreCallback",
+              "parameters": [
+                {
+                  "name": "restored",
+                  "type": {
+                    "text": "string | File | FormData | null"
+                  }
+                },
+                {
+                  "name": "_mode",
+                  "type": {
+                    "text": "\"restore\" | \"autocomplete\""
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "method",
+              "name": "formAssociatedCallback",
+              "parameters": [
+                {
+                  "name": "_form",
+                  "type": {
+                    "text": "HTMLFormElement | null"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "events": [
+            {
+              "name": "change",
+              "type": {
+                "text": "Event"
+              },
+              "description": "Dispatched on user activation (click, Space, arrow-key movement). Named mode: state already changed — `target.checked` is the new value. Unnamed (controlled) mode: a request — nothing mutated, the consumer commits `checked` themselves. An already-checked radio fires nothing in either mode."
+            }
+          ],
+          "attributes": [
+            {
+              "name": "checked",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "checked"
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "disabled"
+            },
+            {
+              "name": "value",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"on\"",
+              "fieldName": "value"
+            },
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "fieldName": "name"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-radio",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "Radio",
+          "declaration": {
+            "name": "Radio",
+            "module": "radio-button/radio.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "text-input/index.ts",
+      "declarations": [],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "TextInput",
+          "declaration": {
+            "name": "TextInput",
+            "module": "./text-input.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "TextInputLeadingIcon",
+          "declaration": {
+            "name": "TextInputLeadingIcon",
+            "module": "./text-input-leading-icon.js"
+          }
+        },
+        {
+          "kind": "js",
+          "name": "TextInputTrailingIcon",
+          "declaration": {
+            "name": "TextInputTrailingIcon",
+            "module": "./text-input-trailing-icon.js"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "text-input/text-input-leading-icon.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure positional seam (root README's \"positional seams\" category) —\npresent only when the consumer projects one, giving a theme a fixed,\naddressable box to size and center regardless of what's projected.\nCarries no state and consumes none; disabled dimming reaches a\n`currentColor`-based icon for free through ordinary CSS inheritance\nfrom hwc-text-input's own `color`.\n\nOne wrinkle Button's icons don't have: this box sits *inside* an\neditable host (SPEC.md § Editing model), so it marks itself\n`contenteditable=\"false\"` — a non-editable atomic island the root's\nedit guard recognizes by that attribute, never by tag name.\n\nNot self-registering — call TextInputLeadingIcon.define() (optionally\nwith a tag name of your own choosing) before use. See GUIDELINES.md\nrule 5.",
+          "name": "TextInputLeadingIcon",
+          "slots": [
+            {
+              "description": "The consumer's own icon (an SVG, an `<img>`, anything).",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-text-input-leading-icon\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-text-input-leading-icon",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "TextInputLeadingIcon",
+          "declaration": {
+            "name": "TextInputLeadingIcon",
+            "module": "text-input/text-input-leading-icon.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "text-input/text-input-trailing-icon.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "A pure positional seam like the leading icon — see\ntext-input-leading-icon.ts; the same editable-host wrinkle applies, so\nthis box also marks itself `contenteditable=\"false\"`. When what's\nprojected is itself interactive (a clear button, a reveal toggle), that\ninner control needs its own accessible name and must not steal focus\nfrom the input on click (SPEC.md § Composition) — both the consumer's\nresponsibility, since the projected content is theirs.\n\nNot self-registering — call TextInputTrailingIcon.define() (optionally\nwith a tag name of your own choosing) before use. See GUIDELINES.md\nrule 5.",
+          "name": "TextInputTrailingIcon",
+          "slots": [
+            {
+              "description": "The consumer's own icon or trailing control.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-text-input-trailing-icon\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-text-input-trailing-icon",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "TextInputTrailingIcon",
+          "declaration": {
+            "name": "TextInputTrailingIcon",
+            "module": "text-input/text-input-trailing-icon.ts"
+          }
+        }
+      ]
+    },
+    {
+      "kind": "javascript-module",
+      "path": "text-input/text-input.ts",
+      "declarations": [
+        {
+          "kind": "class",
+          "description": "Headless single-line text input root — state, behavior, and accessibility\nonly. See text-input/SPEC.md for the composition contract and\nGUIDELINES.md rule 2 for why there's no native `<input>` underneath: the\nhost itself is the editable surface (contenteditable=\"plaintext-only\"),\nand the shadow root's `<slot>` projects the light-DOM text being edited,\nso caret, selection, and IME composition are the platform's own.\n\nThe parts the platform *doesn't* give are rebuilt here (SPEC.md):\n- Value model: the projected text is the value; the `value` attribute is\n  the default, tracked under native's dirty-value-flag rules and never\n  reflected back.\n- Edit guard: beforeinput operations whose target range touches a\n  non-text child (an icon part — a contenteditable=\"false\" island), or\n  that would insert newlines, are cancelled and re-performed against the\n  text only. Ordinary typing is never intercepted. The guard is dormant\n  during IME composition.\n- Form contract (GUIDELINES.md rule 8): live setFormValue on every edit,\n  Enter-to-submit (the reimplemented implicit submission), reset to the\n  markup default, session restore, fieldset disable.\n- Selection API parity: select(), setSelectionRange(), and\n  selectionStart/selectionEnd/selectionDirection, matching\n  HTMLInputElement's own — cached rather than read live from the\n  platform selection so they persist across blur the same way native's\n  does (see the field declarations' own comment).\n\nNot self-registering — call TextInput.define() (optionally with a tag\nname of your own choosing) before use. See GUIDELINES.md rule 5.",
+          "name": "TextInput",
+          "slots": [
+            {
+              "description": "The text being edited, plus optional leading/trailing icon parts.",
+              "name": ""
+            }
+          ],
+          "members": [
+            {
+              "kind": "method",
+              "name": "define",
+              "static": true,
+              "parameters": [
+                {
+                  "name": "tagName",
+                  "default": "\"hwc-text-input\""
+                }
+              ]
+            },
+            {
+              "kind": "field",
+              "name": "formAssociated",
+              "type": {
+                "text": "boolean"
+              },
+              "static": true,
+              "default": "true"
+            },
+            {
+              "kind": "field",
+              "name": "variant",
+              "type": {
+                "text": "\"default\" | \"filled\" | \"borderless\""
+              },
+              "default": "\"default\"",
+              "attribute": "variant",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "size",
+              "type": {
+                "text": "\"small\" | \"medium\" | \"large\""
+              },
+              "default": "\"medium\"",
+              "attribute": "size",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "disabled",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "readOnly",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "readonly",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "error",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "attribute": "error",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "attribute": "name",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "type",
+              "type": {
+                "text": "| \"text\"\n    | \"email\"\n    | \"tel\"\n    | \"url\"\n    | \"search\"\n    | \"password\""
+              },
+              "default": "\"text\"",
+              "attribute": "type",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "placeholder",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "attribute": "placeholder",
+              "reflects": true
+            },
+            {
+              "kind": "field",
+              "name": "value",
+              "type": {
+                "text": "string"
+              },
+              "description": "The current value — the projected light-DOM text itself (direct child\ntext nodes; icon subtrees excluded). Never reflected to the `value`\nattribute, which stays the markup-declared default (SPEC § Value model)."
+            },
+            {
+              "kind": "method",
+              "name": "formResetCallback"
+            },
+            {
+              "kind": "method",
+              "name": "formDisabledCallback",
+              "parameters": [
+                {
+                  "name": "disabled",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "method",
+              "name": "formStateRestoreCallback",
+              "parameters": [
+                {
+                  "name": "restored",
+                  "type": {
+                    "text": "string | File | FormData | null"
+                  }
+                },
+                {
+                  "name": "_mode",
+                  "type": {
+                    "text": "\"restore\" | \"autocomplete\""
+                  }
+                }
+              ]
+            },
+            {
+              "kind": "method",
+              "name": "select",
+              "description": "Selects all the text — matches native <input>.select(), including its\ndocumented side effect of focusing the element if it wasn't already."
+            },
+            {
+              "kind": "method",
+              "name": "setSelectionRange",
+              "parameters": [
+                {
+                  "name": "start",
+                  "type": {
+                    "text": "number"
+                  }
+                },
+                {
+                  "name": "end",
+                  "type": {
+                    "text": "number"
+                  }
+                },
+                {
+                  "name": "direction",
+                  "default": "\"none\"",
+                  "type": {
+                    "text": "\"forward\" | \"backward\" | \"none\""
+                  }
+                }
+              ],
+              "description": "Sets the selection to [start, end), matching HTMLInputElement's own\nalgorithm: end is clamped to the value's length first, then start is\nclamped to at most that (a start past end collapses to end, it is\nnever swapped with it) — direction defaults to \"none\" and any other\nvalue also normalizes to \"none\", same as native. Also focuses the\nelement: unlike a native input, which tracks selection independently\nof focus, this component's selection *is* the document Selection API\n(SPEC § Editing model), so setting it while unfocused would otherwise\nsilently steal whatever selection is active elsewhere on the page."
+            },
+            {
+              "kind": "field",
+              "name": "selectionStart",
+              "type": {
+                "text": "number"
+              },
+              "description": "The offset of the selection's start — persists across blur (tabbing\nback in restores it), same as native, since it's cached rather than\nread fresh from the platform selection every time (see the field's\nown comment for why)."
+            },
+            {
+              "kind": "field",
+              "name": "selectionEnd",
+              "type": {
+                "text": "number"
+              },
+              "description": "The offset of the selection's end."
+            },
+            {
+              "kind": "field",
+              "name": "selectionDirection",
+              "type": {
+                "text": "\"forward\" | \"backward\" | \"none\""
+              },
+              "description": "\"forward\" | \"backward\" | \"none\" — \"none\" for a collapsed caret, always."
+            },
+            {
+              "kind": "field",
+              "name": "internals",
+              "privacy": "protected",
+              "readonly": true,
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            },
+            {
+              "kind": "method",
+              "name": "toggleState",
+              "privacy": "protected",
+              "parameters": [
+                {
+                  "name": "state",
+                  "type": {
+                    "text": "string"
+                  }
+                },
+                {
+                  "name": "force",
+                  "type": {
+                    "text": "boolean"
+                  }
+                }
+              ],
+              "inheritedFrom": {
+                "name": "SlottedElement",
+                "module": "internal/slotted-element.ts"
+              }
+            }
+          ],
+          "events": [
+            {
+              "name": "change",
+              "type": {
+                "text": "Event"
+              },
+              "description": "Dispatched after the value changed, on commit: blur, or Enter before submission."
+            }
+          ],
+          "attributes": [
+            {
+              "name": "value"
+            },
+            {
+              "name": "variant",
+              "type": {
+                "text": "\"default\" | \"filled\" | \"borderless\""
+              },
+              "default": "\"default\"",
+              "fieldName": "variant"
+            },
+            {
+              "name": "size",
+              "type": {
+                "text": "\"small\" | \"medium\" | \"large\""
+              },
+              "default": "\"medium\"",
+              "fieldName": "size"
+            },
+            {
+              "name": "disabled",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "disabled"
+            },
+            {
+              "name": "readonly",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "readOnly"
+            },
+            {
+              "name": "error",
+              "type": {
+                "text": "boolean"
+              },
+              "default": "false",
+              "fieldName": "error"
+            },
+            {
+              "name": "name",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "fieldName": "name"
+            },
+            {
+              "name": "type",
+              "type": {
+                "text": "| \"text\"\n    | \"email\"\n    | \"tel\"\n    | \"url\"\n    | \"search\"\n    | \"password\""
+              },
+              "default": "\"text\"",
+              "fieldName": "type"
+            },
+            {
+              "name": "placeholder",
+              "type": {
+                "text": "string"
+              },
+              "default": "\"\"",
+              "fieldName": "placeholder"
+            }
+          ],
+          "superclass": {
+            "name": "SlottedElement",
+            "module": "/internal/slotted-element.js"
+          },
+          "tagName": "hwc-text-input",
+          "customElement": true
+        }
+      ],
+      "exports": [
+        {
+          "kind": "js",
+          "name": "TextInput",
+          "declaration": {
+            "name": "TextInput",
+            "module": "text-input/text-input.ts"
+          }
+        }
+      ]
+    }
+  ]
+}

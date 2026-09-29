@@ -13,8 +13,8 @@ import {
   axesOf,
   enumValues,
   modelByRef,
-  partNode,
   ROOT_PART,
+  styleTarget,
   STATE_AXIS,
   DEFAULT_STATE,
 } from './design-system.js'
@@ -275,8 +275,12 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
         }
       }
       for (const [part, props] of Object.entries(row.values)) {
-        if (part !== ROOT_PART && !partNode(component, part)) {
-          error(CODES.STYLE_ROW, `<Style> names part "${part}", which no node binds`, row.loc)
+        if (part !== ROOT_PART && !styleTarget(component, part)) {
+          error(
+            CODES.STYLE_ROW,
+            `<Style> names "${part}", which is neither a bound part nor the name of a node in the tree`,
+            row.loc,
+          )
         }
         for (const prop of Object.keys(props)) {
           if (!isKnownProp(prop))

@@ -40,7 +40,8 @@ states, referencing tokens only:
 - A row's keys are axis assignments; its other attributes are `part:prop`
   pairs (a colon, because JSX allows a namespaced attribute name and not a
   dotted one). `root` is the component's own frame; other names are declared
-  parts.
+  parts, or the name of one of the design's own nodes — a frame or text that
+  has no headless element and is styled by name.
 - Resolution is by specificity: the base tree, then rows matching one key,
   then rows matching more. Equal specificity resolves in file order.
 - Values are tokens, or literals where the prop has no token type (`visible`,

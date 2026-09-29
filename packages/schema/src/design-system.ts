@@ -216,6 +216,25 @@ export function partNode(tree: UidxNode, part: string): UidxNode | undefined {
   return undefined
 }
 
+/** The first node named `name` inside `tree` (not the tree itself), or undefined. */
+export function nodeNamed(tree: UidxNode, name: string): UidxNode | undefined {
+  for (const child of tree.children) {
+    if (child.name === name) return child
+    const found = nodeNamed(child, name)
+    if (found) return found
+  }
+  return undefined
+}
+
+/**
+ * What a styles-table target names (ADR 0016 §2): the component's own
+ * frame, a declared part, or — for the design's own nodes, which have no
+ * headless element — a node by its name.
+ */
+export function styleTarget(tree: UidxNode, target: string): UidxNode | undefined {
+  return partNode(tree, target) ?? nodeNamed(tree, target)
+}
+
 /** Whether a component's variants are derived from its styles table. */
 export function derivesVariants(component: UidxNode): boolean {
   return (
@@ -269,7 +288,7 @@ export function deriveVariants(component: UidxNode): UidxNode {
     }
     for (const row of rowsFor(rows, combination)) {
       for (const [part, props] of Object.entries(row.values)) {
-        const target = part === ROOT_PART ? root : partNode(root, part)
+        const target = part === ROOT_PART ? root : styleTarget(root, part)
         if (!target) continue
         for (const [prop, value] of Object.entries(props)) {
           target.attrs[prop] = synthAttr(prop, value, target.attrs[prop] ?? component)

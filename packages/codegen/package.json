@@ -1,0 +1,48 @@
+{
+  "name": "@uidx/codegen",
+  "version": "0.1.6",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@uidx/format": "workspace:*",
+    "@uidx/schema": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=22.19"
+  },
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/uidxkit/uidx.git",
+    "directory": "packages/codegen"
+  },
+  "homepage": "https://github.com/uidxkit/uidx#readme",
+  "bugs": {
+    "url": "https://github.com/uidxkit/uidx/issues"
+  }
+}

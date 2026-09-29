@@ -4,6 +4,25 @@ User-visible changes are recorded here. Versions follow semantic versioning;
 pre-1.0 releases may change the design format or public APIs. Release notes must
 describe migrations when an existing document or integration is affected.
 
+## Unreleased
+
+- The design-system model (ADRs 0012–0017). A `.uidx` file may now carry a
+  `## Contract` (props, events, states, parts, slots, form, accessibility),
+  `## Behavior` guidelines, `## Models` and `## Examples` after its visual
+  contract, and a `<Styles>` table beside the root. Declarations only: nothing
+  in the file computes. The viewer draws a styles table as the variant set it
+  derives, resolves `{item.field}` bindings to a model's samples, and expands
+  `<Repeat>` into sample rows. `uidx check` audits the regions against each
+  other and the tree; `uidx contract` prints them as JSON.
+- `@uidx/codegen` and `uidx codegen`: HTML/CSS and React rendered from the
+  identities over headless custom elements, with props, events and slots from
+  the contract — a plain slot as a `ReactNode` prop, a repeating slot as
+  `items` plus `renderItem` generic over the model — and each contract checked
+  against the headless library's `custom-elements.json`.
+- `examples/design-system`: Checkbox, Field, CheckboxField, Button and a
+  contact list rendered end to end over `@hwc/components`, with the generated
+  output committed and checked for drift.
+
 ## 0.1.6 — 2026-09-25
 
 - The first `uidx dev` sets up the workspace itself when the install script did

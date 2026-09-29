@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "noEmit": true,
+    "types": ["node", "vite/client"],
+    "paths": {
+      "@hwc/components/*": ["./vendor/hwc/dist/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "generated/react/**/*.ts", "generated/react/**/*.tsx", "test/**/*.ts"]
+}

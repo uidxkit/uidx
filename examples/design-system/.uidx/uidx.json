@@ -1,0 +1,1 @@
+{ "id": "example-design-system", "files": ["**/*.uidx"], "assets": ["assets/**"] }

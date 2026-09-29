@@ -124,6 +124,7 @@ export {
   derivesVariants,
   enumValues,
   modelByRef,
+  nodeNamed,
   partNode,
   propSpec,
   ROOT_PART,
@@ -131,5 +132,6 @@ export {
   specBindings,
   STATE_AXIS,
   stateAxis,
+  styleTarget,
   visualAxes,
 } from './design-system.js'
