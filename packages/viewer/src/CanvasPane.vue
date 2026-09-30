@@ -37,7 +37,7 @@ import { drawingHint } from './graphics-tools'
 import { resizeVectorPaths } from './vector-resize'
 import type { Point, Rect } from './gesture-model'
 import { importSvg, type SvgProblem } from './svg-import'
-import { reorderFor } from './layer-moves'
+import { canInsert, reorderFor } from './layer-moves'
 import { positioningWrites } from './position-writes'
 import { resolvePins, withStrokeEndpoints, type ModelIndex } from '@uidx/schema'
 import { strokeEdit } from './stroke-edits'
@@ -521,7 +521,16 @@ function createNode(
   const chain = containerChainAt(built.graph, built.rootId, at, '')
     .map((id) => built.addresses.addressOf(id))
     .filter((address): address is string => address !== undefined)
-  const parent = insertTargetFor(current, element, chain)
+  // Placing an instance with a slot selected fills the slot (ADR 0007): the
+  // hole is the target the author named, wherever the click landed.
+  const selected = props.selection?.length === 1 ? props.selection[0]! : null
+  const selectedNode = selected ? resolve(current.tree, selected) : null
+  const parent =
+    placing !== null &&
+    selectedNode?.element === 'Slot' &&
+    canInsert(current, selected!, 'Instance')
+      ? selected
+      : insertTargetFor(current, element, chain)
   if (parent === null) return
 
   const parentNode = resolve(current.tree, parent)

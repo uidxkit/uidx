@@ -17,6 +17,8 @@ import {
   scaffoldFromLibrary,
   setImplements,
   setPart,
+  moveRepeatOnto,
+  setReceives,
   setRepeat,
   setRepeatAs,
   undeclare,
@@ -54,6 +56,8 @@ const props = defineProps<{
   codegen?: { out: string | null; running: boolean; notice: string }
   /** Model name -> declaration across every page, so a list's model resolves wherever it is written. */
   models?: ModelIndex
+  /** Component name -> definition across every page, for what an instance receives. */
+  components?: ReadonlyMap<string, UidxNode>
   writable: boolean
 }>()
 
@@ -80,7 +84,9 @@ function chooseCandidate(path: string): void {
   if (path) emit('chooseLibrary', path)
 }
 
-const view = computed(() => contractView(props.doc, props.node, props.library, props.models))
+const view = computed(() =>
+  contractView(props.doc, props.node, props.library, props.models, props.components),
+)
 
 const boundCount = computed(() =>
   view.value.kind === 'component' ? view.value.parts.filter((row) => row.boundTo).length : 0,
@@ -135,6 +141,27 @@ function chooseRepeat(list: string): void {
 function chooseAs(raw: string): void {
   if (!repeatable.value) return
   send(setRepeatAs(repeatable.value.node, raw))
+}
+
+/** The repeat moves from the container onto the row it holds; the row is then selected. */
+function repeatRowInstead(): void {
+  const current = repeatable.value
+  if (!current?.wrapsOne || !props.doc) return
+  const row = findNode(props.doc.tree, current.wrapsOne.address)
+  if (!row) return
+  send(moveRepeatOnto(current.node, row))
+  emit('select', row.address)
+}
+
+/** What an instance hands one of its definition's props; empty leaves the inference to stand. */
+function chooseReceives(prop: string, alias: string): void {
+  if (view.value.kind !== 'instance') return
+  send(setReceives(view.value.node, prop, alias || null))
+}
+
+/** A `<Slot>` in the tree the contract does not declare yet, declared in one click. */
+function declareSlot(name: string): void {
+  send(declare('slot', name, { attrs: {}, description: `${PLACEHOLDER}the slot "${name}".` }))
 }
 
 function findNode(root: UidxNode, address: string): UidxNode | null {
@@ -384,8 +411,34 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         </button>
       </p>
 
-      <template v-if="view.slots.length">
+      <template v-if="view.slots.length || view.straySlots.length">
         <header class="head"><span class="title">Slots</span></header>
+        <div
+          v-for="stray in view.straySlots"
+          :key="`stray:${stray.address}`"
+          class="row"
+          :data-stray-slot="stray.name"
+          data-bound="false"
+        >
+          <span class="name">{{ stray.name }}</span>
+          <button
+            type="button"
+            class="layer"
+            title="Select the slot"
+            @click="emit('select', stray.address)"
+          >
+            <span class="layer-name">Not declared</span>
+          </button>
+          <button
+            type="button"
+            class="stale-name"
+            :disabled="!writable"
+            :title="`Declare slot ${stray.name} in the contract`"
+            @click="declareSlot(stray.name)"
+          >
+            Declare
+          </button>
+        </div>
         <div
           v-for="slot in view.slots"
           :key="slot.name"
@@ -496,6 +549,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             <input
               class="text"
               :value="prop.type"
+              aria-label="Type"
               :disabled="!writable"
               @change="
                 redeclare('prop', prop.name, {
@@ -510,6 +564,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               <input
                 class="text"
                 :value="printed(prop.default)"
+                aria-label="Default"
                 :disabled="!writable"
                 placeholder="none"
                 @change="
@@ -524,6 +579,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               <input
                 class="text"
                 :value="printed(prop.sample)"
+                aria-label="Sample"
                 :disabled="!writable"
                 placeholder="none"
                 @change="
@@ -538,6 +594,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             <label
               ><input
                 type="checkbox"
+                aria-label="Visual"
                 :checked="prop.visual"
                 :disabled="!writable"
                 @change="
@@ -551,6 +608,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             <label
               ><input
                 type="checkbox"
+                aria-label="Controllable"
                 :checked="prop.controllable"
                 :disabled="!writable"
                 @change="
@@ -902,9 +960,78 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
     </template>
 
     <template v-else-if="view.kind === 'instance'">
-      <p class="empty">
-        An instance renders its component's contract. Select the component to change what it
-        implements or how its parts are bound.
+      <header class="head">
+        <span class="title">Instance</span>
+        <span v-if="view.definition" class="of">of {{ view.definition.name }}</span>
+      </header>
+      <p v-if="!view.definition" class="stale" role="status">
+        This document has no component called “{{ view.node.attrs.component?.value }}”.
+      </p>
+      <p v-else-if="!view.component" class="hint">
+        An instance renders its component's contract. Inside a component it also receives what the
+        component or an enclosing repeat hands it.
+      </p>
+      <template v-else-if="view.receives.length">
+        <!--
+          Inside a repeat, the row's item is what the instance is of (ADR 0017
+          §2): a prop typed by the item's model receives the item without a
+          word written, as the code target passes it. The rows say what each
+          prop receives, mark what was inferred, and let the use say otherwise.
+        -->
+        <header class="head"><span class="title">Receives</span></header>
+        <div
+          v-for="row in view.receives"
+          :key="row.prop"
+          class="row"
+          :data-receives="row.prop"
+          :data-set="row.from !== null"
+          :data-inferred="!row.explicit && row.from !== null"
+        >
+          <span class="name" :title="row.type">{{ row.prop }}</span>
+          <select
+            v-if="row.options.length"
+            class="pick"
+            :value="row.explicit ? row.from : ''"
+            :disabled="!writable"
+            :aria-label="`${row.prop} receives`"
+            @change="chooseReceives(row.prop, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">
+              {{ row.from && !row.explicit ? '{' + row.from + '} · inferred' : 'Nothing' }}
+            </option>
+            <option v-for="option in row.options" :key="option" :value="option">
+              {{ '{' + option + '}' }}
+            </option>
+          </select>
+          <span v-else class="type" :title="`Nothing in scope is a ${row.type}`">
+            {{ row.from ? '{' + row.from + '}' : 'nothing in scope' }}
+          </span>
+          <button
+            v-if="row.explicit"
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Reset ${row.prop}`"
+            title="Back to what the repeat implies"
+            @click="chooseReceives(row.prop, '')"
+          >
+            ↺
+          </button>
+          <span v-else class="reset-spacer" />
+        </div>
+        <p class="hint">
+          <button type="button" class="stale-name" @click="emit('select', view.definition.address)">
+            Select {{ view.definition.name }}
+          </button>
+          to change what it declares.
+        </p>
+      </template>
+      <p v-else class="hint">
+        {{ view.definition.name }} declares no contract props.
+        <button type="button" class="stale-name" @click="emit('select', view.definition.address)">
+          Select it
+        </button>
+        to add some.
       </p>
     </template>
 
@@ -989,6 +1116,14 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           />
           <span class="reset-spacer" />
         </div>
+        <p v-if="repeatable.wrapsOne" class="stale" role="status">
+          This repeats the whole “{{ repeatable.node.name }}”, one per item, with “{{
+            repeatable.wrapsOne.name
+          }}” inside each. To keep one container and repeat the row:
+          <button type="button" class="stale-name" :disabled="!writable" @click="repeatRowInstead">
+            Repeat {{ repeatable.wrapsOne.name }} instead
+          </button>
+        </p>
         <p v-if="repeatable.repeat.model && !repeatable.repeat.unknownModel" class="hint">
           Each item is a
           <button

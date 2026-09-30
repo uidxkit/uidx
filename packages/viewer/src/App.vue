@@ -64,6 +64,7 @@ import { routeDerivedPatches } from './derived-edits'
 import WorkspaceStatus from './WorkspaceStatus.vue'
 import { canRemove, componentFrom, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
+import { enclosingComponent } from './component-prop-edits'
 import { newSlotFor, slotTargetFor } from './slot-edits'
 import { newRepeatFor, repeatTargetFor } from './repeat-edits'
 import { isDeleteKey, isTypingTarget, toolFor } from './tool-keys'
@@ -1378,6 +1379,13 @@ function onCanvasPatches(patches: UidxPatch[]): void {
  * other — because the canvas has one press to give.
  */
 const placing = ref<string | null>(null)
+/** The component the selection sits inside: not on offer, since it cannot hold itself. */
+const placingInto = computed(() => {
+  const doc_ = sceneDoc.value
+  const address = selection.value[0]
+  if (!doc_ || !address) return null
+  return enclosingComponent(doc_, address)?.name ?? null
+})
 /** Open while the author is choosing which component to place. */
 const picking = ref(false)
 
@@ -1451,6 +1459,10 @@ const componentSource = computed<string | null>(() => {
 
 /** Open while the author is naming the component (F10). Holds the address. */
 const naming = ref<string | null>(null)
+/** The first component on the open page: a second one would share its contract (ADR 0013). */
+const pageComponent = computed(
+  () => sceneDoc.value?.tree.children.find((child) => child.element === 'Component')?.name ?? null,
+)
 
 function startMakeComponent(): void {
   naming.value = componentSource.value
@@ -1605,7 +1617,7 @@ onUnmounted(() => socket.close())
     -->
     <PickComponentDialog
       v-if="picking"
-      :components="offerableComponents(components)"
+      :components="offerableComponents(components, placingInto)"
       @pick="placeInstance"
       @close="picking = false"
     />
@@ -1642,6 +1654,7 @@ onUnmounted(() => socket.close())
       v-if="naming !== null"
       :suggested="naming.split(/[#/]/).at(-1) ?? 'Component'"
       :taken="takenNames"
+      :shares-with="pageComponent"
       @confirm="makeComponent"
       @close="naming = null"
     />

@@ -91,6 +91,46 @@ function agrees(source: string, patches: UidxPatch[], expectFast = true): void {
   expect(shape(doc.tree)).toEqual(shape(parseOrThrow(source).tree))
 }
 
+describe('a re-lowered component keeps its spec (ADR 0013)', () => {
+  const WITH_CONTRACT = `---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft" layoutMode="VERTICAL">
+    <Frame name="row" width={10} height={10} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Item[]">Rows.</Prop>
+</Props>
+`
+  it('after a structural edit inside it, and after an attribute edit on it', () => {
+    const doc = parseOrThrow(WITH_CONTRACT)
+    const inserted = applyPatchesIncremental(doc, [
+      {
+        op: 'insert-node',
+        parent: 'List',
+        index: 1,
+        node: { element: 'Slot', attrs: { name: 'item' } },
+      },
+    ])
+    expect(inserted.fellBack).toBe(false)
+    const component = inserted.doc.tree.children[0]!
+    expect(component.spec?.contract?.props.map((p) => p.name)).toEqual(['items'])
+    expect(component.spec).toBe(inserted.doc.spec)
+    const renamed = applyPatchesIncremental(inserted.doc, [
+      { op: 'set', address: 'List', prop: 'layoutMode', value: 'HORIZONTAL' },
+    ])
+    expect(renamed.doc.tree.children[0]!.spec).toBe(renamed.doc.spec)
+  })
+})
+
 describe('applyPatchesIncremental agrees with a full parse (spec §1)', () => {
   it('set on an inner node', () => {
     agrees(PAGE, [{ op: 'set', address: 'doc#section/cover', prop: 'visible', value: false }])

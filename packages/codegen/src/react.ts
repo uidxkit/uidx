@@ -1,4 +1,10 @@
-import type { FieldSpec, JsonValue, PropSpec, UidxNode } from '@uidx/format'
+import {
+  aliasTarget,
+  type FieldSpec,
+  type JsonValue,
+  type PropSpec,
+  type UidxNode,
+} from '@uidx/format'
 import { modelOfType, type ModelIndex, type RepeatScope } from '@uidx/schema/design-system'
 import {
   attributeName,
@@ -150,6 +156,15 @@ function svgFor(node: UidxNode): string {
 }
 
 /** `renderOption` for a repeating slot named `option` (ADR 0017 §2). */
+/** `{child}` or `{child.owner}` inside a repeat: the item, or a field of it, as a JS path. */
+function itemAlias(value: JsonValue, scopes: readonly RepeatScope[]): string | null {
+  if (typeof value !== 'string') return null
+  const target = aliasTarget(value)
+  if (target === null || target.includes('#')) return null
+  const head = target.split('.')[0]!
+  return scopes.some((scope) => scope.as === head) ? target : null
+}
+
 const renderPropName = (repeat: RepeatInfo): string => `render${pascal(repeat.node.name)}`
 
 /** The JSX expression a bound `characters` renders: a prop, a model path, or text. */
@@ -316,21 +331,30 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
         if (declared && typeof declared === 'object' && !Array.isArray(declared)) {
           for (const [key, value] of Object.entries(declared as Record<string, JsonValue>)) {
             const own = boundProp(model, value)
+            const item = itemAlias(value, scopes)
             if (own) passed.push(`${key}={${own.name}}`)
+            else if (item !== null) passed.push(`${key}={${item}}`)
             else if (typeof value === 'string' && !value.startsWith('{'))
               passed.push(`${key}="${value}"`)
             else if (typeof value !== 'string') passed.push(`${key}={${JSON.stringify(value)}}`)
           }
         }
-        // Inside a repeat, the row's item is what the instance is of: it lands
-        // on the target's model prop unless the use passed one (ADR 0017 §2).
-        const scope = scopes[scopes.length - 1]
-        if (scope) {
-          const modelProp = target.contract?.props.find(
+        // Inside a repeat, the row's item is what the instance is of (ADR 0017
+        // §2): a prop typed by an enclosing item's model receives that item,
+        // nearest first; failing a match by type, the target's first model
+        // prop receives the innermost item. A use that passed one is left be.
+        if (scopes.length) {
+          const modelProps = (target.contract?.props ?? []).filter(
             (entry) => modelOfType(entry.type, target.spec, target.models)?.list === false,
           )
-          if (modelProp && !passed.some((entry) => entry.startsWith(`${modelProp.name}=`)))
-            passed.push(`${modelProp.name}={${scope.as}}`)
+          for (const prop of modelProps) {
+            if (passed.some((entry) => entry.startsWith(`${prop.name}=`))) continue
+            const typed = [...scopes]
+              .reverse()
+              .find((scope) => scope.model?.name === prop.type.trim())
+            const from = typed ?? (prop === modelProps[0] ? scopes[scopes.length - 1] : undefined)
+            if (from) passed.push(`${prop.name}={${from.as}}`)
+          }
         }
         const fills = node.children.filter((child) => child.element === 'Slot')
         if (fills.length === 0)

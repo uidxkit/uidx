@@ -77,5 +77,7 @@ describe('offerableComponents', () => {
         .map((node) => [node.name, node] as const),
     )
     expect(offerableComponents(components)).toEqual(['Card', 'Lonely'])
+    // A component cannot hold itself: placing inside Card leaves Card off the list.
+    expect(offerableComponents(components, 'Card')).toEqual(['Lonely'])
   })
 })

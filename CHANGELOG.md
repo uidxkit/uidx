@@ -50,6 +50,24 @@ describe migrations when an existing document or integration is affected.
   declaring. The new `model` and `field` patch ops write one `<Model>` back
   canonically and invert. A sample changed there redraws every repeat of it,
   and a repeat's row in the Contract tab links to its model.
+- An instance inside a repeat shows what it receives: the Contract tab lists
+  its definition's contract props with the item each one receives, inferred
+  by type from the enclosing repeats the way the code target passes it, and
+  lets the use say otherwise (`props={{ node: '{child}' }}`). A text binds to
+  an item's field or a component prop from a picker beside its content, and
+  a `{…}` typed there is written as a binding rather than resolved away. A
+  slot the tree has and the contract lacks is listed with a Declare button;
+  a repeat on a container holding one row offers to move onto the row. Make
+  component warns when the page already has one, since the two would share
+  its contract. A new slot hugs what fills it; placing an instance with a
+  slot selected fills that slot, and the picker leaves out the component
+  the instance would sit inside. Removing the last declaration removes the
+  empty `## Contract` heading; `uidx codegen` takes directories as `check`
+  does.
+- Fixed: a component edited structurally kept its contract (the incremental
+  patch path dropped the spec until a full parse), and `uidx check` no longer
+  reports `repeat="{items}"` or `{item.field}` as unknown component
+  properties.
 - The Contract tab edits the contract: each prop, event, slot, state and
   part opens into a small form (description, type, default, sample, flags;
   a slot's `accepts`), a row adds one, and "Fill from library"

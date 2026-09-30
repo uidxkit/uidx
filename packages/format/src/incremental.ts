@@ -109,11 +109,33 @@ export function applyPatchesIncremental(
     if (current === doc) return { doc, changed: [], fellBack: false }
     const out: UidxDocument = { ...current, sourceHash: fnv1a(current.source) }
     delete (out as { predicted?: true }).predicted
-    return { doc: out, changed, fellBack: false }
+    return { doc: withComponentSpecs(out), changed, fellBack: false }
   }
   if (current !== doc) current = { ...current, sourceHash: fnv1a(current.source) }
   const relowered = relowerBatch(current, rest)
-  return { ...relowered, changed: [...changed, ...relowered.changed] }
+  return {
+    ...relowered,
+    doc: withComponentSpecs(relowered.doc),
+    changed: [...changed, ...relowered.changed],
+  }
+}
+
+/**
+ * The spec rides on every `<Component>` of the page as well as on the
+ * document (ADR 0013), so an instance expanded elsewhere can read it. A
+ * re-lowered component is a fresh node without it, and the Contract tab then
+ * sees a component with no props until a full parse happens to run. Put back
+ * here, on the one path that builds nodes without the parser's last step.
+ */
+function withComponentSpecs(doc: UidxDocument): UidxDocument {
+  if (!doc.spec) return doc
+  let touched = false
+  const children = doc.tree.children.map((child) => {
+    if (child.element !== 'Component' || child.spec === doc.spec) return child
+    touched = true
+    return { ...child, spec: doc.spec }
+  })
+  return touched ? { ...doc, tree: { ...doc.tree, children } } : doc
 }
 
 type PlainAttributePatch = Extract<UidxPatch, { op: 'set' | 'add' | 'remove' }>

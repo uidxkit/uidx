@@ -263,7 +263,7 @@ async function documentOrCwd(cwd: string): Promise<string[]> {
  * Accepts globs, directories and plain paths. A bare directory is expanded to
  * every `.uidx` beneath it so `uidx check .` does the obvious thing.
  */
-async function expand(patterns: string[], cwd: string): Promise<string[]> {
+export async function expand(patterns: string[], cwd: string): Promise<string[]> {
   const globs = await Promise.all(
     patterns.map(async (pattern) => {
       if (pattern.includes('*')) return pattern

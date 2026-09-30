@@ -774,6 +774,21 @@ function contractDeclaration(
       if (open === -1 || close === -1)
         throw new PatchError(`cannot find <${list}> around ${patch.name}`)
       let from = open
+      // The last declaration of the whole region takes the heading with it
+      // too: a `## Contract` over nothing is a region the file does not need.
+      const contract = doc.spec?.contract
+      const emptied =
+        contract !== undefined &&
+        (['prop', 'event', 'slot', 'state', 'part'] as ContractKind[])
+          .filter((kind) => kind !== patch.kind)
+          .every((kind) => contractItems(doc, kind).length === 0) &&
+        contract.form === undefined &&
+        contract.accessibility === undefined &&
+        contract.composes.length === 0
+      if (emptied) {
+        const heading = source.lastIndexOf('## Contract', open)
+        if (heading !== -1) from = heading
+      }
       while (from > 0 && /\s/.test(source[from - 1]!)) from--
       s.remove(from, close + `</${list}>`.length)
       return { start: from, end: from }

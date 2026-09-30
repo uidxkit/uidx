@@ -22,6 +22,76 @@ const file = (path: string) => {
   return text
 }
 
+describe('what an instance in a repeat receives (ADR 0017 §2)', () => {
+  const TREE = `---
+id: tree
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Tree" status="draft" layoutMode="VERTICAL">
+    <Slot name="node" repeat="{nodes}">
+      <Instance name="row" component="TreeItem" />
+      <Frame name="children">
+        <Instance name="child-row" component="TreeItem" repeat="{item.children}" as="child" props={{ depth: '{child.depth}' }} />
+      </Frame>
+    </Slot>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="nodes" type="TreeNode[]">The top-level nodes.</Prop>
+</Props>
+<Slots>
+  <Slot name="node">One per node.</Slot>
+</Slots>
+`
+  const ITEM = `---
+id: tree-item
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="TreeItem" status="draft" layoutMode="HORIZONTAL">
+    <Text name="label" characters="{node.label}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="node" type="TreeNode">The node this row shows.</Prop>
+  <Prop name="depth" type="number">How deep the row sits.</Prop>
+</Props>
+
+## Models
+
+<Model name="TreeNode">
+  One node.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="label" type="string" sample={['Documents', 'Photos']}>Words.</Field>
+  <Field name="depth" type="number" sample={[0, 1]}>Level.</Field>
+  <Field name="children" type="TreeNode[]">Below it.</Field>
+</Model>
+`
+  it('hands the nearest item of the right type to the model prop, and an explicit item field as written', () => {
+    const out = generate({
+      pages: [
+        { file: 'tree.uidx', doc: parseOrThrow(TREE) },
+        { file: 'tree-item.uidx', doc: parseOrThrow(ITEM) },
+      ],
+      tokens: [],
+    })
+    const react = out.files.get('react/Tree.tsx')!
+    expect(react).toContain('<TreeItem node={item} />')
+    expect(react).toContain('<TreeItem depth={child.depth} node={child} />')
+  })
+})
+
 describe('generate', () => {
   it('is deterministic: the same input renders the same bytes', () => {
     const again = generate({ pages: PAGES, tokens: [TOKENS], manifest: MANIFEST })

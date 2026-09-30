@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow, resolve } from '@uidx/format'
-import { defaultVariantAddress, derivedDocument } from '@uidx/schema'
+import { defaultVariantAddress, derivedDocument, modelIndex } from '@uidx/schema'
 import ContractSection from '../src/ContractSection.vue'
 import PropertiesPane from '../src/PropertiesPane.vue'
 import {
@@ -12,8 +12,11 @@ import {
   scaffoldFromLibrary,
   setImplements,
   setPart,
+  moveRepeatOnto,
+  setReceives,
   setRepeat,
   setRepeatAs,
+  textBindingCandidates,
 } from '../src/contract-edits'
 import { parseHeadless, type HeadlessLibrary } from '../src/headless'
 
@@ -108,6 +111,50 @@ const LIST = page(
 )
 
 const bare = page('bare', `  <Frame name="loose" width={10} height={10} />`)
+
+const TREE = page(
+  'tree',
+  `  <Component name="Tree" status="draft" layoutMode="VERTICAL">
+    <Slot name="node" repeat="{nodes}">
+      <Instance name="row" component="TreeItem" />
+      <Frame name="children">
+        <Instance name="child-row" component="TreeItem" repeat="{item.children}" as="child" />
+      </Frame>
+    </Slot>
+  </Component>`,
+  `
+## Contract
+
+<Props>
+  <Prop name="nodes" type="TreeNode[]">The top-level nodes.</Prop>
+</Props>
+`,
+)
+
+const ROW_PAGE = page(
+  'tree-item',
+  `  <Component name="TreeItem" status="draft" layoutMode="HORIZONTAL">
+    <Text name="label" characters="{node.label}" />
+  </Component>`,
+  `
+## Contract
+
+<Props>
+  <Prop name="node" type="TreeNode">The node this row shows.</Prop>
+  <Prop name="depth" type="number">How deep the row sits.</Prop>
+</Props>
+
+## Models
+
+<Model name="TreeNode">
+  One node.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="label" type="string" sample={['Documents', 'Photos']}>Words.</Field>
+  <Field name="depth" type="number" sample={[0, 1]}>Level.</Field>
+  <Field name="children" type="TreeNode[]">Below it.</Field>
+</Model>
+`,
+)
 
 describe('the headless library, as parsed', () => {
   it('finds roots and their parts from <root>-<part> tags and cssParts, longest root first', () => {
@@ -206,6 +253,105 @@ describe('what the tab shows', () => {
     })
     const root = resolve(drawn, defaultVariantAddress(doc, 'Checkbox')!)!
     expect(contractView(doc, root, LIBRARY).kind).toBe('component')
+  })
+
+  it('for an instance inside a repeat: what each contract prop receives, inferred by type', () => {
+    const doc = parseOrThrow(TREE)
+    const row = parseOrThrow(ROW_PAGE)
+    const components = new Map(
+      [...doc.tree.children, ...row.tree.children]
+        .filter((node) => node.element === 'Component')
+        .map((node) => [node.name, node] as const),
+    )
+    const models = modelIndex([doc, row])
+    const view = contractView(doc, resolve(doc.tree, 'Tree#node/row'), null, models, components)
+    if (view.kind !== 'instance') throw new Error(view.kind)
+    expect(view.definition?.name).toBe('TreeItem')
+    expect(view.receives).toEqual([
+      { prop: 'node', type: 'TreeNode', from: 'item', explicit: false, options: ['item'] },
+      { prop: 'depth', type: 'number', from: null, explicit: false, options: ['item.depth'] },
+    ])
+    // Two levels down, the nearest item of the right type wins; a use may say otherwise.
+    const nested = contractView(
+      doc,
+      resolve(doc.tree, 'Tree#node/children/child-row'),
+      null,
+      models,
+      components,
+    )
+    if (nested.kind !== 'instance') throw new Error(nested.kind)
+    expect(nested.receives[0]).toMatchObject({ from: 'child', options: ['child', 'item'] })
+    const instance = resolve(doc.tree, 'Tree#node/children/child-row')!
+    expect(setReceives(instance, 'node', 'item')).toEqual([
+      {
+        op: 'add',
+        address: 'Tree#node/children/child-row',
+        prop: 'props',
+        value: { node: '{item}' },
+      },
+    ])
+    expect(setReceives(instance, 'node', null)).toEqual([])
+    const said = parseOrThrow(
+      applyPatches(TREE, setReceives(instance, 'depth', 'item.depth')).source,
+    )
+    const explicit = contractView(
+      said,
+      resolve(said.tree, 'Tree#node/children/child-row'),
+      null,
+      models,
+      components,
+    )
+    if (explicit.kind !== 'instance') throw new Error(explicit.kind)
+    expect(explicit.receives[1]).toMatchObject({ from: 'item.depth', explicit: true })
+    expect(setReceives(resolve(said.tree, 'Tree#node/children/child-row')!, 'depth', null)).toEqual(
+      [{ op: 'remove', address: 'Tree#node/children/child-row', prop: 'props' }],
+    )
+  })
+
+  it('lists a slot the tree has and the contract lacks, and a repeat that wraps its one row', () => {
+    const doc = parseOrThrow(TREE)
+    const component = contractView(doc, resolve(doc.tree, 'Tree'), null)
+    if (component.kind !== 'component') throw new Error(component.kind)
+    expect(component.straySlots).toEqual([{ address: 'Tree#node', name: 'node' }])
+    const wrapped = parseOrThrow(
+      TREE.replace(
+        '<Frame name="children">',
+        '<Frame name="children" repeat="{item.children}" as="child">',
+      ).replace(' repeat="{item.children}" as="child" />', ' />'),
+    )
+    const container = contractView(wrapped, resolve(wrapped.tree, 'Tree#node/children'), null)
+    if (container.kind !== 'part') throw new Error(container.kind)
+    expect(container.wrapsOne).toEqual({
+      address: 'Tree#node/children/child-row',
+      name: 'child-row',
+    })
+    const moved = moveRepeatOnto(
+      resolve(wrapped.tree, 'Tree#node/children')!,
+      resolve(wrapped.tree, 'Tree#node/children/child-row')!,
+    )
+    const after = applyPatches(wrapped.source, moved).source
+    expect(after).toContain('<Frame name="children">')
+    expect(after).toContain(
+      '<Instance name="child-row" component="TreeItem" repeat="{item.children}" as="child" />',
+    )
+  })
+
+  it('offers a text the fields of enclosing items and the props of its component', () => {
+    const doc = parseOrThrow(ROW_PAGE)
+    const row = parseOrThrow(TREE)
+    const models = modelIndex([doc, row])
+    const label = resolve(doc.tree, 'TreeItem#label')!
+    expect(textBindingCandidates(resolve(doc.tree, 'TreeItem'), label, models)).toEqual([
+      { alias: 'node.id', label: 'node.id · string' },
+      { alias: 'node.label', label: 'node.label · string' },
+      { alias: 'node.depth', label: 'node.depth · number' },
+      { alias: 'depth', label: 'depth · number' },
+    ])
+    // Below the repeating slot, the item's fields; a model-typed field is not a text.
+    const inTree = resolve(row.tree, 'Tree#node/children')!
+    expect(
+      textBindingCandidates(resolve(row.tree, 'Tree'), inTree, models).map((b) => b.alias),
+    ).toEqual(['item.id', 'item.label', 'item.depth'])
   })
 
   it('for a layer outside any component, and for a page: nothing to bind', () => {
@@ -424,7 +570,7 @@ describe('the Contract section', () => {
 
   it('explains a layer outside a component and an instance', () => {
     expect(mountFor(bare, 'loose').text()).toContain('Only layers inside a component')
-    expect(mountFor(LIST, 'List#option/row').text()).toContain('An instance renders')
+    expect(mountFor(LIST, 'List#option/row').text()).toContain('no component called “Row”')
   })
 })
 

@@ -84,7 +84,11 @@ shorthand rule of the visual contract does not apply here.
   layer; binding it from a new layer unbinds the old one, since one node per
   part is the rule. Any layer inside a component chooses the list it repeats
   over from the contract's list props and the list fields of enclosing items.
-  The tab never edits the contract's prose; it shows it beside the bindings.
+  A text binds to a field of an enclosing item or a prop of the component
+  from a picker beside its content, and a typed `{…}` in the content is
+  written as the binding it is. A `<Slot>` in the tree the contract does not
+  declare is listed beside the declared ones, one click from declared. The
+  tab never edits the contract's prose; it shows it beside the bindings.
   When `uidx.json` names no library, the tab offers those the project's
   dependencies ship — the Custom Elements Manifest convention of a
   `customElements` field in `package.json` — and writes the choice.

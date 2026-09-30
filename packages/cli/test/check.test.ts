@@ -61,6 +61,21 @@ const capture = () => {
 }
 
 describe('check', () => {
+  it('passes the shipped example design system, repeats and shared models included', async () => {
+    const example = join(
+      import.meta.dirname,
+      '..',
+      '..',
+      '..',
+      'examples',
+      'design-system',
+      '.uidx',
+    )
+    const result = await check(['.'], { cwd: example })
+    expect(renderText(result, example)).not.toMatch(/error/)
+    expect(result.errors).toBe(0)
+  })
+
   it('passes a valid file with exit code 0', async () => {
     const result = await check(['ok.uidx'], { cwd: dir })
     expect(result.errors).toBe(0)

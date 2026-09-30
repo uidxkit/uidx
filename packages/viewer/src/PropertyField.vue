@@ -3,7 +3,7 @@ import LengthFieldRoot from './LengthFieldRoot.vue'
 import LengthUnitSelect from './LengthUnitSelect.vue'
 import { computed, ref } from 'vue'
 import { SegmentedControlItem, SegmentedControlRoot } from '@open-pencil/vue'
-import { LENGTH_PROPS, type JsonValue } from '@uidx/format'
+import { LENGTH_PROPS, type JsonValue, aliasTarget, toAlias } from '@uidx/format'
 import { optionLabelFor, propUiFor, SEGMENTED_MAX_OPTIONS } from '@uidx/schema'
 import type { EditableProp } from './editable'
 import ConstraintsMatrix from './ConstraintsMatrix.vue'
@@ -44,6 +44,8 @@ const props = defineProps<{
    * all; empty is "nothing declared yet", which still offers Create.
    */
   candidates?: { name: string; declaration: { type: string; default: JsonValue } }[] | null
+  /** What a text may bind to, offered beside Content; absent for anything but a text. */
+  bindings?: { alias: string; label: string }[]
   /**
    * What a bound *number* row displays while scrubbing — number-typed
    * because only a number field ever scrubs. A token pill's own display and
@@ -156,6 +158,17 @@ function onToggle(event: Event): void {
 function onText(event: Event): void {
   if (!props.editable) return
   emit('commit', props.field.name, (event.target as HTMLInputElement | HTMLTextAreaElement).value)
+}
+
+/** The alias Content holds, when it is one, so the picker shows it as chosen. */
+const boundTo = computed(() => {
+  const value = props.field.value
+  return typeof value === 'string' ? aliasTarget(value) : null
+})
+
+function onBind(alias: string): void {
+  if (!props.editable || alias === '') return
+  emit('commit', props.field.name, toAlias(alias))
 }
 
 function onEnum(value: string | string[] | undefined): void {
@@ -384,16 +397,35 @@ const segmented = computed(
     <label :for="`f-${field.name}`" class="check-label">{{ field.label }}</label>
   </template>
 
-  <textarea
-    v-else-if="field.control === 'text' && field.name === 'characters'"
-    :id="`f-${field.name}`"
-    class="value text-content"
-    :dir="textDirection ?? 'auto'"
-    :value="field.value as string"
-    :disabled="!editable"
-    rows="3"
-    @change="onText"
-  />
+  <template v-else-if="field.control === 'text' && field.name === 'characters'">
+    <textarea
+      :id="`f-${field.name}`"
+      class="value text-content"
+      :dir="textDirection ?? 'auto'"
+      :value="field.value as string"
+      :disabled="!editable"
+      rows="3"
+      @change="onText"
+    />
+    <!--
+      A binding is a pick, not a spelling (ADR 0015 §2): the fields of every
+      enclosing item and the component's props, one select beside the words.
+      Choosing one writes `{item.label}`; the words stay as the sample shows.
+    -->
+    <select
+      v-if="bindings && bindings.length"
+      class="value bind"
+      :value="boundTo ?? ''"
+      :disabled="!editable"
+      aria-label="Bind text to"
+      @change="onBind(($event.target as HTMLSelectElement).value)"
+    >
+      <option value="">{{ boundTo ? 'Bound to…' : 'Bind to…' }}</option>
+      <option v-for="binding in bindings" :key="binding.alias" :value="binding.alias">
+        {{ '{' + binding.alias + '}' }} — {{ binding.label }}
+      </option>
+    </select>
+  </template>
 
   <FontFamilyField
     v-else-if="field.name === 'fontFamily' && field.control === 'text'"
@@ -604,6 +636,11 @@ const segmented = computed(
   resize: vertical;
   line-height: 1.6;
   padding: 6px 8px;
+}
+.bind {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--text-dim);
 }
 .number {
   display: flex;

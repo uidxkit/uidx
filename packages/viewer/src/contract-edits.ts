@@ -1,14 +1,17 @@
 import {
+  aliasTarget,
   resolve,
   toAlias,
   type ContractDeclaration,
   type ContractKind,
+  type JsonValue,
   type UidxDocument,
   type UidxNode,
   type UidxPatch,
 } from '@uidx/format'
 import {
   derivedTarget,
+  modelByRef,
   repeatListType,
   repeatModel,
   repeatOf,
@@ -71,6 +74,8 @@ export interface ComponentView {
   slots: SlotRow[]
   /** Layers bound to a part nothing declares. */
   strayParts: { address: string; name: string; part: string }[]
+  /** `<Slot>`s in the tree the contract does not declare; each is one click from declared. */
+  straySlots: { address: string; name: string }[]
 }
 
 /** How a layer repeats (ADR 0017 §2): the list it walks, its item's name, the canvas's rows. */
@@ -91,6 +96,24 @@ export interface RepeatFacet {
   repeat: RepeatBinding | null
   /** Lists a repeat here may walk: the contract's list props, then list fields of enclosing items. */
   lists: string[]
+  /**
+   * A repeat on a container holding one row: the container repeats, which is
+   * rarely what was meant — the row is. Names the row so the tab can offer
+   * to move the repeat onto it.
+   */
+  wrapsOne: { address: string; name: string } | null
+}
+
+/** What one contract prop of an instance's definition receives (ADR 0017 §2). */
+export interface ReceiveRow {
+  prop: string
+  type: string
+  /** The alias it receives — `item`, `child.owner`, `nodes` — or null for nothing. */
+  from: string | null
+  /** True when the use says so in `props={{…}}`; false when the tab inferred it from the repeat. */
+  explicit: boolean
+  /** Every alias of the right type in scope: enclosing items, their fields, the component's props. */
+  options: string[]
 }
 
 export interface PartView extends RepeatFacet {
@@ -115,6 +138,10 @@ export interface InstanceView extends RepeatFacet {
   kind: 'instance'
   node: UidxNode
   component: UidxNode | null
+  /** The component it is an instance of, when the document has it. */
+  definition: UidxNode | null
+  /** Its definition's contract props, each with what this use hands it. */
+  receives: ReceiveRow[]
 }
 
 export interface OtherView {
@@ -216,6 +243,7 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
     if (name !== '' && !slots.some((slot) => slot.name === name))
       slots.push({ name, provided: null })
   }
+  const straySlots: { address: string; name: string }[] = []
   const provide = (node: UidxNode): void => {
     for (const child of node.children) {
       if (child.element === 'Slot') {
@@ -226,6 +254,7 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
             address: child.address,
             repeat: repeat ? { list: repeat.list } : null,
           }
+        else if (!row) straySlots.push({ address: child.address, name: child.name })
       }
       if (child.element !== 'Instance') provide(child)
     }
@@ -242,6 +271,7 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
     candidates,
     slots,
     strayParts,
+    straySlots,
   }
 }
 
@@ -328,10 +358,15 @@ export function placeableLists(
 function repeatFacet(component: UidxNode | null, node: UidxNode, models?: ModelIndex): RepeatFacet {
   const lists = placeableLists(component, node, models)
   const attrs = repeatOf(node)
-  if (!attrs || !component) return { repeat: null, lists }
+  if (!attrs || !component) return { repeat: null, lists, wrapsOne: null }
   const enclosing = enclosingRepeats(component, node, models)
   const model = repeatModel(attrs, component.spec, enclosing, models)
   const placed = model ? undefined : repeatListType(attrs, component.spec, enclosing, models)
+  const only = node.children.length === 1 ? node.children[0]! : null
+  const wrapsOne =
+    node.element !== 'Slot' && only && (only.element === 'Instance' || only.element === 'Frame')
+      ? { address: only.address, name: only.name }
+      : null
   return {
     repeat: {
       list: attrs.list,
@@ -341,7 +376,158 @@ function repeatFacet(component: UidxNode | null, node: UidxNode, models?: ModelI
       unknownModel: !model && typeof placed === 'string',
     },
     lists,
+    wrapsOne,
   }
+}
+
+/* ------------------------------------------------------------ receives */
+
+/** `Contact[]` → `Contact`, and whether it was a list. */
+const typeName = (type: string): { name: string; list: boolean } => {
+  const text = type.trim()
+  return text.endsWith('[]')
+    ? { name: text.slice(0, -2).trim(), list: true }
+    : { name: text, list: false }
+}
+
+/**
+ * What an instance hands each contract prop of its definition (ADR 0017 §2).
+ *
+ * Inside a repeat the row's item is what the instance is of, so a prop typed
+ * by the item's model receives the item without anyone writing it — the same
+ * rule the code target follows. The use may say otherwise in `props={{…}}`:
+ * another enclosing item, a field of one, or a prop of the component. The
+ * options are every alias in scope whose type matches.
+ */
+export function receivesFor(
+  instance: UidxNode,
+  definition: UidxNode | null,
+  component: UidxNode | null,
+  models?: ModelIndex,
+): ReceiveRow[] {
+  if (!definition || !component) return []
+  const spec = component.spec
+  const enclosing = enclosingRepeats(component, instance, models)
+  // An instance that repeats is its own row: its item is the innermost.
+  const own = repeatOf(instance)
+  if (own) enclosing.push({ as: own.as, model: repeatModel(own, spec, enclosing, models) })
+  const explicit = instance.attrs.props?.value
+  const passed: Record<string, JsonValue> =
+    explicit && typeof explicit === 'object' && !Array.isArray(explicit)
+      ? (explicit as Record<string, JsonValue>)
+      : {}
+  const modelProps = (definition.spec?.contract?.props ?? []).filter(
+    (prop) => modelByRef(definition.spec, typeName(prop.type).name, models) !== undefined,
+  )
+  return (definition.spec?.contract?.props ?? []).map((prop) => {
+    const wanted = typeName(prop.type)
+    const options: string[] = []
+    // Innermost first: the nearest item is the likeliest answer.
+    for (const scope of [...enclosing].reverse()) {
+      if (!wanted.list && scope.model?.name === wanted.name) options.push(scope.as)
+      for (const field of scope.model?.fields ?? [])
+        if (field.type.trim() === prop.type.trim()) options.push(`${scope.as}.${field.name}`)
+    }
+    for (const own of spec?.contract?.props ?? [])
+      if (own.type.trim() === prop.type.trim()) options.push(own.name)
+    const written = passed[prop.name]
+    const alias = typeof written === 'string' ? aliasTarget(written) : null
+    if (alias !== null) {
+      if (!options.includes(alias)) options.unshift(alias)
+      return { prop: prop.name, type: prop.type, from: alias, explicit: true, options }
+    }
+    // The code target's rule: the item lands on the definition's first model
+    // prop; a prop typed by the item's own model lands regardless of order.
+    const inner = enclosing[enclosing.length - 1]
+    const inferred =
+      options.find((option) => enclosing.some((scope) => scope.as === option)) ??
+      (inner && modelProps[0]?.name === prop.name ? inner.as : null)
+    return { prop: prop.name, type: prop.type, from: inferred, explicit: false, options }
+  })
+}
+
+/**
+ * Writes what an instance hands one prop: an alias into `props={{…}}`, or
+ * nothing, which leaves the inference to stand. A `props` left empty goes.
+ */
+export function setReceives(instance: UidxNode, prop: string, alias: string | null): UidxPatch[] {
+  const current = instance.attrs.props?.value
+  const next: Record<string, JsonValue> =
+    current && typeof current === 'object' && !Array.isArray(current)
+      ? { ...(current as Record<string, JsonValue>) }
+      : {}
+  if (alias === null || alias === '') delete next[prop]
+  else next[prop] = toAlias(alias)
+  if (Object.keys(next).length === 0)
+    return instance.attrs.props === undefined
+      ? []
+      : [{ op: 'remove', address: instance.address, prop: 'props' }]
+  return [
+    {
+      op: instance.attrs.props === undefined ? 'add' : 'set',
+      address: instance.address,
+      prop: 'props',
+      value: next,
+    },
+  ]
+}
+
+/**
+ * The repeat moves from a container onto the one row it holds (ADR 0017 §2):
+ * the row is what repeats, the container is the outer structure. The row
+ * gets the list and the item name; the container gives them up, `as` first
+ * so every step leaves a valid file.
+ */
+export function moveRepeatOnto(container: UidxNode, row: UidxNode): UidxPatch[] {
+  const repeat = repeatOf(container)
+  if (!repeat) return []
+  const out: UidxPatch[] = [
+    ...setAttr(row, 'repeat', toAlias(repeat.list)),
+    ...(container.attrs.as !== undefined ? setAttr(row, 'as', repeat.as) : []),
+  ]
+  for (const prop of ['as', 'repeat']) out.push(...setAttr(container, prop, null))
+  return out
+}
+
+/**
+ * What a text may bind to from the layer (ADR 0015 §2): the fields of every
+ * enclosing item, and the component's own props — anything a `{…}` in
+ * `characters` could name. Empty outside a component.
+ */
+export function textBindingCandidates(
+  component: UidxNode | null,
+  node: UidxNode,
+  models?: ModelIndex,
+): { alias: string; label: string }[] {
+  if (!component) return []
+  const out: { alias: string; label: string }[] = []
+  for (const scope of [...enclosingRepeats(component, node, models)].reverse()) {
+    for (const field of scope.model?.fields ?? []) {
+      if (modelByRef(component.spec, typeName(field.type).name, models)) continue
+      out.push({
+        alias: `${scope.as}.${field.name}`,
+        label: `${scope.as}.${field.name} · ${field.type}`,
+      })
+    }
+  }
+  for (const prop of component.spec?.contract?.props ?? []) {
+    const { name, list } = typeName(prop.type)
+    const model = modelByRef(component.spec, name, models)
+    if (!model) {
+      out.push({ alias: prop.name, label: `${prop.name} · ${prop.type}` })
+      continue
+    }
+    // A model prop's fields, one level deep (ADR 0015 §2): `{node.label}`.
+    if (list) continue
+    for (const field of model.fields) {
+      if (modelByRef(component.spec, typeName(field.type).name, models)) continue
+      out.push({
+        alias: `${prop.name}.${field.name}`,
+        label: `${prop.name}.${field.name} · ${field.type}`,
+      })
+    }
+  }
+  return out
 }
 
 /**
@@ -355,6 +541,8 @@ export function contractView(
   node: UidxNode | null,
   library: HeadlessLibrary | null,
   models?: ModelIndex,
+  /** Component name -> definition across every page, for what an instance receives. */
+  components?: ReadonlyMap<string, UidxNode>,
 ): ContractView {
   if (!doc || !node) return { kind: 'page', node: null }
   if (node.element === 'Component') return componentView(node, library)
@@ -362,7 +550,7 @@ export function contractView(
   if (from) {
     // The default state draws the base tree (ADR 0016 §4): selected there, a
     // layer is the authored one, and the component's root is the component.
-    if (from.isDefault) return contractView(doc, from.base, library, models)
+    if (from.isDefault) return contractView(doc, from.base, library, models, components)
     const state = Object.entries(from.keys)
       .map(([axis, value]) => `${axis}=${value}`)
       .join(', ')
@@ -379,8 +567,18 @@ export function contractView(
       ...repeatFacet(component, node, models),
     }
   }
-  if (node.element === 'Instance')
-    return { kind: 'instance', node, component, ...repeatFacet(component, node, models) }
+  if (node.element === 'Instance') {
+    const named = node.attrs.component?.value
+    const definition = typeof named === 'string' ? (components?.get(named) ?? null) : null
+    return {
+      kind: 'instance',
+      node,
+      component,
+      definition,
+      receives: receivesFor(node, definition, component, models),
+      ...repeatFacet(component, node, models),
+    }
+  }
   if (component && BINDABLE.has(node.element)) return partView(node, component, library, models)
   return { kind: 'other', node }
 }

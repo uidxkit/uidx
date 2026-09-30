@@ -172,7 +172,16 @@ describe('the "New slot" gesture', () => {
         op: 'insert-node',
         parent: 'Card#container',
         index: 4,
-        node: { element: 'Slot', attrs: { name: 'slot-1', layoutMode: 'VERTICAL' } },
+        // A hole hugs what fills it: sized by its placeholder and by a repeat's rows.
+        node: {
+          element: 'Slot',
+          attrs: {
+            name: 'slot-1',
+            layoutMode: 'VERTICAL',
+            primaryAxisSizingMode: 'AUTO',
+            counterAxisSizingMode: 'AUTO',
+          },
+        },
       },
     ])
     // ADR 0007 §6: with no empty-slot indicator, an unselected new slot is

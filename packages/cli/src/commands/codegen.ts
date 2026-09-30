@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
-import { glob } from 'tinyglobby'
+import { expand } from './check.js'
 import { formatDiagnostic, parse, type UidxDocument } from '@uidx/format'
 import { generate, type LibraryBindings, type Manifest, type Target } from '@uidx/codegen'
 import { findManifest } from '@uidx/server/document'
@@ -50,9 +50,8 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
     return 1
   }
   const patterns = parsed.positionals.length ? parsed.positionals : ['**/*.uidx']
-  const files = (
-    await glob(patterns, { cwd, ignore: ['**/node_modules/**', '**/.uidx-agent/**'] })
-  ).sort()
+  // Globs, directories and plain paths, as `uidx check` takes them.
+  const files = (await expand(patterns, cwd)).filter((file) => !file.includes('/.uidx-agent/'))
   if (files.length === 0) {
     io.err(`no .uidx files matched ${patterns.join(', ')}\n`)
     return 1

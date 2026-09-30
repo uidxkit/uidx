@@ -753,6 +753,20 @@ function componentNodes(pages: readonly PageSource[]): Map<string, UidxNode> {
   return out
 }
 
+/** The item names every repeat in the component declares (`as`, or `item`). */
+function repeatItemNames(component: UidxNode): Set<string> {
+  const out = new Set<string>()
+  const walk = (node: UidxNode): void => {
+    if (node.attrs.repeat !== undefined) {
+      const as = node.attrs.as?.value
+      out.add(typeof as === 'string' && as !== '' ? as : 'item')
+    }
+    for (const child of node.children) walk(child)
+  }
+  walk(component)
+  return out
+}
+
 /**
  * A `{label}` binding, checked against the component it sits inside (F6).
  *
@@ -788,10 +802,17 @@ function checkPropertyBinding(
 
   // `{item.name}` reads a field of a model prop (ADR 0015 §2): the head is
   // the prop, and the audit checks the field against the model.
-  if (reference.target.includes('.')) {
-    const head = reference.target.slice(0, reference.target.indexOf('.'))
-    if (component.spec?.contract?.props.some((prop) => prop.name === head)) return []
-  }
+  const head = reference.target.includes('.')
+    ? reference.target.slice(0, reference.target.indexOf('.'))
+    : reference.target
+  const contractProps = component.spec?.contract?.props ?? []
+  if (reference.target.includes('.') && contractProps.some((prop) => prop.name === head)) return []
+  // ADR 0017 §2: `repeat="{items}"` names a list prop of the contract or a
+  // list field of an enclosing item, and `{item.label}` below a repeat reads
+  // the item — the audit checks both against the contract and its models.
+  // Neither is a component property, so neither is this check's to refuse.
+  if (reference.prop === 'repeat' && contractProps.some((prop) => prop.name === head)) return []
+  if (repeatItemNames(component).has(head)) return []
   const declared = componentProps(component).declared
   const declaration = declared.get(reference.target)
   if (!declaration) {

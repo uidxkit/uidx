@@ -31,6 +31,10 @@ const props = defineProps<{
 const emit = defineEmits<{ patches: [patches: UidxPatch[]] }>()
 
 const rows = computed(() => instancePropRows(props.instance, props.definition))
+/** The definition's contract props (ADR 0013), which the Contract tab binds rather than this section. */
+const contractProps = computed(() =>
+  (props.definition?.spec?.contract?.props ?? []).map((prop) => prop.name),
+)
 const unused = computed(() => unusedInstanceProps(props.instance, props.definition))
 const undeclared = computed(() => unused.value.filter((u) => u.reason === 'undeclared'))
 const mistyped = computed(() => unused.value.filter((u) => u.reason === 'mistyped'))
@@ -73,6 +77,10 @@ function reset(name: string): void {
 
     <p v-if="!definition" class="empty">
       This document has no component called “{{ componentName }}”, so there is nothing to fill in.
+    </p>
+    <p v-else-if="!rows.length && contractProps.length" class="empty">
+      “{{ componentName }}” declares no component properties. What it receives —
+      {{ contractProps.join(', ') }} — is bound on the Contract tab.
     </p>
     <p v-else-if="!rows.length" class="empty">
       “{{ componentName }}” declares no properties. Select it to add some.

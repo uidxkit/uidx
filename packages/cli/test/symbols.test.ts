@@ -335,6 +335,43 @@ describe('token aliases across modes (G8)', () => {
   })
 })
 
+describe('a repeat and its item are not component properties (ADR 0017 §2)', () => {
+  const list = parseOrThrow(`---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft">
+    <Frame name="row" repeat="{items}" as="row">
+      <Text name="name" characters="{row.name}" />
+      <Text name="tag" repeat="{row.tags}" as="tag" characters="{tag.label}" />
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Item[]">Rows.</Prop>
+</Props>
+`)
+
+  it('says nothing for repeat="{items}", {row.name} below it, and a nested {row.tags}', () => {
+    const { diagnostics } = buildSymbolTable([{ file: 'list.uidx', doc: list }])
+    expect(diagnostics.filter((d) => d.code === WORKSPACE_CODES.UNRESOLVED_REFERENCE)).toEqual([])
+  })
+
+  it('still refuses a bare name nothing declares', () => {
+    const bad = parseOrThrow(
+      list.source.replace('characters="{row.name}"', 'characters="{nobody}"'),
+    )
+    const { diagnostics } = buildSymbolTable([{ file: 'list.uidx', doc: bad }])
+    expect(diagnostics.map((d) => d.code)).toContain(WORKSPACE_CODES.UNRESOLVED_REFERENCE)
+  })
+})
+
 describe('scope violations warn rather than fail (G8)', () => {
   const scoped = tokenPage(
     'scoped',

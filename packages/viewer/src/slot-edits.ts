@@ -10,6 +10,7 @@ import {
   type UidxDocument,
   type UidxNode,
   type UidxPatch,
+  type UidxNodeSpec,
 } from '@uidx/format'
 import { createSpec } from '@uidx/schema'
 
@@ -75,10 +76,19 @@ export function newSlotFor(
         op: 'insert-node',
         parent,
         index: parentNode.children.length,
-        node: createSpec('Slot', name, { at: null, size: null }),
+        // A hole hugs what fills it (ADR 0007): sized by its placeholder, and
+        // by the rows a repeat puts in it, rather than a fixed box they overflow.
+        node: withHug(createSpec('Slot', name, { at: null, size: null })),
       },
     ],
     address: addressOf(parent, name),
+  }
+}
+
+function withHug(spec: UidxNodeSpec): UidxNodeSpec {
+  return {
+    ...spec,
+    attrs: { ...spec.attrs, primaryAxisSizingMode: 'AUTO', counterAxisSizingMode: 'AUTO' },
   }
 }
 

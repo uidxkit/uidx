@@ -8,10 +8,11 @@ import {
   preserveLengthUnit,
   hasLengthUnits,
   isUnitLength,
+  isAlias,
 } from '@uidx/format'
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
-import { contractIssues, contractView } from './contract-edits'
+import { contractIssues, contractView, textBindingCandidates } from './contract-edits'
 import { describe as describeDerived } from './derived-edits'
 import type { CodegenState, HeadlessCandidate, HeadlessLibrary } from './headless'
 
@@ -265,7 +266,9 @@ const face = ref<'design' | 'contract'>('design')
 
 /** Unbound or stray parts on the selected component, for the tab's badge. */
 const contractIssueCount = computed(() =>
-  contractIssues(contractView(props.doc, active.value, props.headless ?? null, props.models)),
+  contractIssues(
+    contractView(props.doc, active.value, props.headless ?? null, props.models, props.components),
+  ),
 )
 
 function onHover(prop: string | null): void {
@@ -1198,9 +1201,33 @@ function pinFields(address: string, writes: PinWrites): UidxPatch[] {
   }))
 }
 
+/**
+ * What the selected text may bind to (ADR 0015 §2): the enclosing items'
+ * fields and the component's props, offered beside Content so a binding is
+ * a pick rather than a spelling.
+ */
+const textBindings = computed(() => {
+  const node = active.value
+  if (!node || node.element !== 'Text' || !props.doc) return []
+  return textBindingCandidates(enclosingComponent(props.doc, node.address), node, props.models)
+})
+
 function onCommit(prop: string, value: JsonValue): void {
   if (!active.value) return
   const address = active.value.address
+  /**
+   * A `{binding}` typed or picked into Content is a binding, not a text: the
+   * canvas route resolves it and writes the sample, or writes nothing when
+   * the sample already shows. It goes straight to the file, as a fill's
+   * alias does below.
+   */
+  if (prop === 'characters' && isAlias(value)) {
+    preview.value = null
+    emit('patches', [
+      { op: active.value.attrs[prop] === undefined ? 'add' : 'set', address, prop, value },
+    ])
+    return
+  }
   /**
    * Fills and strokes route structurally, not through the scene, whenever an
    * alias is anywhere in play (the value just committed, or what the node
@@ -1370,6 +1397,7 @@ function onDetach(prop: string, value: JsonValue): void {
           :candidates="headlessCandidates"
           :codegen="codegen"
           :models="models"
+          :components="components"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"
@@ -1830,6 +1858,7 @@ function onDetach(prop: string, value: JsonValue): void {
                     :editable="editable(paired.field)"
                     :swatches="swatches"
                     :candidates="candidatesFor(paired.field)"
+                    :bindings="paired.field.name === 'characters' ? textBindings : undefined"
                     :variables="variablesFor(paired.field)"
                     :component-name="componentName"
                     :tokens="tokens"

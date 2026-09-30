@@ -66,6 +66,15 @@ other, and the rows after it (`row-2`, `row-3`) are generated echoes that
 follow it. Figma export renders instances with an instance-swap property.
 Code uses the contract.
 
+An instance inside a repeat receives the item. A contract prop of its
+definition typed by an enclosing item's model receives that item, nearest
+first; failing a match by type, the definition's first model prop receives
+the innermost item. The use may say otherwise in `props={{ … }}` — another
+item, or a field of one (`{child.owner}`). The Contract tab shows what each
+prop receives, marks what was inferred, and writes the choice; the code
+target passes the same. A repeat on a container holding one row repeats the
+container; the tab says so and offers to move the repeat onto the row.
+
 ### 3. Code targets
 
 A new package, `@uidx/codegen`, renders identities to code. It reads the

@@ -92,6 +92,11 @@ describe('the contract op', () => {
     expect(noSlots).toContain('</Props>\n')
     expect(parseOrThrow(noSlots).spec!.contract!.slots).toEqual([])
     expect(() => applyPatches(noSlots, [remove('slot', 'control')])).toThrow(/not declared/)
+    // The last declaration of the whole region takes the heading with it.
+    const none = applyPatches(noSlots, [remove('prop', 'checked')]).source
+    expect(none).not.toContain('## Contract')
+    expect(none).toBe(page())
+    expect(parseOrThrow(none).spec?.contract).toBeUndefined()
   })
 
   it('inverts to the previous declaration, or to a removal', () => {
