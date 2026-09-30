@@ -18,6 +18,14 @@ export interface HeadlessPart {
   kind: 'element' | 'shadow'
 }
 
+/** What the manifest says about one attribute, event or slot: enough to scaffold a contract from. */
+export interface HeadlessMember {
+  name: string
+  /** The manifest's type text, e.g. `boolean` or `"a" | "b"`; attributes only. */
+  type?: string
+  description?: string
+}
+
 export interface HeadlessElement {
   tag: string
   /** The parts this root offers, from `<tag>-<part>` elements and `cssParts`. */
@@ -26,6 +34,8 @@ export interface HeadlessElement {
   slots: string[]
   attributes: string[]
   events: string[]
+  /** The same attributes, events and slots with what the manifest says about them. */
+  members: { attributes: HeadlessMember[]; events: HeadlessMember[]; slots: HeadlessMember[] }
   description?: string
 }
 
@@ -52,9 +62,9 @@ interface Manifest {
     declarations?: {
       tagName?: string | null
       description?: string
-      attributes?: { name?: string }[]
-      events?: { name?: string }[]
-      slots?: { name?: string }[]
+      attributes?: { name?: string; type?: { text?: string }; description?: string }[]
+      events?: { name?: string; description?: string }[]
+      slots?: { name?: string; description?: string }[]
       cssParts?: { name?: string }[]
     }[]
   }[]
@@ -62,6 +72,17 @@ interface Manifest {
 
 const names = (entries: { name?: string }[] | undefined): string[] =>
   (entries ?? []).map((entry) => entry.name ?? '').filter((name, i, all) => all.indexOf(name) === i)
+
+const members = (
+  entries: { name?: string; type?: { text?: string }; description?: string }[] | undefined,
+): HeadlessMember[] =>
+  (entries ?? [])
+    .filter((entry, i, all) => all.findIndex((other) => other.name === entry.name) === i)
+    .map((entry) => ({
+      name: entry.name ?? '',
+      ...(entry.type?.text ? { type: entry.type.text } : {}),
+      ...(entry.description ? { description: entry.description.split('\n')[0]!.trim() } : {}),
+    }))
 
 /**
  * The library's shape, from the manifest as written.
@@ -89,6 +110,11 @@ export function parseHeadless(
         slots: names(declaration.slots),
         attributes: names(declaration.attributes),
         events: names(declaration.events),
+        members: {
+          attributes: members(declaration.attributes),
+          events: members(declaration.events),
+          slots: members(declaration.slots),
+        },
         ...(declaration.description ? { description: declaration.description } : {}),
       })
     }

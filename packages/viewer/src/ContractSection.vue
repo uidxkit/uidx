@@ -1,13 +1,25 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
+import {
+  declarationOf,
+  type ContractKind,
+  type JsonValue,
+  type UidxDocument,
+  type UidxNode,
+  type UidxPatch,
+} from '@uidx/format'
 import {
   bindPart,
   contractView,
+  declare,
+  isPlaceholder,
+  PLACEHOLDER,
+  scaffoldFromLibrary,
   setImplements,
   setPart,
   setRepeatCount,
   setRepeatSlot,
+  undeclare,
 } from './contract-edits'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
@@ -117,6 +129,76 @@ function findNode(root: UidxNode, address: string): UidxNode | null {
 
 /** `'  '`-indented so the picker reads as the layer tree does. */
 const indent = (depth: number): string => '  '.repeat(depth)
+
+/* ------------------------------------------------ editing the contract */
+
+/** Which declaration's editor is open, as `kind:name`. */
+const open = ref<string | null>(null)
+function toggle(key: string): void {
+  open.value = open.value === key ? null : key
+}
+
+const addKind = ref<ContractKind>('prop')
+const addName = ref('')
+
+/** The list props a repeating slot may iterate (ADR 0017 §1). */
+const listProps = computed(() =>
+  (contract.value?.props ?? []).filter((p) => p.type.endsWith('[]')).map((p) => p.name),
+)
+
+/** `{ checked: boolean }` as typed; a JSON value where it parses, the text otherwise. */
+function parsed(text: string): JsonValue | undefined {
+  const trimmed = text.trim()
+  if (trimmed === '') return undefined
+  try {
+    return JSON.parse(trimmed) as JsonValue
+  } catch {
+    return trimmed
+  }
+}
+const printed = (value: JsonValue | undefined): string =>
+  value === undefined ? '' : typeof value === 'string' ? value : JSON.stringify(value)
+
+/** Rewrites one declaration with some of its attributes or its description changed. */
+function redeclare(
+  kind: ContractKind,
+  name: string,
+  change: { attrs?: Record<string, JsonValue | undefined>; description?: string },
+): void {
+  if (!props.doc) return
+  const current = declarationOf(props.doc, kind, name) ?? { attrs: {}, description: '' }
+  const attrs: Record<string, JsonValue> = { ...current.attrs }
+  for (const [key, value] of Object.entries(change.attrs ?? {})) {
+    if (value === undefined || value === false) delete attrs[key]
+    else attrs[key] = value
+  }
+  const description =
+    change.description === undefined || change.description === ''
+      ? current.description
+      : change.description
+  send(declare(kind, name, { attrs, description }))
+}
+
+function remove(kind: ContractKind, name: string): void {
+  send(undeclare(kind, name))
+  if (open.value === `${kind}:${name}`) open.value = null
+}
+
+function add(): void {
+  const name = addName.value.trim()
+  if (!name) return
+  const kind = addKind.value
+  const attrs: Record<string, JsonValue> = kind === 'prop' ? { type: 'string' } : {}
+  send(declare(kind, name, { attrs, description: `${PLACEHOLDER}the ${kind} "${name}".` }))
+  addName.value = ''
+  open.value = `${kind}:${name}`
+}
+
+/** Declares what the element exposes and the contract lacks (ADR 0013 §5). */
+function fill(): void {
+  if (view.value.kind !== 'component' || !view.value.element) return
+  send(scaffoldFromLibrary(view.value.component, view.value.element))
+}
 
 /** A visual boolean is drawn as a state of the set (ADR 0016 §1); the list says so. */
 const isState = (prop: { type: string; visual: boolean }): boolean =>
@@ -333,22 +415,34 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         </div>
       </template>
 
-      <template
-        v-if="
-          contract && (contract.props.length || contract.events.length || contract.states.length)
-        "
-      >
-        <header class="head">
-          <span class="title">Contract</span>
-          <span class="of">from the file</span>
-        </header>
-        <div
-          v-for="prop in contract.props"
-          :key="prop.name"
-          class="row read"
-          :data-prop="prop.name"
+      <header class="head">
+        <span class="title">Contract</span>
+        <span class="of">the file's</span>
+        <button
+          v-if="view.element"
+          type="button"
+          class="stale-name fill"
+          :disabled="!writable"
+          title="Declare what the element exposes and the contract lacks: attributes as props, events, slots, parts"
+          @click="fill"
         >
-          <span class="name" :title="prop.description">
+          Fill from library
+        </button>
+      </header>
+      <p v-if="!contract" class="empty">
+        No <code>## Contract</code> yet. Fill it from the library, or add a prop below.
+      </p>
+
+      <!-- Props -->
+      <template v-for="prop in contract?.props ?? []" :key="`prop:${prop.name}`">
+        <div class="row read" :data-prop="prop.name" :data-draft="isPlaceholder(prop.description)">
+          <button
+            type="button"
+            class="name open"
+            :aria-expanded="open === `prop:${prop.name}`"
+            :title="prop.description"
+            @click="toggle(`prop:${prop.name}`)"
+          >
             <span class="name-text">{{ prop.name }}</span>
             <span
               v-if="isState(prop)"
@@ -356,36 +450,392 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               title="A visual boolean: drawn as a state of the set, styled by a state row"
               >state</span
             >
-          </span>
+            <span v-if="isPlaceholder(prop.description)" class="flag" title="Needs a description"
+              >?</span
+            >
+          </button>
           <span class="type" :title="prop.type">{{ prop.type }}</span>
-          <span class="reset-spacer" />
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Remove prop ${prop.name}`"
+            @click="remove('prop', prop.name)"
+          >
+            ×
+          </button>
         </div>
+        <div v-if="open === `prop:${prop.name}`" class="form" :data-editor="`prop:${prop.name}`">
+          <label class="field">
+            <span>Description</span>
+            <input
+              class="text"
+              :value="isPlaceholder(prop.description) ? '' : prop.description"
+              :placeholder="prop.description"
+              :disabled="!writable"
+              @change="
+                redeclare('prop', prop.name, {
+                  description: ($event.target as HTMLInputElement).value.trim(),
+                })
+              "
+            />
+          </label>
+          <label class="field">
+            <span>Type</span>
+            <input
+              class="text"
+              :value="prop.type"
+              :disabled="!writable"
+              @change="
+                redeclare('prop', prop.name, {
+                  attrs: { type: ($event.target as HTMLInputElement).value.trim() },
+                })
+              "
+            />
+          </label>
+          <div class="pair">
+            <label class="field">
+              <span>Default</span>
+              <input
+                class="text"
+                :value="printed(prop.default)"
+                :disabled="!writable"
+                placeholder="none"
+                @change="
+                  redeclare('prop', prop.name, {
+                    attrs: { default: parsed(($event.target as HTMLInputElement).value) },
+                  })
+                "
+              />
+            </label>
+            <label class="field">
+              <span>Sample</span>
+              <input
+                class="text"
+                :value="printed(prop.sample)"
+                :disabled="!writable"
+                placeholder="none"
+                @change="
+                  redeclare('prop', prop.name, {
+                    attrs: { sample: parsed(($event.target as HTMLInputElement).value) },
+                  })
+                "
+              />
+            </label>
+          </div>
+          <div class="flags">
+            <label
+              ><input
+                type="checkbox"
+                :checked="prop.visual"
+                :disabled="!writable"
+                @change="
+                  redeclare('prop', prop.name, {
+                    attrs: { visual: ($event.target as HTMLInputElement).checked },
+                  })
+                "
+              />
+              Visual</label
+            >
+            <label
+              ><input
+                type="checkbox"
+                :checked="prop.controllable"
+                :disabled="!writable"
+                @change="
+                  redeclare('prop', prop.name, {
+                    attrs: { controllable: ($event.target as HTMLInputElement).checked },
+                  })
+                "
+              />
+              Controllable</label
+            >
+          </div>
+        </div>
+      </template>
+
+      <!-- Events -->
+      <template v-for="event in contract?.events ?? []" :key="`event:${event.name}`">
         <div
-          v-for="state in contract.states"
-          :key="state.name"
+          class="row read"
+          :data-event="event.name"
+          :data-draft="isPlaceholder(event.description)"
+        >
+          <button
+            type="button"
+            class="name open"
+            :aria-expanded="open === `event:${event.name}`"
+            :title="event.description"
+            @click="toggle(`event:${event.name}`)"
+          >
+            <span class="name-text">on {{ event.name }}</span>
+            <span v-if="isPlaceholder(event.description)" class="flag" title="Needs a description"
+              >?</span
+            >
+          </button>
+          <span class="type">{{ event.detail ?? 'event' }}</span>
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Remove event ${event.name}`"
+            @click="remove('event', event.name)"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="open === `event:${event.name}`" class="form">
+          <label class="field">
+            <span>Description</span>
+            <input
+              class="text"
+              :value="isPlaceholder(event.description) ? '' : event.description"
+              :placeholder="event.description"
+              :disabled="!writable"
+              @change="
+                redeclare('event', event.name, {
+                  description: ($event.target as HTMLInputElement).value.trim(),
+                })
+              "
+            />
+          </label>
+          <label class="field">
+            <span>Detail type</span>
+            <input
+              class="text"
+              :value="event.detail ?? ''"
+              :disabled="!writable"
+              placeholder="{ checked: boolean }"
+              @change="
+                redeclare('event', event.name, {
+                  attrs: { detail: ($event.target as HTMLInputElement).value.trim() || undefined },
+                })
+              "
+            />
+          </label>
+        </div>
+      </template>
+
+      <!-- Declared slots -->
+      <template v-for="slot in contract?.slots ?? []" :key="`slot:${slot.name}`">
+        <div
+          class="row read"
+          :data-declared-slot="slot.name"
+          :data-draft="isPlaceholder(slot.description)"
+        >
+          <button
+            type="button"
+            class="name open"
+            :aria-expanded="open === `slot:${slot.name}`"
+            :title="slot.description"
+            @click="toggle(`slot:${slot.name}`)"
+          >
+            <span class="name-text">slot {{ slot.name }}</span>
+            <span v-if="slot.repeats" class="pill">repeats</span>
+            <span v-if="isPlaceholder(slot.description)" class="flag" title="Needs a description"
+              >?</span
+            >
+          </button>
+          <span class="type">{{ slot.repeats ? `of ${slot.of}` : 'slot' }}</span>
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Remove slot ${slot.name}`"
+            @click="remove('slot', slot.name)"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="open === `slot:${slot.name}`" class="form">
+          <label class="field">
+            <span>Description</span>
+            <input
+              class="text"
+              :value="isPlaceholder(slot.description) ? '' : slot.description"
+              :placeholder="slot.description"
+              :disabled="!writable"
+              @change="
+                redeclare('slot', slot.name, {
+                  description: ($event.target as HTMLInputElement).value.trim(),
+                })
+              "
+            />
+          </label>
+          <div class="flags">
+            <label
+              ><input
+                type="checkbox"
+                :checked="slot.repeats"
+                :disabled="!writable"
+                @change="
+                  redeclare('slot', slot.name, {
+                    attrs: { repeats: ($event.target as HTMLInputElement).checked },
+                  })
+                "
+              />
+              Repeats</label
+            >
+          </div>
+          <div v-if="slot.repeats" class="pair">
+            <label class="field">
+              <span>Of (list prop)</span>
+              <select
+                class="pick"
+                :value="slot.of ?? ''"
+                :disabled="!writable"
+                @change="
+                  redeclare('slot', slot.name, {
+                    attrs: { of: ($event.target as HTMLSelectElement).value || undefined },
+                  })
+                "
+              >
+                <option value="">Choose…</option>
+                <option v-for="name in listProps" :key="name" :value="name">{{ name }}</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Accepts (element)</span>
+              <input
+                class="text"
+                :value="slot.accepts ?? ''"
+                :disabled="!writable"
+                placeholder="hwc-radio"
+                @change="
+                  redeclare('slot', slot.name, {
+                    attrs: {
+                      accepts: ($event.target as HTMLInputElement).value.trim() || undefined,
+                    },
+                  })
+                "
+              />
+            </label>
+          </div>
+        </div>
+      </template>
+
+      <!-- Element states and described parts -->
+      <template v-for="state in contract?.states ?? []" :key="`state:${state.name}`">
+        <div
           class="row read"
           :data-state="state.name"
+          :data-draft="isPlaceholder(state.description)"
         >
-          <span class="name" :title="state.description">
+          <button
+            type="button"
+            class="name open"
+            :aria-expanded="open === `state:${state.name}`"
+            :title="state.description"
+            @click="toggle(`state:${state.name}`)"
+          >
             <span class="name-text">{{ state.name }}</span>
             <span class="pill" title="A state the element produces itself, styled through :state()"
               >element</span
             >
-          </span>
+          </button>
           <span class="type">state</span>
-          <span class="reset-spacer" />
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Remove state ${state.name}`"
+            @click="remove('state', state.name)"
+          >
+            ×
+          </button>
         </div>
-        <div
-          v-for="event in contract.events"
-          :key="event.name"
-          class="row read"
-          :data-event="event.name"
-        >
-          <span class="name" :title="event.description">on {{ event.name }}</span>
-          <span class="type">{{ event.detail ?? 'event' }}</span>
-          <span class="reset-spacer" />
+        <div v-if="open === `state:${state.name}`" class="form">
+          <label class="field">
+            <span>Description</span>
+            <input
+              class="text"
+              :value="isPlaceholder(state.description) ? '' : state.description"
+              :placeholder="state.description"
+              :disabled="!writable"
+              @change="
+                redeclare('state', state.name, {
+                  description: ($event.target as HTMLInputElement).value.trim(),
+                })
+              "
+            />
+          </label>
         </div>
       </template>
+      <template v-for="part in contract?.parts ?? []" :key="`part:${part.name}`">
+        <div
+          class="row read"
+          :data-described-part="part.name"
+          :data-draft="isPlaceholder(part.description)"
+        >
+          <button
+            type="button"
+            class="name open"
+            :aria-expanded="open === `part:${part.name}`"
+            :title="part.description"
+            @click="toggle(`part:${part.name}`)"
+          >
+            <span class="name-text">part {{ part.name }}</span>
+            <span v-if="isPlaceholder(part.description)" class="flag" title="Needs a description"
+              >?</span
+            >
+          </button>
+          <span class="type">part</span>
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Remove part ${part.name}`"
+            @click="remove('part', part.name)"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="open === `part:${part.name}`" class="form">
+          <label class="field">
+            <span>Description</span>
+            <input
+              class="text"
+              :value="isPlaceholder(part.description) ? '' : part.description"
+              :placeholder="part.description"
+              :disabled="!writable"
+              @change="
+                redeclare('part', part.name, {
+                  description: ($event.target as HTMLInputElement).value.trim(),
+                })
+              "
+            />
+          </label>
+        </div>
+      </template>
+
+      <!-- Add a declaration -->
+      <div class="row add" data-field="add-declaration">
+        <select v-model="addKind" class="pick" :disabled="!writable" aria-label="Kind to add">
+          <option value="prop">Prop</option>
+          <option value="event">Event</option>
+          <option value="slot">Slot</option>
+          <option value="state">State</option>
+          <option value="part">Part</option>
+        </select>
+        <input
+          v-model="addName"
+          class="text"
+          :disabled="!writable"
+          aria-label="Name to add"
+          placeholder="name"
+          @keydown.enter="add"
+        />
+        <button
+          type="button"
+          class="reset"
+          :disabled="!writable || !addName.trim()"
+          aria-label="Add declaration"
+          title="Declare it; describe it after"
+          @click="add"
+        >
+          +
+        </button>
+      </div>
     </template>
 
     <template v-else-if="view.kind === 'part'">
@@ -511,6 +961,20 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       <p v-else class="stale" role="status">
         The contract does not declare a slot called “{{ view.node.name }}”. Add it under
         <code>&lt;Slots&gt;</code>, or rename this one.
+      </p>
+    </template>
+
+    <template v-else-if="view.kind === 'derived'">
+      <header class="head">
+        <span class="title">State</span>
+        <span class="of">{{ view.state }}</span>
+      </header>
+      <p class="empty">
+        This is {{ view.component.name }} in the {{ view.state }} state, drawn from its styles
+        table. Bindings live on the base layer.
+        <button type="button" class="stale-name" @click="emit('select', view.base.address)">
+          Select {{ view.base.name }}
+        </button>
       </p>
     </template>
 
@@ -750,6 +1214,58 @@ code {
 }
 .library p {
   margin: 0 0 4px;
+}
+.name.open {
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.name.open[aria-expanded='true'] .name-text {
+  color: var(--bound);
+}
+.row[data-draft='true'] .name-text {
+  color: var(--warn);
+}
+.fill {
+  margin-left: auto;
+}
+.form {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 8px;
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+}
+.field {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+.field > span {
+  color: var(--text-dim);
+  font-size: 10px;
+}
+.pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+.flags {
+  display: flex;
+  gap: 12px;
+  color: var(--text-dim);
+}
+.flags input {
+  margin: 0 4px 0 0;
+}
+.row.add {
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) 24px;
+  margin-top: 4px;
 }
 .faint {
   color: var(--text-faint);

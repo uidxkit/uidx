@@ -235,6 +235,23 @@ function relowerBatch(doc: UidxDocument, patches: readonly UidxPatch[]): Increme
   const spliced = applyPatches(doc.source, patches, { document: doc, validate: false })
   if (spliced.source === doc.source) return { doc, changed: [], fellBack: false }
 
+  // A style op edits the table beside the tree, which no node's span holds,
+  // and the derived variants it changes are rebuilt from the spec — so the
+  // whole document is re-read rather than one node re-lowered.
+  if (patches.some((p) => p.op === 'style' || p.op === 'contract')) {
+    const { doc: full, diagnostics } = parse(spliced.source)
+    if (!full) {
+      const detail = diagnostics
+        .filter((d) => d.severity === 'error')
+        .map((d) => `${d.line}:${d.column} ${d.code}: ${d.message}`)
+        .join('; ')
+      throw new PatchError(
+        `the patch would produce an invalid document and was rejected — ${detail}`,
+      )
+    }
+    return { doc: full, changed: [], fellBack: true }
+  }
+
   const reshape = patches.some(
     (p) =>
       p.op === 'insert-node' ||

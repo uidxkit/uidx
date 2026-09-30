@@ -149,6 +149,72 @@ npx --no-install uidx fmt --check
 The CLI also supports reading, creating, editing, and rendering pages. See the
 [CLI guide](packages/cli/README.md) and [agent architecture](packages/agent/README.md).
 
+## Design system: one file, every render
+
+A `.uidx` file can be the identity of a component, and the components you
+ship — on the canvas, in Figma, as HTML/CSS, as React — are renders of it
+(ADRs 0012–0017). Nothing in the file computes; implementation is a renderer's
+job. One checkbox, top to bottom:
+
+```mdx
+---
+id: checkbox
+---
+
+Lets a user toggle one option. The box and its marks are the design system's;
+the label comes from a Field.
+
+## Visual Contract
+
+<Page>
+  <Component name="Checkbox" status="stable" implements="hwc-checkbox"
+    width={20} height={20} cornerRadius="{radius#sm}" fills="{surface#control}">
+    <Vector name="check" part="checked-indicator" visible={false} width={12} height={12} … />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" root:fills="{surface#accent}" checked-indicator:visible={true} />
+  <Style state="hover" root:strokes="{border#hover}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} controllable visual>Whether the option is selected.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="change" detail="{ checked: boolean }">Fires once per user toggle, never when set from code.</Event>
+</Events>
+<Accessibility role="checkbox" keyboard="Space toggles" />
+
+## Behavior
+
+- toggle: click or Space flips `checked`.
+- change-event: `change` fires once per user toggle, never when `checked` is set from code.
+```
+
+- **Identity.** The visual contract is the anatomy and layout, in Figma's
+  vocabulary. `implements` binds the component to a headless element,
+  `part` binds a layer to one of its parts.
+- **States.** A visual boolean prop is a state; `hover`, `focus` and `active`
+  are the browser's and need no declaration. The styles table gives each
+  state its look, and the canvas draws the whole set. Select a state on the
+  canvas and change it: the viewer writes the row.
+- **Contract.** What the code render exposes, every declaration with its
+  words. The inspector's Contract tab binds components and parts to the
+  library named in `uidx.json`, and edits the contract in place.
+- **Behaviour.** Short bullets that guide the logic without being code.
+- **Models.** For a list, a view model of what each row receives — declared
+  once, named by a prop's type, sampled for the canvas, never derived.
+
+Then `uidx check` audits the regions against the tree, and `uidx codegen`
+renders HTML/CSS and React over the headless library, checking each contract
+against its `custom-elements.json`. See `examples/design-system` for six
+components rendered end to end over `@hwc/components`.
+
 ## Documentation
 
 - [Drawing icons and custom graphics](docs/graphics-tools.md)

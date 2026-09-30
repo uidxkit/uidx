@@ -37,7 +37,9 @@ A slot may repeat, carry a model, and constrain what fills it:
 ```
 
 A visual-only instruction, legal only on a slot declared `repeats`, whose one
-child is an instance of an accepted component. The canvas expands it to
+child is an instance of an accepted component. The toolbar's Repeat tool
+wraps a selected instance this way, on the first repeating slot no repeat
+provides yet. The canvas expands it to
 `count` clones, the n-th resolving `{item.*}` from the n-th samples. Figma
 export renders instances with an instance-swap property. Code ignores
 `count` and uses the contract.

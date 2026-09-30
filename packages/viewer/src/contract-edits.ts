@@ -1,4 +1,12 @@
-import { resolve, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
+import {
+  resolve,
+  type ContractDeclaration,
+  type ContractKind,
+  type UidxDocument,
+  type UidxNode,
+  type UidxPatch,
+} from '@uidx/format'
+import { derivedTarget } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
 import type { HeadlessElement, HeadlessLibrary } from './headless'
 
@@ -92,7 +100,17 @@ export interface OtherView {
   node: UidxNode | null
 }
 
-export type ContractView = ComponentView | PartView | RepeatView | SlotView | OtherView
+/** A node of a derived state: bindings live on the base layer it was copied from. */
+export interface DerivedView {
+  kind: 'derived'
+  node: UidxNode
+  base: UidxNode
+  component: UidxNode
+  state: string
+}
+
+export type ContractView =
+  ComponentView | PartView | RepeatView | SlotView | OtherView | DerivedView
 
 /** The parts a component may bind, from the library element and the contract. */
 export function declaredParts(component: UidxNode, element: HeadlessElement | null): PartRow[] {
@@ -263,6 +281,13 @@ export function contractView(
 ): ContractView {
   if (!doc || !node) return { kind: 'page', node: null }
   if (node.element === 'Component') return componentView(node, library)
+  const from = derivedTarget(doc, node.address)
+  if (from) {
+    const state = Object.entries(from.keys)
+      .map(([axis, value]) => `${axis}=${value}`)
+      .join(', ')
+    return { kind: 'derived', node, base: from.base, component: from.component, state }
+  }
   const component = enclosingComponent(doc, node.address)
   if (node.element === 'Repeat') return repeatView(node, component)
   if (node.element === 'Slot') {
@@ -342,6 +367,104 @@ export function setRepeatSlot(
   const cut = Math.max(node.address.lastIndexOf('#'), node.address.lastIndexOf('/'))
   const nextAddress = `${node.address.slice(0, cut + 1)}repeat(${slot})`
   return { patches: slot ? setAttr(node, 'slot', slot) : [], nextAddress }
+}
+
+/* ------------------------------------------------- the contract itself */
+
+/** Writes one declaration of the contract (ADR 0013 §2), creating its list and region as needed. */
+export function declare(
+  kind: ContractKind,
+  name: string,
+  declaration: ContractDeclaration,
+): UidxPatch[] {
+  if (!name.trim()) return []
+  return [{ op: 'contract', kind, name: name.trim(), declaration }]
+}
+
+/** Removes one declaration; a list left empty goes with it. */
+export function undeclare(kind: ContractKind, name: string): UidxPatch[] {
+  return [{ op: 'contract', kind, name }]
+}
+
+/** The words a scaffolded declaration carries until someone writes its own. */
+export const PLACEHOLDER = 'Describe '
+
+/** True for a description nobody has written yet. */
+export const isPlaceholder = (description: string): boolean => description.startsWith(PLACEHOLDER)
+
+/**
+ * The contract's type for a manifest attribute type: `boolean` stays,
+ * a union of quoted strings becomes an enum in the contract's spelling, and
+ * anything else — `string`, `number`, or nothing — is text.
+ */
+export function contractType(manifestType: string | undefined): string {
+  if (!manifestType) return 'string'
+  const text = manifestType.trim()
+  if (text === 'boolean') return 'boolean'
+  if (text === 'number') return 'number'
+  const parts = text.split('|').map((part) => part.trim())
+  if (parts.length > 1 && parts.every((part) => /^(['"]).*\1$/.test(part)))
+    return parts.map((part) => `'${part.slice(1, -1)}'`).join(' | ')
+  return 'string'
+}
+
+/**
+ * Declarations the library's element implies and the contract lacks (ADR
+ * 0013 §5): its attributes as props, its events, its named slots, its parts.
+ * Descriptions come from the manifest where it has them and are otherwise
+ * placeholders the tab marks until they are written — a contract with words
+ * missing is a draft, not a lie.
+ */
+export function scaffoldFromLibrary(component: UidxNode, element: HeadlessElement): UidxPatch[] {
+  const contract = component.spec?.contract
+  const has = (kind: ContractKind, name: string): boolean => {
+    switch (kind) {
+      case 'prop':
+        return contract?.props.some((entry) => entry.name === name) ?? false
+      case 'event':
+        return contract?.events.some((entry) => entry.name === name) ?? false
+      case 'slot':
+        return contract?.slots.some((entry) => entry.name === name) ?? false
+      case 'part':
+        return contract?.parts.some((entry) => entry.name === name) ?? false
+      case 'state':
+        return contract?.states.some((entry) => entry.name === name) ?? false
+    }
+  }
+  const words = (member: { name: string; description?: string }, what: string): string =>
+    member.description ?? `${PLACEHOLDER}the ${what} "${member.name}".`
+  const out: UidxPatch[] = []
+  for (const attribute of element.members.attributes) {
+    if (!attribute.name || has('prop', attribute.name)) continue
+    const type = contractType(attribute.type)
+    out.push(
+      ...declare('prop', attribute.name, {
+        attrs: {
+          type,
+          ...(type === 'boolean' ? { default: false, visual: true } : {}),
+        },
+        description: words(attribute, 'prop'),
+      }),
+    )
+  }
+  for (const event of element.members.events) {
+    if (!event.name || has('event', event.name)) continue
+    out.push(...declare('event', event.name, { attrs: {}, description: words(event, 'event') }))
+  }
+  for (const slot of element.members.slots) {
+    if (!slot.name || has('slot', slot.name)) continue
+    out.push(...declare('slot', slot.name, { attrs: {}, description: words(slot, 'slot') }))
+  }
+  for (const part of element.parts) {
+    if (has('part', part.name)) continue
+    out.push(
+      ...declare('part', part.name, {
+        attrs: {},
+        description: `${PLACEHOLDER}the part "${part.name}".`,
+      }),
+    )
+  }
+  return out
 }
 
 /** How many rows a `<Repeat>` draws; a non-negative integer, as the parser demands. */

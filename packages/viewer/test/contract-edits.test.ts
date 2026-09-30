@@ -6,7 +6,9 @@ import PropertiesPane from '../src/PropertiesPane.vue'
 import {
   bindPart,
   contractIssues,
+  contractType,
   contractView,
+  scaffoldFromLibrary,
   setImplements,
   setPart,
   setRepeatCount,
@@ -416,6 +418,140 @@ describe('choosing a library', () => {
       props: { doc, node: resolve(doc.tree, 'Checkbox'), library: bound, writable: true },
     })
     expect(section.find('[data-field="bound"]').text()).toContain('sl-checkbox')
+  })
+})
+
+describe('editing the contract from the tab (ADR 0013 §2)', () => {
+  it('scaffolds only what the contract lacks: a fully declared contract gets nothing', () => {
+    const doc = parseOrThrow(CHECKBOX)
+    const element = LIBRARY.elements.get('hwc-checkbox')!
+    expect(scaffoldFromLibrary(resolve(doc.tree, 'Checkbox')!, element)).toEqual([])
+    // Without its <Parts>, the two parts the element offers are declared with placeholders.
+    const undescribed = parseOrThrow(CHECKBOX.replace(/<Parts>[\s\S]*?<\/Parts>\n/, ''))
+    const patches = scaffoldFromLibrary(resolve(undescribed.tree, 'Checkbox')!, element)
+    expect(patches.map((p) => (p.op === 'contract' ? `${p.kind}:${p.name}` : p.op))).toEqual([
+      'part:checked-indicator',
+      'part:indeterminate-indicator',
+    ])
+    const next = applyPatches(undescribed.source, patches).source
+    expect(parseOrThrow(next).spec!.contract!.parts.map((p) => [p.name, p.description])).toEqual([
+      ['checked-indicator', 'Describe the part "checked-indicator".'],
+      ['indeterminate-indicator', 'Describe the part "indeterminate-indicator".'],
+    ])
+  })
+
+  it("maps a manifest type to the contract's, booleans as visual states", () => {
+    expect(contractType('boolean')).toBe('boolean')
+    expect(contractType('"a" | "b"')).toBe("'a' | 'b'")
+    expect(contractType('string')).toBe('string')
+    expect(contractType(undefined)).toBe('string')
+    const doc = parseOrThrow(bare)
+    const element = parseHeadless('lib.json', {
+      modules: [
+        {
+          declarations: [
+            {
+              tagName: 'x-switch',
+              attributes: [
+                { name: 'on', type: { text: 'boolean' }, description: 'Whether it is on.' },
+                { name: 'tone', type: { text: '"cool" | "warm"' } },
+              ],
+              events: [{ name: 'toggle' }],
+              slots: [{ name: '' }, { name: 'label' }],
+            },
+          ],
+        },
+      ],
+    }).elements.get('x-switch')!
+    const component = { ...resolve(doc.tree, 'loose')!, element: 'Component' as const }
+    const patches = scaffoldFromLibrary(component, element)
+    expect(patches).toEqual([
+      {
+        op: 'contract',
+        kind: 'prop',
+        name: 'on',
+        declaration: {
+          attrs: { type: 'boolean', default: false, visual: true },
+          description: 'Whether it is on.',
+        },
+      },
+      {
+        op: 'contract',
+        kind: 'prop',
+        name: 'tone',
+        declaration: {
+          attrs: { type: "'cool' | 'warm'" },
+          description: 'Describe the prop "tone".',
+        },
+      },
+      {
+        op: 'contract',
+        kind: 'event',
+        name: 'toggle',
+        declaration: { attrs: {}, description: 'Describe the event "toggle".' },
+      },
+      {
+        op: 'contract',
+        kind: 'slot',
+        name: 'label',
+        declaration: { attrs: {}, description: 'Describe the slot "label".' },
+      },
+    ])
+  })
+
+  it('opens a declaration into a form, rewrites it, adds one, and removes one', async () => {
+    const doc = parseOrThrow(CHECKBOX)
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Checkbox'), library: LIBRARY, writable: true },
+    })
+    expect(section.find('[data-prop="checked"] .pill').text()).toBe('state')
+    await section.find('[data-prop="checked"] .name').trigger('click')
+    const form = section.find('[data-editor="prop:checked"]')
+    expect(form.exists()).toBe(true)
+    await form.findAll('input.text')[0]!.setValue('Whether it is on.')
+    expect(section.emitted('patches')![0]).toEqual([
+      [
+        {
+          op: 'contract',
+          kind: 'prop',
+          name: 'checked',
+          declaration: {
+            attrs: { type: 'boolean', default: false, visual: true },
+            description: 'Whether it is on.',
+          },
+        },
+      ],
+    ])
+    await section.find('[data-field="add-declaration"] input').setValue('size')
+    await section.find('[data-field="add-declaration"] button').trigger('click')
+    expect(section.emitted('patches')![1]).toEqual([
+      [
+        {
+          op: 'contract',
+          kind: 'prop',
+          name: 'size',
+          declaration: { attrs: { type: 'string' }, description: 'Describe the prop "size".' },
+        },
+      ],
+    ])
+    await section.find('[aria-label="Remove prop checked"]').trigger('click')
+    expect(section.emitted('patches')![2]).toEqual([
+      [{ op: 'contract', kind: 'prop', name: 'checked' }],
+    ])
+    expect(section.find('[data-part="checked-indicator"]').exists()).toBe(true)
+  })
+
+  it('fills from the library on request', async () => {
+    const doc = parseOrThrow(CHECKBOX.replace(/<Parts>[\s\S]*?<\/Parts>\n/, ''))
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Checkbox'), library: LIBRARY, writable: true },
+    })
+    await section.find('.fill').trigger('click')
+    const sent = section.emitted('patches')![0]![0] as { kind: string; name: string }[]
+    expect(sent.map((p) => `${p.kind}:${p.name}`)).toEqual([
+      'part:checked-indicator',
+      'part:indeterminate-indicator',
+    ])
   })
 })
 

@@ -56,10 +56,12 @@ import {
   headlessLibrary,
   refreshHeadless,
 } from './headless'
+import { routeDerivedPatches } from './derived-edits'
 import WorkspaceStatus from './WorkspaceStatus.vue'
 import { canRemove, componentFrom, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
 import { newSlotFor, slotTargetFor } from './slot-edits'
+import { newRepeatFor, repeatTargetFor } from './repeat-edits'
 import { isDeleteKey, isTypingTarget, toolFor } from './tool-keys'
 import { createInFlight } from './in-flight'
 import { createUndoStack, type StackEntry } from './undo-stack'
@@ -1012,9 +1014,18 @@ const pendingRename = shallowRef<{
   plan: import('@uidx/schema').RefactorPlan
 } | null>(null)
 
-function commitPatches(patches: UidxPatch[]): void {
+function commitPatches(incoming: UidxPatch[]): void {
   const page = entry.value
   if (page === null || revision.value === null) return
+  // An edit to a derived state lands on its style row (ADR 0016 §4); one
+  // that cannot is refused with the reason, before anything is sent.
+  const routed = shown.value ? routeDerivedPatches(shown.value, incoming) : { patches: incoming }
+  if ('refused' in routed) {
+    onRefused(routed.refused)
+    return
+  }
+  const patches = routed.patches
+  if (patches.length === 0) return
   // A lone set-name on an instantiated component is not one page's edit: the
   // engine rewrites every instance, and the author sees the radius first.
   const plan = componentRenamePlan(pages.value, dependents.value, patches)
@@ -1045,6 +1056,13 @@ function labelFor(patches: readonly UidxPatch[]): string {
   if (!first) return 'Edit'
   if (first.op === 'set' || first.op === 'add' || first.op === 'remove') {
     return `${first.prop} on ${first.address || 'page'}`
+  }
+  if (first.op === 'contract') return `${first.kind} ${first.name}`
+  if (first.op === 'style') {
+    const at = Object.entries(first.keys)
+      .map(([axis, value]) => `${axis}=${value}`)
+      .join(', ')
+    return `${first.target}:${first.prop} for ${at}`
   }
   return first.op
 }
@@ -1399,6 +1417,21 @@ const slotTarget = computed(() =>
  * this is the gesture that makes one. The rail shows the row either way, but
  * the author should not have to go looking for what they just made.
  */
+/** Whether the selected instance can be wrapped in a `<Repeat>` (ADR 0017 §2). */
+const repeatTarget = computed(() =>
+  sceneDoc.value ? repeatTargetFor(sceneDoc.value, selection.value) : null,
+)
+
+/** Wrap the selected instance in a `<Repeat>` on the first open repeating slot, and select it. */
+function addRepeat(): void {
+  const doc_ = sceneDoc.value
+  if (!doc_) return
+  const made = newRepeatFor(doc_, selection.value)
+  if (!made) return
+  commitPatches(made.patches)
+  selection.value = [made.address]
+}
+
 function addSlot(): void {
   const doc_ = sceneDoc.value
   if (!doc_) return
@@ -1702,12 +1735,14 @@ onUnmounted(() => socket.close())
                 :placing="placing"
                 :can-place-instance="components.size > 0"
                 :can-add-slot="slotTarget !== null"
+                :can-add-repeat="repeatTarget !== null"
                 :writable="connection === 'open' && sceneDoc !== null"
                 @tool="armTool"
                 @remove="removeSelection"
                 @make-component="startMakeComponent"
                 @place-instance="picking = true"
                 @add-slot="addSlot"
+                @add-repeat="addRepeat"
               />
             </template>
           </CanvasPane>

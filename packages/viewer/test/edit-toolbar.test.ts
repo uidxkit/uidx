@@ -35,6 +35,7 @@ describe('the creation toolbar', () => {
       'Graphics tools',
       'Make component',
       'New slot',
+      'Repeat instance',
       'Place instance',
       'Delete',
     ])

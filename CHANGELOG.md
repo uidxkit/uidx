@@ -29,6 +29,17 @@ describe migrations when an existing document or integration is affected.
 - `examples/design-system`: Checkbox, Field, CheckboxField, Button and a
   contact list rendered end to end over `@hwc/components`, with the generated
   output committed and checked for drift.
+- A state is designed on the canvas: the derived variants a styles table draws
+  are selectable, and a change to one writes the matching cell of its style
+  row (the new `style` patch op), while a change to the default combination
+  edits the base tree. The inspector names the state it is editing. The
+  toolbar gains a Repeat tool that wraps the selected instance in a `<Repeat>`
+  on the first open repeating slot of its component's contract.
+- The Contract tab edits the contract: each prop, event, slot, state and
+  part opens into a small form (description, type, default, sample, flags;
+  a slot's `of` and `accepts`), a row adds one, and "Fill from library"
+  declares what the implemented element exposes and the contract lacks. The
+  new `contract` patch op writes one declaration in canonical form.
 - The inspector gains a **Contract** tab beside Design. A component chooses
   the headless element it implements from the library; its parts are bound to
   layers from the component's list or from the layer's own row, and a

@@ -72,10 +72,16 @@ omit declared parts only when the contract says that axis value has none.
 
 The canvas and the Figma export expand the axes into full trees at scene
 build time: one component set, one tree per combination, named
-`state=hover, size=sm` as ADR 0005 §3 spells it. Derived trees are synthetic:
-they carry no source span, the bimap does not link them, and a gesture on one
-produces no patch. Code targets never expand; they emit one component whose
-CSS is keyed by attributes and states.
+`state=hover, size=sm` as ADR 0005 §3 spells it. Derived trees are synthetic —
+they carry no source span — but they are addressable, so a state is designed
+the way Figma's variants are: select the hover variant on the canvas, change a
+property, and the viewer writes the matching cell of the `state="hover"` row
+(the `style` patch op) rather than a patch to a node that does not exist. An
+edit to the default combination lands on the base tree, which is what the
+default draws. What a state cannot change — where a variant sits, a layer's
+name, the structure below it — is refused with the reason; structure is the
+base tree's or an authored `<Variant>`'s. Code targets never expand; they emit
+one component whose CSS is keyed by attributes and states.
 
 ### 5. Audit
 

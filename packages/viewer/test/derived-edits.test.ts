@@ -1,0 +1,135 @@
+import { describe, expect, it } from 'vitest'
+import { mount } from '@vue/test-utils'
+import { applyPatches, parseOrThrow } from '@uidx/format'
+import PropertiesPane from '../src/PropertiesPane.vue'
+import { routeDerivedPatches } from '../src/derived-edits'
+
+/**
+ * Designing a state on the canvas (ADR 0016 §4).
+ *
+ * The claims: a derived variant is selectable and shows its fields; an edit
+ * to it becomes a cell of its style row rather than a patch to a node that
+ * has no source; on the default combination it edits the base tree; and
+ * what a state cannot change is refused with a reason, not sent.
+ */
+const SOURCE = `---
+id: checkbox
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Checkbox" status="stable" implements="hwc-checkbox" width={20} height={20}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }]}>
+    <Vector name="check" part="checked-indicator" visible={false} width={12} height={12}
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 6 L5 9 L10 3' }]} />
+    <Frame name="ring" width={20} height={20} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" checked-indicator:visible={true} />
+  <Style state="hover" root:opacity={0.9} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} controllable visual>Selected.</Prop>
+</Props>
+`
+const doc = parseOrThrow(SOURCE)
+
+describe('routing an edit on a derived variant', () => {
+  it('writes a cell of the state row, targeting root, a part, or a node by name', () => {
+    expect(
+      routeDerivedPatches(doc, [
+        { op: 'set', address: 'Checkbox#state=hover/root', prop: 'opacity', value: 0.5 },
+        { op: 'add', address: 'Checkbox#state=hover/root/check', prop: 'visible', value: true },
+        { op: 'add', address: 'Checkbox#state=checked/root/ring', prop: 'opacity', value: 0.2 },
+      ]),
+    ).toEqual({
+      patches: [
+        { op: 'style', keys: { state: 'hover' }, target: 'root', prop: 'opacity', value: 0.5 },
+        {
+          op: 'style',
+          keys: { state: 'hover' },
+          target: 'checked-indicator',
+          prop: 'visible',
+          value: true,
+        },
+        { op: 'style', keys: { state: 'checked' }, target: 'ring', prop: 'opacity', value: 0.2 },
+      ],
+    })
+  })
+
+  it('clears a cell for a remove, and lands on the base tree for the default combination', () => {
+    expect(
+      routeDerivedPatches(doc, [
+        { op: 'remove', address: 'Checkbox#state=hover/root', prop: 'opacity' },
+        { op: 'set', address: 'Checkbox#state=default/root', prop: 'width', value: 24 },
+        { op: 'set', address: 'Checkbox#state=default/root/check', prop: 'width', value: 14 },
+      ]),
+    ).toEqual({
+      patches: [
+        { op: 'style', keys: { state: 'hover' }, target: 'root', prop: 'opacity' },
+        { op: 'set', address: 'Checkbox', prop: 'width', value: 24 },
+        { op: 'set', address: 'Checkbox#check', prop: 'width', value: 14 },
+      ],
+    })
+  })
+
+  it('leaves authored addresses alone', () => {
+    const patches = [{ op: 'set' as const, address: 'Checkbox#check', prop: 'width', value: 14 }]
+    expect(routeDerivedPatches(doc, patches)).toEqual({ patches })
+  })
+
+  it('refuses what a state cannot change, with the reason', () => {
+    expect(
+      routeDerivedPatches(doc, [
+        { op: 'set', address: 'Checkbox#state=hover/root', prop: 'x', value: 10 },
+      ]),
+    ).toEqual({ refused: expect.stringContaining('draws where its base draws') })
+    expect(
+      routeDerivedPatches(doc, [{ op: 'remove-node', address: 'Checkbox#state=hover/root/ring' }]),
+    ).toEqual({ refused: expect.stringContaining('drawn from the base tree') })
+  })
+
+  it('round-trips: the routed edit lands in the file as a row cell', () => {
+    const routed = routeDerivedPatches(doc, [
+      { op: 'set', address: 'Checkbox#state=hover/root', prop: 'opacity', value: 0.5 },
+    ])
+    if (!('patches' in routed)) throw new Error(routed.refused)
+    expect(applyPatches(SOURCE, routed.patches).source).toContain(
+      '<Style state="hover" root:opacity={0.5} />',
+    )
+  })
+})
+
+describe('a derived variant in the inspector', () => {
+  it('is selectable, shows its fields, and says which state it is', () => {
+    const pane = mount(PropertiesPane, {
+      props: { doc, selection: ['Checkbox#state=hover/root'], writable: true },
+    })
+    expect(pane.find('.node-head .name').text()).toBe('root')
+    expect(pane.find('.meta[data-meta="state"]').text()).toBe('state=hover of Checkbox')
+    expect(pane.find('.editor').exists()).toBe(true)
+  })
+
+  it('stands a selected variant in for its root frame', () => {
+    const pane = mount(PropertiesPane, {
+      props: { doc, selection: ['Checkbox#state=hover'], writable: true },
+    })
+    expect(pane.find('.node-head .name').text()).toBe('root')
+    expect(pane.find('.meta[data-meta="state"]').text()).toBe('state=hover of Checkbox')
+  })
+
+  it('shows the authored component for the set itself, with no variants section', () => {
+    const pane = mount(PropertiesPane, {
+      props: { doc, selection: ['Checkbox'], writable: true },
+    })
+    expect(pane.find('.node-head .name').text()).toBe('Checkbox')
+    expect(pane.find('.variants').exists()).toBe(false)
+    expect(pane.find('.meta[data-meta="state"]').exists()).toBe(false)
+  })
+})

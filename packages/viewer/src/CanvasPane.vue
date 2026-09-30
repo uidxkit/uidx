@@ -58,6 +58,7 @@ import {
   type SceneResult,
   type TokenIndex,
   type TokenResolver,
+  derivedDocument,
 } from '@uidx/schema'
 import type { Diagnostic, JsonValue, UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 
@@ -1316,8 +1317,11 @@ const isMoveOnly = (changes: Record<string, unknown>): boolean => {
 function recordSceneWrite(sceneId: string, changes: Record<string, unknown>): void {
   const built = scene.value
   if (applyingRemote || !current || !built) return
+  // The document with its derived variants (ADR 0016 §4): a write to a
+  // state's node resolves there, and the patch it becomes — addressed to
+  // the derived node — is routed to the style row by the shell.
   const patches = fromSceneChange(sceneId, changes, {
-    doc: current,
+    doc: derivedDocument(current),
     graph: built.graph,
     addresses: built.addresses,
     pins: built.pins,

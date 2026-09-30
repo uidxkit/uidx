@@ -17,6 +17,8 @@ import {
   type UidxNode,
   type UidxNodeSpec,
   type UidxPatch,
+  type ContractDeclaration,
+  type ContractKind,
 } from './types.js'
 
 /**
@@ -118,8 +120,13 @@ export function applyPatch(
   return { source: next, changedRange: changed, document: assertStillValid(next, patch) }
 }
 
-/** Which node a patch names, for a message. Insert names its parent. */
+/** Which node a patch names, for a message. Insert names its parent; a style op its row. */
 function addressOfPatch(patch: UidxPatch): string {
+  if (patch.op === 'style')
+    return `<Style ${Object.entries(patch.keys)
+      .map(([axis, value]) => `${axis}="${value}"`)
+      .join(' ')}>`
+  if (patch.op === 'contract') return `<${CONTRACT_LISTS[patch.kind][1]} name="${patch.name}">`
   return patch.op === 'insert-node' ? patch.parent : patch.address
 }
 
@@ -142,6 +149,10 @@ function applyOne(doc: UidxDocument, s: MagicString, patch: UidxPatch, eol: '\r\
         return moveNode(doc, s, patch.address, patch.newParent, patch.index, eol)
       case 'retag':
         return retagNode(doc, s, patch.address, patch.element, patch.attrs, eol)
+      case 'style':
+        return styleCell(doc, s, patch, eol)
+      case 'contract':
+        return contractDeclaration(doc, s, patch, eol)
       default:
         // Unreachable through the type: the union above is exhaustive, so this
         // only fires for an op that arrived from somewhere newer than this
@@ -647,8 +658,9 @@ function moveNode(
 
 function withName(spec: UidxNodeSpec, siblings: readonly UidxNode[]): UidxNodeSpec {
   // A `<Variant>` has no name of its own — its coordinates spell one (ADR 0005
-  // §3) — so inventing one here would write an attribute UIDX118 rejects.
-  if (spec.element === 'Variant') return spec
+  // §3) — so inventing one here would write an attribute UIDX118 rejects. A
+  // `<Repeat>` is named by its slot the same way (ADR 0017 §2).
+  if (spec.element === 'Variant' || spec.element === 'Repeat') return spec
   const name = spec.attrs.name
   if (typeof name === 'string' && name !== '') {
     if (siblings.some((c) => c.name === name)) {
@@ -657,6 +669,249 @@ function withName(spec: UidxNodeSpec, siblings: readonly UidxNode[]): UidxNodeSp
     return spec
   }
   return { ...spec, attrs: { name: autoName(spec.element, siblings), ...spec.attrs } }
+}
+
+/* ------------------------------------------------- the contract region */
+
+/** Per kind: the list element and the item element (ADR 0013 §2). */
+export const CONTRACT_LISTS: Record<ContractKind, [list: string, item: string]> = {
+  prop: ['Props', 'Prop'],
+  event: ['Events', 'Event'],
+  slot: ['Slots', 'Slot'],
+  state: ['States', 'State'],
+  part: ['Parts', 'Part'],
+}
+
+/** The bare boolean attributes of the contract (ADR 0013 §2). */
+const CONTRACT_FLAGS: ReadonlySet<string> = new Set(['controllable', 'visual', 'repeats'])
+
+/** Attribute order in canonical form, per item; flags print bare when true. */
+const CONTRACT_ATTR_ORDER: Record<ContractKind, readonly string[]> = {
+  prop: ['type', 'default', 'sample', 'controllable', 'visual'],
+  event: ['detail'],
+  slot: ['repeats', 'of', 'accepts'],
+  state: [],
+  part: [],
+}
+
+/** The declared items of one kind, as the spec holds them, with their spans. */
+function contractItems(doc: UidxDocument, kind: ContractKind): { name: string; loc: Range }[] {
+  const contract = doc.spec?.contract
+  if (!contract) return []
+  switch (kind) {
+    case 'prop':
+      return contract.props
+    case 'event':
+      return contract.events
+    case 'slot':
+      return contract.slots
+    case 'state':
+      return contract.states
+    case 'part':
+      return contract.parts
+  }
+}
+
+/** `<Prop name="x" type="string" visual>Words.</Prop>`, canonical. */
+export function printContractItem(
+  kind: ContractKind,
+  name: string,
+  declaration: ContractDeclaration,
+): string {
+  const item = CONTRACT_LISTS[kind][1]
+  const attrs = [`name=${serializeValue(name)}`]
+  const known = CONTRACT_ATTR_ORDER[kind]
+  const order = [...known, ...Object.keys(declaration.attrs).filter((k) => !known.includes(k))]
+  for (const key of order) {
+    const value = declaration.attrs[key]
+    if (value === undefined || value === null) continue
+    // A flag is written bare when set and left out when not; any other
+    // boolean is a value (`default={false}`) and prints as one.
+    if (CONTRACT_FLAGS.has(key)) {
+      if (value === true) attrs.push(key)
+      continue
+    }
+    attrs.push(`${key}=${serializeValue(value)}`)
+  }
+  return `<${item} ${attrs.join(' ')}>${declaration.description}</${item}>`
+}
+
+/**
+ * One element of the contract, written or removed (ADR 0013 §2).
+ *
+ * An existing element is overwritten in place, so its neighbours keep their
+ * formatting. A new one goes at the end of its list; a list that does not
+ * exist is created at the end of the region, and a region that does not
+ * exist is created after the visual contract and its styles, before any
+ * other region. A removal that empties a list removes the list.
+ */
+function contractDeclaration(
+  doc: UidxDocument,
+  s: MagicString,
+  patch: Extract<UidxPatch, { op: 'contract' }>,
+  eol: '\r\n' | '\n',
+): Range {
+  if (patch.name === '') throw new PatchError('a contract op names the element it declares')
+  const [list] = CONTRACT_LISTS[patch.kind]
+  const items = contractItems(doc, patch.kind)
+  const existing = items.find((item) => item.name === patch.name)
+  const source = doc.source
+
+  if (!patch.declaration) {
+    if (!existing)
+      throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to remove`)
+    if (items.length === 1) {
+      // The last item takes its list with it, and the blank line before it.
+      const open = source.lastIndexOf(`<${list}`, existing.loc.start)
+      const close = source.indexOf(`</${list}>`, existing.loc.end)
+      if (open === -1 || close === -1)
+        throw new PatchError(`cannot find <${list}> around ${patch.name}`)
+      let from = open
+      while (from > 0 && /\s/.test(source[from - 1]!)) from--
+      s.remove(from, close + `</${list}>`.length)
+      return { start: from, end: from }
+    }
+    const span = nodeSpanWithLeadingWhitespace(source, { loc: existing.loc } as UidxNode)
+    s.remove(span.start, span.end)
+    return { start: span.start, end: span.start }
+  }
+
+  const text = printContractItem(patch.kind, patch.name, patch.declaration)
+  if (existing) {
+    s.overwrite(existing.loc.start, existing.loc.end, text)
+    return { start: existing.loc.start, end: existing.loc.start + text.length }
+  }
+  if (items.length) {
+    // After the last item, at its indentation.
+    const last = items[items.length - 1]!
+    const indent = indentOfLine(source, last.loc.start)
+    const insertion = `${eol}${indent}${text}`
+    s.appendRight(last.loc.end, insertion)
+    return { start: last.loc.end, end: last.loc.end + insertion.length }
+  }
+
+  const block = `<${list}>${eol}${INDENT_UNIT}${text}${eol}</${list}>`
+  const contract = doc.spec?.contract
+  if (contract) {
+    // The region's end: the next region's heading, or the end of the file.
+    const regionEnd = Math.min(
+      ...[doc.spec?.behavior, doc.spec?.models, doc.spec?.examples]
+        .flatMap((region) => (region ?? []).map((entry) => entry.loc.start))
+        .filter((start) => start > contract.loc.end),
+      source.length,
+    )
+    let at = regionEnd
+    while (at > contract.loc.end && /\s/.test(source[at - 1]!)) at--
+    const insertion = `${eol}${eol}${block}`
+    s.appendRight(at, insertion)
+    return { start: at, end: at + insertion.length }
+  }
+  // No `## Contract` yet: before the other regions, or at the end of the file.
+  const at = doc.trailing ? doc.trailing.loc.start : source.length
+  let from = at
+  while (from > 0 && /\s/.test(source[from - 1]!)) from--
+  const insertion = `${eol}${eol}## Contract${eol}${eol}${block}${doc.trailing ? `${eol}${eol}` : eol}`
+  s.overwrite(from, at, insertion)
+  return { start: from, end: from + insertion.length }
+}
+
+/* ------------------------------------------------- the styles table */
+
+/** The `<Styles>` block's span in the source, found by its rows, or null. */
+function stylesSpan(doc: UidxDocument): Range | null {
+  const rows = doc.spec?.styles ?? []
+  if (rows.length === 0) return null
+  const open = doc.source.lastIndexOf('<Styles', rows[0]!.loc.start)
+  const close = doc.source.indexOf('</Styles>', rows[rows.length - 1]!.loc.end)
+  if (open === -1 || close === -1) return null
+  return { start: open, end: close + '</Styles>'.length }
+}
+
+const sameKeys = (a: Record<string, string>, b: Record<string, string>): boolean =>
+  Object.keys(a).length === Object.keys(b).length &&
+  Object.entries(a).every(([axis, value]) => b[axis] === value)
+
+/** The table printed in canonical style: one `<Style>` per row, keys first, then `target:prop` cells. */
+function printStyles(
+  rows: readonly {
+    keys: Record<string, string>
+    values: Record<string, Record<string, JsonValue>>
+  }[],
+  eol: '\r\n' | '\n',
+): string {
+  const lines = ['<Styles>']
+  for (const row of rows) {
+    const keys = Object.entries(row.keys).map(([axis, value]) => `${axis}=${serializeValue(value)}`)
+    const cells = Object.entries(row.values).flatMap(([target, props]) =>
+      Object.entries(props).map(([prop, value]) => `${target}:${prop}=${serializeValue(value)}`),
+    )
+    lines.push(`${INDENT_UNIT}<Style ${[...keys, ...cells].join(' ')} />`)
+  }
+  lines.push('</Styles>')
+  return lines.join(eol)
+}
+
+/**
+ * One cell of the styles table, set or cleared (ADR 0016 §2).
+ *
+ * The whole block is reprinted rather than one row spliced: rows are one
+ * line each in canonical style, and a table an author hand-wrapped is
+ * normalised the first time the canvas writes to it — the same rule
+ * `insert-node` follows for a created node. A table that ends empty is
+ * removed with the blank lines before it; a table that did not exist is
+ * placed after the visual contract, where ADR 0016 puts it.
+ */
+function styleCell(
+  doc: UidxDocument,
+  s: MagicString,
+  patch: Extract<UidxPatch, { op: 'style' }>,
+  eol: '\r\n' | '\n',
+): Range {
+  if (patch.target === '' || patch.prop === '' || Object.keys(patch.keys).length === 0) {
+    throw new PatchError('a style op names a row by its keys, a target and a prop')
+  }
+  const rows = (doc.spec?.styles ?? []).map((row) => ({
+    keys: { ...row.keys },
+    values: Object.fromEntries(
+      Object.entries(row.values).map(([target, props]) => [target, { ...props }]),
+    ),
+  }))
+  let row = rows.find((entry) => sameKeys(entry.keys, patch.keys))
+  if (patch.value === undefined) {
+    const props = row?.values[patch.target]
+    if (!row || !props || !(patch.prop in props)) {
+      throw new PatchError(`${addressOfPatch(patch)} has no ${patch.target}:${patch.prop} to clear`)
+    }
+    delete props[patch.prop]
+    if (Object.keys(props).length === 0) delete row.values[patch.target]
+    if (Object.keys(row.values).length === 0) rows.splice(rows.indexOf(row), 1)
+  } else {
+    if (!row) {
+      row = { keys: { ...patch.keys }, values: {} }
+      rows.push(row)
+    }
+    ;(row.values[patch.target] ??= {})[patch.prop] = patch.value
+  }
+
+  const span = stylesSpan(doc)
+  if (span) {
+    if (rows.length === 0) {
+      let from = span.start
+      while (from > 0 && /\s/.test(doc.source[from - 1]!)) from--
+      s.remove(from, span.end)
+      return { start: from, end: from }
+    }
+    const text = printStyles(rows, eol)
+    s.overwrite(span.start, span.end, text)
+    return { start: span.start, end: span.start + text.length }
+  }
+  // No table yet: after the visual contract. A bare `<Component>` root has
+  // no `<Page>` span, so its last entity marks the end instead.
+  const tree = doc.tree
+  const end = tree.synthetic ? (tree.children.at(-1)?.loc.end ?? tree.loc.end) : tree.loc.end
+  const text = `${eol}${eol}${printStyles(rows, eol)}`
+  s.appendRight(end, text)
+  return { start: end, end: end + text.length }
 }
 
 /** `[loc.start, loc.end]` extended backwards over the line's indentation and newline. */

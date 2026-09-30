@@ -19,7 +19,15 @@ generated/contract/  the contract of each page as JSON, for agents and other gen
 - `pnpm typecheck` type-checks the generated React code against React 19.
 - `pnpm --filter @uidxkit/uidx dev` from the repository root, pointed at this
   folder, opens the identities in the uidx viewer, where the styles table is
-  drawn as a variant set and a repeat shows the model's samples.
+  drawn as a variant set and a repeat shows the model's samples. Select a
+  state on the canvas and change it: the viewer writes the style row. The
+  Contract tab binds each component to its `@hwc/components` element and
+  parts, and edits the contract itself.
+
+`.uidx/uidx.json` names the library (`"headless"`), so the viewer offers its
+elements and parts and `uidx codegen` needs no `--manifest`. The `Contact`
+model is declared once, on `contact-option.uidx`, and `contact-list.uidx`
+names it by type (`Contact[]`) and iterates it (`<Slot … repeats of="items">`).
 
 To refresh the vendored headless build from a local checkout:
 `HWC_DIR=/path/to/headless-web-components/packages/components node scripts/sync-hwc.mjs`.

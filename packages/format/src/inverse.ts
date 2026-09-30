@@ -1,7 +1,15 @@
 import { addressOf, resolve, resolveParent } from './parse.js'
 import { PatchError } from './patch.js'
 import { predictDocument } from './predict.js'
-import type { UidxDocument, UidxNode, UidxNodeSpec, UidxPatch } from './types.js'
+import type {
+  ContractDeclaration,
+  ContractKind,
+  JsonValue,
+  UidxDocument,
+  UidxNode,
+  UidxNodeSpec,
+  UidxPatch,
+} from './types.js'
 
 /** A node as an insert spec: attrs by value, children recursively. */
 export function toNodeSpec(node: UidxNode): UidxNodeSpec {
@@ -95,8 +103,96 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
         },
       ]
     }
+    case 'style': {
+      const row = (doc.spec?.styles ?? []).find(
+        (entry) =>
+          Object.keys(entry.keys).length === Object.keys(patch.keys).length &&
+          Object.entries(patch.keys).every(([axis, value]) => entry.keys[axis] === value),
+      )
+      const old = row?.values[patch.target]?.[patch.prop]
+      if (patch.value === undefined && old === undefined) {
+        throw new PatchError(`no ${patch.target}:${patch.prop} in that style row to restore`)
+      }
+      return [
+        {
+          op: 'style',
+          keys: { ...patch.keys },
+          target: patch.target,
+          prop: patch.prop,
+          ...(old === undefined ? {} : { value: old }),
+        },
+      ]
+    }
+    case 'contract': {
+      const before = declarationOf(doc, patch.kind, patch.name)
+      if (!before && !patch.declaration)
+        throw new PatchError(`${patch.name} is not declared; nothing to restore`)
+      return [
+        {
+          op: 'contract',
+          kind: patch.kind,
+          name: patch.name,
+          ...(before ? { declaration: before } : {}),
+        },
+      ]
+    }
     default:
       throw new PatchError(`the "${patch.op}" op cannot be inverted`)
+  }
+}
+
+/** A declared contract element as the `contract` op would write it back. */
+export function declarationOf(
+  doc: UidxDocument,
+  kind: ContractKind,
+  name: string,
+): ContractDeclaration | undefined {
+  const contract = doc.spec?.contract
+  if (!contract) return undefined
+  const keep = (entries: Record<string, JsonValue | undefined>): Record<string, JsonValue> =>
+    Object.fromEntries(
+      Object.entries(entries).filter(
+        (entry): entry is [string, JsonValue] => entry[1] !== undefined,
+      ),
+    )
+  switch (kind) {
+    case 'prop': {
+      const prop = contract.props.find((entry) => entry.name === name)
+      if (!prop) return undefined
+      return {
+        attrs: keep({
+          type: prop.type,
+          default: prop.default,
+          sample: prop.sample,
+          controllable: prop.controllable || undefined,
+          visual: prop.visual || undefined,
+        }),
+        description: prop.description,
+      }
+    }
+    case 'event': {
+      const event = contract.events.find((entry) => entry.name === name)
+      return event
+        ? { attrs: keep({ detail: event.detail }), description: event.description }
+        : undefined
+    }
+    case 'slot': {
+      const slot = contract.slots.find((entry) => entry.name === name)
+      return slot
+        ? {
+            attrs: keep({ repeats: slot.repeats || undefined, of: slot.of, accepts: slot.accepts }),
+            description: slot.description,
+          }
+        : undefined
+    }
+    case 'state': {
+      const state = contract.states.find((entry) => entry.name === name)
+      return state ? { attrs: {}, description: state.description } : undefined
+    }
+    case 'part': {
+      const part = contract.parts.find((entry) => entry.name === name)
+      return part ? { attrs: {}, description: part.description } : undefined
+    }
   }
 }
 

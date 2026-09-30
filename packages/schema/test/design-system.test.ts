@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { CODES, parseOrThrow, type JsonValue, type UidxNode } from '@uidx/format'
-import { auditDesignSystem, contractJson, modelIndex, toSceneGraph } from '../src/index.js'
+import {
+  auditDesignSystem,
+  contractJson,
+  derivedTarget,
+  modelIndex,
+  toSceneGraph,
+} from '../src/index.js'
 
 /**
  * The design-system model on the scene side (ADRs 0013–0017): a styles table
@@ -94,11 +100,30 @@ describe('a styles table derives the variant set (ADR 0016)', () => {
     expect(root('size=md, state=hover').width).toBe(20)
   })
 
-  it('links the component and nothing derived: a derived tree has no source to patch', () => {
+  it('links the derived tree too: an edit to a state has a style row to go to', () => {
     expect(scene.addresses.sceneIdOf('Checkbox')).toBe('Checkbox')
-    expect(scene.addresses.sceneIdOf('Checkbox#size=md, state=default')).toBeUndefined()
-    expect(scene.addresses.sceneIdOf('Checkbox#size=md, state=default/root/check')).toBeUndefined()
+    expect(scene.addresses.sceneIdOf('Checkbox#size=md, state=default')).toBe(
+      'Checkbox#size=md, state=default',
+    )
+    expect(scene.addresses.sceneIdOf('Checkbox#size=md, state=hover/root/check')).toBe(
+      'Checkbox#size=md, state=hover/root/check',
+    )
     expect(scene.warnings).toEqual([])
+  })
+
+  it('names what a derived address is: its row, its target, its base, whether it is the default', () => {
+    const hoverCheck = derivedTarget(doc, 'Checkbox#size=md, state=hover/root/check')!
+    expect(hoverCheck.keys).toEqual({ size: 'md', state: 'hover' })
+    expect(hoverCheck.target).toBe('checked-indicator')
+    expect(hoverCheck.base.address).toBe('Checkbox#check')
+    expect(hoverCheck.isDefault).toBe(false)
+    const defaultRoot = derivedTarget(doc, 'Checkbox#size=md, state=default/root')!
+    expect(defaultRoot).toMatchObject({ target: 'root', isDefault: true })
+    expect(defaultRoot.base.address).toBe('Checkbox')
+    expect(derivedTarget(doc, 'Checkbox#size=md, state=hover')).toMatchObject({ target: 'root' })
+    expect(derivedTarget(doc, 'Checkbox#check')).toBeNull()
+    expect(derivedTarget(doc, 'Checkbox#size=xl, state=hover/root')).toBeNull()
+    expect(derivedTarget(doc, 'Checkbox')).toBeNull()
   })
 
   it('lets an instance pick a derived combination the way it picks an authored one', () => {

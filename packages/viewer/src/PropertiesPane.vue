@@ -12,6 +12,7 @@ import {
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import { contractIssues, contractView } from './contract-edits'
+import { describe as describeDerived } from './derived-edits'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 
 import { computed, ref, shallowRef, watch } from 'vue'
@@ -42,6 +43,8 @@ import {
   SECTION_ORDER,
   scenePropFor,
   isStrokeEndpointProp,
+  derivedDocument,
+  derivedTarget,
   type PinAxis,
   type PropGroup,
   type TokenIndex,
@@ -270,7 +273,29 @@ function definitionFor(node: UidxNode): UidxNode | undefined {
   return typeof named === 'string' ? props.components?.get(named) : undefined
 }
 
-const active = computed(() => selectedNode(props.doc?.tree ?? null, props.selection ?? []))
+/**
+ * The selected node, looked up in the document *with* its derived variants
+ * (ADR 0016 §4): a state drawn from the styles table is selectable on the
+ * canvas and editable here, and the shell routes the edit to its row. The
+ * component itself is taken from the authored tree, since its derived twin
+ * carries a `variants` attribute nobody wrote and the panel must not offer
+ * to edit it.
+ */
+const active = computed(() => {
+  const doc = props.doc
+  if (!doc) return null
+  const found = selectedNode(derivedDocument(doc).tree, props.selection ?? [])
+  if (found?.element === 'Component') return selectedNode(doc.tree, props.selection ?? [])
+  // A derived `<Variant>` carries only its coordinates; what it draws — and
+  // what an edit to the state changes — is the root frame below it.
+  if (found?.element === 'Variant' && found.derived && found.children[0]) return found.children[0]
+  return found
+})
+
+/** The derived state the selection is in, or null for an authored node. */
+const derived = computed(() =>
+  props.doc && active.value ? derivedTarget(props.doc, active.value.address) : null,
+)
 const rootFontSize = computed(() => rootFontSizeOf(props.doc))
 provide(LENGTH_FIELD_CONTEXT, {
   rootFontSize,
@@ -546,10 +571,14 @@ function onExport(): void {
 const meta = computed<{ name: string; value: string }[]>(() => {
   const node = active.value
   if (!node) return []
-  return [...METADATA_ATTRS].flatMap((name) => {
+  const chips = [...METADATA_ATTRS].flatMap((name) => {
     const value = node.attrs[name]?.value
     return typeof value === 'string' ? [{ name, value }] : []
   })
+  // A derived node says which state it is: an edit here writes that state's row.
+  if (derived.value && !derived.value.isDefault)
+    chips.unshift({ name: 'state', value: describeDerived(derived.value) })
+  return chips
 })
 
 /** What a bound row displays: the token's value, since the literal is elsewhere. */

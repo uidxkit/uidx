@@ -140,4 +140,6 @@ export {
   stateKind,
   INTERACTION_STATES,
   type ModelIndex,
+  derivedTarget,
+  type DerivedTarget,
 } from './design-system.js'

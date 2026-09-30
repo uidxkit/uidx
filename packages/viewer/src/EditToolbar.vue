@@ -46,6 +46,13 @@ const props = defineProps<{
    * is often unavailable, and says so rather than failing on press.
    */
   canAddSlot: boolean
+  /**
+   * Whether the selection is an instance a `<Repeat>` could wrap (ADR 0017
+   * §2): one instance, inside a component whose contract has a repeating
+   * slot nothing provides yet. Optional, unlike the slot's: an older shell
+   * that never offers the tool simply does not show it enabled.
+   */
+  canAddRepeat?: boolean
   /** False while the socket is down: nothing here can reach the file. */
   writable: boolean
 }>()
@@ -56,6 +63,7 @@ const emit = defineEmits<{
   makeComponent: []
   placeInstance: []
   addSlot: []
+  addRepeat: []
 }>()
 
 /** Figma's letters, echoed in the tooltip so the shortcut is discoverable. */
@@ -282,6 +290,24 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
     >
       <svg viewBox="0 0 12 12" aria-hidden="true">
         <path :d="LAYER_ICONS.Slot" fill="none" stroke="currentColor" />
+      </svg>
+    </button>
+
+    <!--
+      A repeat wraps the selected instance (ADR 0017 §2): the canvas then draws
+      one row per sample of the slot's model. Beside the slot tool because it
+      is the other half of the same idea — a hole, and what fills it many times.
+    -->
+    <button
+      type="button"
+      class="tool"
+      :disabled="!writable || !canAddRepeat"
+      title="Repeat the instance on a repeating slot"
+      aria-label="Repeat instance"
+      @click="emit('addRepeat')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <path :d="LAYER_ICONS.Repeat" fill="none" stroke="currentColor" />
       </svg>
     </button>
 

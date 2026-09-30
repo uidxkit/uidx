@@ -11,9 +11,16 @@ export {
   findOpenTagEnd,
   STATUSES,
 } from './parse.js'
-export { applyPatch, applyPatches, PatchError, type PatchResult } from './patch.js'
+export {
+  applyPatch,
+  applyPatches,
+  CONTRACT_LISTS,
+  PatchError,
+  printContractItem,
+  type PatchResult,
+} from './patch.js'
 export { predictDocument } from './predict.js'
-export { inversePatches, toNodeSpec } from './inverse.js'
+export { declarationOf, inversePatches, toNodeSpec } from './inverse.js'
 export { diffToPatches } from './diff-patches.js'
 export { applyPatchesIncremental, type IncrementalResult } from './incremental.js'
 export {
@@ -105,6 +112,8 @@ export {
   type UidxPatch,
   type BehaviorRule,
   type ContractSpec,
+  type ContractKind,
+  type ContractDeclaration,
   type DocumentSpec,
   type EventSpec,
   type ExampleSet,

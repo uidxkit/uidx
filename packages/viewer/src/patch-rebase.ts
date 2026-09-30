@@ -93,6 +93,12 @@ export function rebasePatches(
         pending.push({ from: patch.address, to: addressOf(patch.newParent, node.name) })
         break
       }
+      // A style row is named by its keys, not by an address the change could
+      // have moved; the op lands on whatever the table holds now.
+      case 'style':
+      case 'contract':
+        rebased.push(patch)
+        break
       case 'retag': {
         // `nodeAt` already refuses a node whose element changed underneath —
         // which is exactly the collision that matters here: two retags of one

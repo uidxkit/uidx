@@ -87,6 +87,14 @@ shorthand rule of the visual contract does not apply here.
   When `uidx.json` names no library, the tab offers those the project's
   dependencies ship — the Custom Elements Manifest convention of a
   `customElements` field in `package.json` — and writes the choice.
+- The tab edits the contract too, through the `contract` patch op: one
+  declaration at a time, written in canonical form into its list, the list
+  and the region created when absent. "Fill from library" declares what the
+  implemented element exposes and the contract lacks — attributes as props
+  (a boolean attribute as a visual boolean), events, named slots, parts —
+  with the manifest's descriptions where it has them and placeholders the
+  tab marks until someone writes the words. Behaviour, models and examples
+  stay in the file: they are prose, and an agent writes prose well.
 - The identity never spells a library. `implements`, `part`, prop and event
   names are the design system's own words; `uidx.json`'s `headless` may carry
   a `profile` (how the library reflects props, its own states and parts:

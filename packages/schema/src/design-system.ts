@@ -1,5 +1,6 @@
 import {
   addressOf,
+  resolve,
   aliasTarget,
   defaultCombination,
   hasVariants,
@@ -191,13 +192,14 @@ function synthAttr(
   }
 }
 
-/** A deep copy of `node` re-addressed under `address`, marked synthetic. */
+/** A deep copy of `node` re-addressed under `address`, marked synthetic and derived. */
 function rebase(node: UidxNode, address: string): UidxNode {
   return {
     ...node,
     address,
     attrs: { ...node.attrs },
     synthetic: true,
+    derived: true,
     children: node.children.map((child) => rebase(child, addressOf(address, child.name))),
   }
 }
@@ -295,6 +297,7 @@ export function deriveVariants(component: UidxNode): UidxNode {
       selfClosing: false,
       indent: component.indent,
       synthetic: true,
+      derived: true,
     }
     for (const row of rowsFor(rows, combination)) {
       for (const [part, props] of Object.entries(row.values)) {
@@ -318,6 +321,7 @@ export function deriveVariants(component: UidxNode): UidxNode {
       selfClosing: false,
       indent: component.indent,
       synthetic: true,
+      derived: true,
     })
   }
 
@@ -355,6 +359,57 @@ export function derivedDocument(doc: UidxDocument): UidxDocument {
     : doc
   derived.set(doc, result)
   return result
+}
+
+/**
+ * What an address into a derived set names, for an edit to land somewhere
+ * (ADR 0016 §4). `Checkbox#state=hover/root/check` is the `check` node under
+ * the hover state: the row is `state=hover`, the target is the part `check`
+ * binds (or its name), and the base is the authored node an edit to the
+ * default combination goes to instead. Null for any address that is not
+ * into a derived set.
+ */
+export interface DerivedTarget {
+  component: UidxNode
+  keys: Record<string, string>
+  /** `root`, a part name, or a node name — what a style row cell targets. */
+  target: string
+  /** The authored node this derived one was copied from. */
+  base: UidxNode
+  /** Every axis at its default: an edit here is an edit to the base tree. */
+  isDefault: boolean
+}
+
+export function derivedTarget(doc: UidxDocument, address: string): DerivedTarget | null {
+  const cut = address.indexOf('#')
+  if (cut === -1) return null
+  const component = resolve(doc.tree, address.slice(0, cut))
+  if (!component || component.element !== 'Component' || !derivesVariants(component)) return null
+  const [variant, ...path] = address.slice(cut + 1).split('/')
+  const axes = axesOf(component.spec)
+  const keys: Record<string, string> = {}
+  for (const piece of (variant ?? '').split(',')) {
+    const eq = piece.indexOf('=')
+    if (eq === -1) return null
+    keys[piece.slice(0, eq).trim()] = piece.slice(eq + 1).trim()
+  }
+  if (Object.keys(keys).length !== axes.size) return null
+  for (const [axis, domain] of axes) if (!domain.includes(keys[axis] ?? '')) return null
+  // The variant itself stands for its root: a click on the canvas lands on
+  // the `<Variant>`, and what it draws is the root frame below it.
+  if (path.length > 0 && path[0] !== ROOT_PART) return null
+  const below = path.slice(1)
+  let base = component
+  let target = ROOT_PART
+  if (below.length) {
+    const node = resolve(doc.tree, `${component.address}#${below.join('/')}`)
+    if (!node) return null
+    base = node
+    const part = node.attrs.part?.value
+    target = typeof part === 'string' ? part : node.name
+  }
+  const isDefault = [...axes].every(([axis, domain]) => keys[axis] === domain[0])
+  return { component, keys, target, base, isDefault }
 }
 
 /** The default combination of a derived or authored component, as a name. */

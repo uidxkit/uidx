@@ -352,6 +352,13 @@ export interface UidxNode {
    * or removed from it until `uidx fmt` materialises the wrapper.
    */
   synthetic?: boolean
+  /**
+   * True for a node the styles table derived (ADR 0016 §4): a `<Variant>`,
+   * its root frame and their children. Synthetic too — no source span — but
+   * addressable, because an edit to one has somewhere to go: the style row
+   * its address names (the `style` patch op).
+   */
+  derived?: true
 }
 
 export interface UidxDocument {
@@ -401,6 +408,29 @@ export type UidxPatch =
    * refuses.
    */
   | { op: 'set-mode'; address: string; mode: string; value: JsonValue }
+  /**
+   * Sets or clears one cell of the styles table (ADR 0016 §2): in the row
+   * whose keys are exactly `keys`, the `prop` of `target` (`root`, a part, or
+   * a node name). No `value` clears the cell; a row left empty is removed and
+   * a missing row is added, so the table never holds an empty row. This is
+   * how a state is designed from the canvas (ADR 0016 §4): the derived
+   * variant is what is drawn, the row is what is written.
+   */
+  | { op: 'style'; keys: Record<string, string>; target: string; prop: string; value?: JsonValue }
+  /**
+   * Declares, redeclares or removes one element of `## Contract` (ADR 0013
+   * §2): a `<Prop>`, `<Event>`, `<Slot>`, `<State>` or `<Part>` named `name`.
+   * With a `declaration` the element is written in canonical form — its list
+   * (`<Props>`, …) and the region itself created when absent; without one
+   * it is removed, and a list left empty goes with it. This is how the
+   * Contract tab edits the contract without the prose ever leaving the file.
+   */
+  | {
+      op: 'contract'
+      kind: ContractKind
+      name: string
+      declaration?: ContractDeclaration
+    }
   // structural ops
   | { op: 'insert-node'; parent: string; index: number; node: UidxNodeSpec }
   | { op: 'remove-node'; address: string }
@@ -436,6 +466,14 @@ export type UidxPatch =
        */
       attrs?: Record<string, JsonValue | null>
     }
+
+export type ContractKind = 'prop' | 'event' | 'slot' | 'state' | 'part'
+
+/** One contract element as the `contract` op writes it: its attributes besides `name`, and its description. */
+export interface ContractDeclaration {
+  attrs: Record<string, JsonValue>
+  description: string
+}
 
 export interface UidxNodeSpec {
   element: UidxElement

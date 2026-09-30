@@ -309,8 +309,11 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
       }
       return
     }
-    // Derived and generated nodes have no source span to patch (ADR 0016 §4).
-    if (!node.synthetic && !scope.generated) addresses.link(node.address, node.address)
+    // Generated nodes (instance clones, repeat rows) have no source span to
+    // patch. A *derived* node (ADR 0016 §4) is synthetic too, but addressable:
+    // an edit to it goes to the style row its address names.
+    if ((!node.synthetic || node.derived) && !scope.generated)
+      addresses.link(node.address, node.address)
 
     // Figma's explicitVariableModes layered over resolvedVariableModes: the
     // attribute is what this node sets, the tuple is what it ends up with.
