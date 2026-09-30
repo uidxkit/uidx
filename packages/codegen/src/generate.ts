@@ -12,9 +12,10 @@ import {
 import { modelIndex } from '@uidx/schema/design-system'
 import { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime } from './react.js'
 import { emitStories } from './stories.js'
+import { emitCem } from './cem.js'
 import { emitReactAdapter, type ReactBinding } from './react-adapter.js'
 
-export type Target = 'html' | 'react' | 'contract' | 'stories'
+export type Target = 'html' | 'react' | 'contract' | 'stories' | 'cem'
 
 export interface GenerateInput {
   /** Component pages: every `<Component>` with an `implements` or a contract is rendered. */
@@ -106,6 +107,8 @@ export function generate(input: GenerateInput): GenerateOutput {
       for (const model of rendered)
         files.set(`react/${model.identifier}.stories.tsx`, emitStories(model, Boolean(tokens)))
   }
+
+  if (targets.has('cem')) files.set('custom-elements.json', emitCem(rendered))
 
   if (targets.has('contract')) {
     const seen = new Set<UidxDocument>()

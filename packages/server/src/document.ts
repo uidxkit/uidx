@@ -197,10 +197,12 @@ export async function readManifest(path: string): Promise<Manifest> {
         if (
           !Array.isArray(targets) ||
           targets.some(
-            (target) => !['html', 'react', 'contract', 'stories'].includes(target as string),
+            (target) => !['html', 'react', 'contract', 'stories', 'cem'].includes(target as string),
           )
         )
-          problems.push(`${path}: "codegen.targets" may hold html, react, contract and stories`)
+          problems.push(
+            `${path}: "codegen.targets" may hold html, react, contract, stories and cem`,
+          )
         else codegen.targets = targets as string[]
       }
       const react = config!.react

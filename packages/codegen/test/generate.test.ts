@@ -695,3 +695,17 @@ describe('mapping onto an existing React library (codegen.react)', () => {
     expect(files.has('react/checkbox.css')).toBe(false)
   })
 })
+
+describe('the cem target', () => {
+  it('writes a 2.1.0 manifest with accessibility and behaviour in x-uidx', () => {
+    const files = generate({ pages: PAGES, tokens: [TOKENS], targets: ['cem'] }).files
+    const cem = JSON.parse(files.get('custom-elements.json')!)
+    expect(cem.schemaVersion).toBe('2.1.0')
+    const checkbox = cem.modules
+      .flatMap((module: { declarations: { tagName: string }[] }) => module.declarations)
+      .find((declaration: { tagName: string }) => declaration.tagName === 'hwc-checkbox')
+    expect(checkbox.attributes.map((a: { name: string }) => a.name)).toContain('checked')
+    expect(checkbox.cssParts.map((p: { name: string }) => p.name)).toContain('checked-indicator')
+    expect(checkbox['x-uidx']).toHaveProperty('accessibility')
+  })
+})
