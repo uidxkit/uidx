@@ -24,6 +24,7 @@ import { runTokens } from './commands/tokens.js'
 import { runAdopt } from './commands/adopt.js'
 import { runComponent, runComponents } from './commands/components.js'
 import { runLint } from './commands/lint.js'
+import { runDiff } from './commands/diff.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -41,6 +42,8 @@ Usage:
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
+  uidx diff [--base ref] [--fail-on-breaking]
+                          design-system changes since a git ref, breaking ones marked
   uidx lint [path...]     app code against the design system: token literals, raw elements
   uidx components [--json]   the design system's components, one line each
   uidx component <Name>   one component's contract, import line and usage
@@ -88,6 +91,7 @@ Options for init:
   --script <name>         run script name (default: uidx)
   --port <n>              save the shared viewer/MCP port in .uidx/config.json
   --design-system         start with a design system: tiered tokens and a Button
+  --ci                    add a pull-request workflow: check, lint, diff posted on the PR
 
 Options for dev / open:
   --port <n>              override config.json port (default: 4400, auto-increments)
@@ -172,6 +176,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return await runComponents(rest, io)
       case 'lint':
         return await runLint(rest, io)
+      case 'diff':
+        return await runDiff(rest, io)
       case 'component':
         return await runComponent(rest, io)
       case 'dev':

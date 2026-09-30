@@ -7,7 +7,7 @@ import { readManifest } from '@uidx/server/document'
 import { configureMcp, installSkills, readMcpConfig } from '../setup.js'
 import type { Io } from '../cli.js'
 import { exists, findProjectRoot, PROJECT_DIR, readPackage } from '../project.js'
-import { STARTER_BUTTON, STARTER_TOKENS } from '../starter.js'
+import { CI_WORKFLOW, STARTER_BUTTON, STARTER_TOKENS } from '../starter.js'
 
 const STARTER = `---
 id: welcome
@@ -33,7 +33,7 @@ Edits in the viewer are saved back to these files.
 export async function initProject(
   cwd: string,
   script = 'uidx',
-  options: { port?: number; designSystem?: boolean } = {},
+  options: { port?: number; designSystem?: boolean; ci?: boolean } = {},
 ): Promise<string> {
   const root = await findProjectRoot(cwd)
   if (!root) throw new Error('No package.json found. Run uidx init inside an npm project.')
@@ -105,6 +105,13 @@ export async function initProject(
   }
   await installSkills(root)
   await writeAgentGuide(root, script)
+  if (options.ci) {
+    const workflow = resolve(root, '.github/workflows/uidx.yml')
+    if (!(await exists(workflow))) {
+      await mkdir(resolve(root, '.github/workflows'), { recursive: true })
+      await writeFile(workflow, CI_WORKFLOW)
+    }
+  }
   await configureMcp(mcp, script)
   if (Object.entries(additions).some(([name, command]) => scripts[name] !== command)) {
     data.scripts = { ...scripts, ...additions }
@@ -126,12 +133,14 @@ export async function runInit(argv: string[], io: Io): Promise<number> {
         script: { type: 'string', default: 'uidx' },
         port: { type: 'string' },
         'design-system': { type: 'boolean', default: false },
+        ci: { type: 'boolean', default: false },
       },
     })
     const script = parsed.values.script!
     const root = await initProject(io.cwd ?? process.cwd(), script, {
       port: parsed.values.port === undefined ? undefined : Number(parsed.values.port),
       designSystem: parsed.values['design-system'] === true,
+      ci: parsed.values.ci === true,
     })
     io.out(
       `uidx ready in ${resolve(root, PROJECT_DIR)}\nRun npm run ${script} to open your design workspace.\nMCP: npm run --silent ${script}:mcp (.mcp.json).\nSkills: .agents/skills, .claude/skills, and .uidx/.uidx-agent/skills.\n`,

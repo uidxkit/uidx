@@ -44,6 +44,11 @@
       "development": "./src/adopt.ts",
       "types": "./dist/adopt.d.ts",
       "default": "./dist/adopt.js"
+    },
+    "./design-diff": {
+      "development": "./src/design-diff.ts",
+      "types": "./dist/design-diff.d.ts",
+      "default": "./dist/design-diff.js"
     }
   },
   "files": [

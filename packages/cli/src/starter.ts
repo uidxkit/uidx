@@ -137,3 +137,51 @@ change it to write its row.
   <Set at="emphasis" value="secondary" />
 </Example>
 `
+
+/** The pull-request check `uidx init --ci` writes to `.github/workflows/uidx.yml`. */
+export const CI_WORKFLOW = `name: Design system
+
+# Written by \`uidx init --ci\`. On every pull request: the design files must
+# check clean, application code must stay on the design system, and the
+# design-system changes — breaking ones marked — are posted on the PR.
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  uidx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci
+      - name: Check the design files
+        run: npx --no-install uidx check .uidx
+      - name: Keep application code on the design system
+        run: npx --no-install uidx lint src
+      - name: Design-system changes
+        run: npx --no-install uidx diff --base origin/\${{ github.base_ref }} > uidx-diff.md
+      - name: Post the changes on the pull request
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const body = require('fs').readFileSync('uidx-diff.md', 'utf8')
+            const marker = '<!-- uidx-design-diff -->'
+            const { owner, repo } = context.repo
+            const issue_number = context.issue.number
+            const comments = await github.paginate(github.rest.issues.listComments, { owner, repo, issue_number })
+            const mine = comments.find((c) => c.body?.includes(marker))
+            const text = marker + '\\n' + body
+            if (mine) await github.rest.issues.updateComment({ owner, repo, comment_id: mine.id, body: text })
+            else await github.rest.issues.createComment({ owner, repo, issue_number, body: text })
+      - name: Fail on breaking changes
+        run: npx --no-install uidx diff --base origin/\${{ github.base_ref }} --fail-on-breaking > /dev/null
+`

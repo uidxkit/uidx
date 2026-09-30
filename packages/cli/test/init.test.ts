@@ -258,3 +258,22 @@ describe('the agent guide', () => {
     }
   })
 })
+
+describe('init --ci', () => {
+  it('writes the pull-request workflow once and keeps an edited one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-ci-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'ci', private: true }))
+      await initProject(dir, 'uidx', { ci: true })
+      const path = join(dir, '.github/workflows/uidx.yml')
+      const workflow = await readFile(path, 'utf8')
+      expect(workflow).toContain('uidx diff --base origin/${{ github.base_ref }}')
+      expect(workflow).toContain('uidx lint src')
+      await writeFile(path, 'edited\n')
+      await initProject(dir, 'uidx', { ci: true })
+      expect(await readFile(path, 'utf8')).toBe('edited\n')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
