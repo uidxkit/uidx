@@ -70,3 +70,6 @@ Before writing UI code, ask what the design system offers: `uidx_components`,
 components with the props their contracts declare, and the tokens' CSS
 variables, never literals a token names. Change a component in its `.uidx`
 file and regenerate with `npx uidx codegen`; never edit generated files.
+
+After writing UI, `npx uidx lint src` reports colour literals a token names
+and raw elements a component stands for; fix what it names.

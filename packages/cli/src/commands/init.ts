@@ -163,7 +163,7 @@ When you build or change UI:
   a token names — \`uidx_tokens\` / \`npx uidx tokens list\` gives each token's CSS variable.
 - **Change a component in its \`.uidx\` file, not in generated code.** Generated
   files say so in their first line; regenerate with \`npx uidx codegen\`.
-- **Check your work.** \`npx uidx check\` must pass; \`npx uidx render <page> -o out.png\`
+- **Check your work.** \`npx uidx check\` and \`npx uidx lint src\` must pass; \`npx uidx render <page> -o out.png\`
   shows a page as the canvas draws it. Designers review in the viewer: \`npm run ${script}\`.
 - Editing designs: load the \`uidx-design-system\` and \`uidx-authoring\` skills first.
 ${GUIDE_END}

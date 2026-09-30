@@ -12,7 +12,7 @@ import { expand } from './check.js'
 import type { Io } from '../cli.js'
 
 /** Every page of the document around `cwd`, parsed; unparseable pages are left out. */
-async function loadDocs(
+export async function loadDocs(
   cwd: string,
   rootArg?: string,
 ): Promise<{ root: string; docs: Map<string, UidxDocument> }> {
