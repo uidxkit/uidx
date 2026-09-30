@@ -22,6 +22,7 @@ import { runContract } from './commands/contract.js'
 import { runCodegen } from './commands/codegen.js'
 import { runTokens } from './commands/tokens.js'
 import { runAdopt } from './commands/adopt.js'
+import { runComponent, runComponents } from './commands/components.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -39,6 +40,10 @@ Usage:
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
+  uidx components [--json]   the design system's components, one line each
+  uidx component <Name>   one component's contract, import line and usage
+  uidx tokens list [--mode collection=mode]
+                          every token resolved, with its CSS variable
   uidx adopt <custom-elements.json> [--tags a,b] [--out .uidx]
                           a draft identity per element a headless library ships
   uidx tokens import <file.json...> [--out tokens.uidx] [--modes a,b]
@@ -161,6 +166,10 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return await runTokens(rest, io)
       case 'adopt':
         return await runAdopt(rest, io)
+      case 'components':
+        return await runComponents(rest, io)
+      case 'component':
+        return await runComponent(rest, io)
       case 'dev':
         return runOpen(rest, io)
       case 'audit':

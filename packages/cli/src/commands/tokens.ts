@@ -6,10 +6,12 @@ import { fromDtcg, toDtcg } from '@uidx/schema/dtcg'
 import { buildTokenIndex } from '@uidx/schema/token-index'
 import { expand } from './check.js'
 import type { Io } from '../cli.js'
+import { runTokenList } from './components.js'
 
 const USAGE =
   'usage: uidx tokens import <file.json...> [--out tokens.uidx] [--modes light,dark] [--id tokens]\n' +
-  '       uidx tokens export [glob...] --out <dir>\n'
+  '       uidx tokens export [glob...] --out <dir>\n' +
+  '       uidx tokens list [--mode collection=mode]\n'
 
 /**
  * `uidx tokens import|export`: the document's tokens as Design Tokens (DTCG
@@ -20,6 +22,7 @@ export async function runTokens(argv: string[], io: Io): Promise<number> {
   const [verb, ...rest] = argv
   if (verb === 'import') return importTokens(rest, io)
   if (verb === 'export') return exportTokens(rest, io)
+  if (verb === 'list') return runTokenList(rest, io)
   io.err(USAGE)
   return 1
 }

@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
@@ -104,6 +104,7 @@ export async function initProject(
     await writeFile(resolve(content, 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
   }
   await installSkills(root)
+  await writeAgentGuide(root, script)
   await configureMcp(mcp, script)
   if (Object.entries(additions).some(([name, command]) => scripts[name] !== command)) {
     data.scripts = { ...scripts, ...additions }
@@ -139,5 +140,53 @@ export async function runInit(argv: string[], io: Io): Promise<number> {
   } catch (error) {
     io.err(`${(error as Error).message}\n`)
     return 1
+  }
+}
+
+const GUIDE_START = '<!-- uidx:start -->'
+const GUIDE_END = '<!-- uidx:end -->'
+
+/** What a coding agent in this repository should know about its design system. */
+export function agentGuide(script: string): string {
+  return `${GUIDE_START}
+## Design system (uidx)
+
+This project's designs and design system live in \`.uidx/\` as text files, one
+component per page, and are versioned with the code.
+
+When you build or change UI:
+
+- **Use the design system's components and tokens.** Ask first: \`uidx_components\`
+  and \`uidx_component\` (MCP) or \`npx uidx components\` and \`npx uidx component <Name>\`
+  give each component's props, states, slots, behaviour rules, import line and a
+  usage line. Never invent a prop, and never hard-code a colour, space or radius
+  a token names — \`uidx_tokens\` / \`npx uidx tokens list\` gives each token's CSS variable.
+- **Change a component in its \`.uidx\` file, not in generated code.** Generated
+  files say so in their first line; regenerate with \`npx uidx codegen\`.
+- **Check your work.** \`npx uidx check\` must pass; \`npx uidx render <page> -o out.png\`
+  shows a page as the canvas draws it. Designers review in the viewer: \`npm run ${script}\`.
+- Editing designs: load the \`uidx-design-system\` and \`uidx-authoring\` skills first.
+${GUIDE_END}
+`
+}
+
+/**
+ * Writes the guide into AGENTS.md (and CLAUDE.md when the project has one),
+ * replacing a previous uidx block and leaving everything else as it was.
+ */
+async function writeAgentGuide(root: string, script: string): Promise<void> {
+  const guide = agentGuide(script)
+  const targets = ['AGENTS.md']
+  if (await exists(resolve(root, 'CLAUDE.md'))) targets.push('CLAUDE.md')
+  for (const name of targets) {
+    const path = resolve(root, name)
+    const current = (await exists(path)) ? await readFile(path, 'utf8') : ''
+    const start = current.indexOf(GUIDE_START)
+    const end = current.indexOf(GUIDE_END)
+    const next =
+      start !== -1 && end > start
+        ? current.slice(0, start) + guide.trimEnd() + current.slice(end + GUIDE_END.length)
+        : `${current}${current && !current.endsWith('\n\n') ? (current.endsWith('\n') ? '\n' : '\n\n') : ''}${guide}`
+    if (next !== current) await writeFile(path, next)
   }
 }

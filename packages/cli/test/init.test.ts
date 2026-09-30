@@ -238,3 +238,23 @@ describe('init --design-system', () => {
     }
   })
 })
+
+describe('the agent guide', () => {
+  it('is written into AGENTS.md once, and CLAUDE.md when there is one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-guide-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'guide', private: true }))
+      await writeFile(join(dir, 'CLAUDE.md'), '# Project\n\nOur rules.\n')
+      await initProject(dir)
+      await initProject(dir)
+      const agents = await readFile(join(dir, 'AGENTS.md'), 'utf8')
+      const claude = await readFile(join(dir, 'CLAUDE.md'), 'utf8')
+      expect(agents.match(/uidx:start/g)).toHaveLength(1)
+      expect(agents).toContain('uidx_components')
+      expect(claude.startsWith('# Project\n\nOur rules.\n\n<!-- uidx:start -->')).toBe(true)
+      expect(claude.match(/uidx:start/g)).toHaveLength(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

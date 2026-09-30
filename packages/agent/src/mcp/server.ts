@@ -10,6 +10,9 @@ import {
   auditAll,
   buildIndex,
   createFile,
+  describeComponent,
+  listComponents,
+  listTokens,
   gateArchitecture,
   openDocument,
   queryDocument,
@@ -78,6 +81,77 @@ export function createUidxMcpServer(options: UidxMcpOptions = {}): McpServer {
         unknown
       >
       return text(JSON.stringify({ ...info, root }, null, 2))
+    },
+  )
+
+  // Building product with the design system: what exists, what one component
+  // accepts, what each token is. Read-only; call before writing UI code.
+  server.registerTool(
+    'uidx_components',
+    {
+      description:
+        'CALL THIS FIRST before writing UI code in this project: every design-system component with its one-line purpose, props, states and status. Use these components instead of raw elements, and never invent a prop.',
+      inputSchema: {
+        root: z
+          .string()
+          .optional()
+          .describe('project or document root; defaults to the connected project'),
+      },
+    },
+    async ({ root }) => {
+      const opened = await documentAt(root)
+      return text(JSON.stringify(listComponents(opened.workspace.docs()), null, 2))
+    },
+  )
+
+  server.registerTool(
+    'uidx_component',
+    {
+      description:
+        "One component's full contract before you use it: purpose, props with types, defaults and words, events, slots, states, behaviour rules, examples, the import line for the generated React component and a usage line.",
+      inputSchema: {
+        root: z
+          .string()
+          .optional()
+          .describe('project or document root; defaults to the connected project'),
+        name: z.string().describe('the component name, e.g. Button'),
+        from: z
+          .string()
+          .optional()
+          .describe('the directory of the file that will import it, for a ready-to-paste path'),
+      },
+    },
+    async ({ root, name, from }) => {
+      const opened = await documentAt(root)
+      return text(
+        JSON.stringify(
+          await describeComponent(opened.workspace.docs(), opened.found.dir, name, from),
+          null,
+          2,
+        ),
+      )
+    },
+  )
+
+  server.registerTool(
+    'uidx_tokens',
+    {
+      description:
+        'Every design token resolved to its value, with the CSS custom property the generated code defines. Use the variable, never the literal. modes picks a mode per collection, e.g. {"color":"dark"}.',
+      inputSchema: {
+        root: z
+          .string()
+          .optional()
+          .describe('project or document root; defaults to the connected project'),
+        modes: z
+          .record(z.string(), z.string())
+          .optional()
+          .describe('collection → mode; unnamed collections use their default'),
+      },
+    },
+    async ({ root, modes }) => {
+      const opened = await documentAt(root)
+      return text(JSON.stringify(listTokens(opened.workspace.docs(), modes ?? {}), null, 2))
     },
   )
 

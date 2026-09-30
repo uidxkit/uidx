@@ -220,6 +220,8 @@ export { gateArchitecture } from '../tools/architect.js'
 export { refuseBadOps }
 export { buildIndex } from '../index/build.js'
 export { viewerSelection } from './viewer.js'
+export { describeComponent, listComponents, listTokens } from './design-system.js'
+export type { ComponentDetail, ComponentSummary, TokenRow } from './design-system.js'
 export type { ViewerSelection, ViewerSelectionResult } from './viewer.js'
 
 export { readProjectConfig, validatePort } from '../workspace/config.js'

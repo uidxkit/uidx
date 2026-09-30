@@ -54,6 +54,8 @@ describe('uidx over MCP', () => {
       'uidx_apply',
       'uidx_architect',
       'uidx_audit',
+      'uidx_component',
+      'uidx_components',
       'uidx_create',
       'uidx_eval',
       'uidx_intent',
@@ -62,6 +64,91 @@ describe('uidx over MCP', () => {
       'uidx_search',
       'uidx_selection',
       'uidx_status',
+      'uidx_tokens',
+    ])
+  })
+
+  it('answers what the design system offers: components, one contract, tokens', async () => {
+    const { root, client } = await harness()
+    await writeFile(
+      join(root, 'uidx.json'),
+      JSON.stringify({ id: 'doc', files: ['**/*.uidx'], codegen: { out: '../generated' } }),
+    )
+    await writeFile(
+      join(root, 'button.uidx'),
+      `---
+id: button
+---
+
+The one control. It asks.
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="stable" fills="{color#accent}" width={80} height={32}>
+    <Text name="label" characters="{label}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Save">Words.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
+</Props>
+`,
+    )
+    await writeFile(
+      join(root, 'tokens.uidx'),
+      `---
+id: tokens
+---
+
+## Visual Contract
+
+<Tokens>
+  <Collection name="color" modes={['light', 'dark']}>
+    <Variable name="accent" type="COLOR">
+      <Mode name="light" value={{ r: 0, g: 0, b: 1, a: 1 }} />
+      <Mode name="dark" value={{ r: 1, g: 1, b: 1, a: 1 }} />
+    </Variable>
+  </Collection>
+</Tokens>
+`,
+    )
+    const list = JSON.parse(
+      textOf(await client.callTool({ name: 'uidx_components', arguments: { root } })),
+    )
+    expect(list).toEqual([
+      expect.objectContaining({
+        name: 'Button',
+        status: 'stable',
+        summary: 'The one control.',
+        props: ['label', 'disabled'],
+        axes: { state: ['default', 'disabled'] },
+      }),
+    ])
+    const one = JSON.parse(
+      textOf(
+        await client.callTool({ name: 'uidx_component', arguments: { root, name: 'Button' } }),
+      ),
+    )
+    expect(one.usage).toBe('<Button label="Save" />')
+    expect(one.import).toBe("import { Button } from './generated/react'")
+    const dark = JSON.parse(
+      textOf(
+        await client.callTool({
+          name: 'uidx_tokens',
+          arguments: { root, modes: { color: 'dark' } },
+        }),
+      ),
+    )
+    expect(dark).toEqual([
+      expect.objectContaining({
+        token: 'color#accent',
+        value: '#ffffff',
+        css: 'var(--color-accent)',
+      }),
     ])
   })
 
