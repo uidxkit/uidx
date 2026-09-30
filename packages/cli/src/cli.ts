@@ -45,6 +45,8 @@ Usage:
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
   uidx share [--out dir]  a static read-only site: page pictures, component docs, tokens
+  uidx export design-md [--out DESIGN.md]
+                          tokens and component words as a DESIGN.md for agents
   uidx export fig [--out dir]
                           one Figma file per page, drawn as the canvas draws it
   uidx diff [--base ref] [--fail-on-breaking]

@@ -4,12 +4,16 @@ import { parseArgs } from 'node:util'
 import { exportFig } from '@uidx/agent/core'
 import { loadDocs } from './components.js'
 import type { Io } from '../cli.js'
+import { runDesignMd } from './design-md.js'
 
 /** `uidx export fig [--root dir] --out <dir>`: one Figma file per page. */
 export async function runExport(argv: string[], io: Io): Promise<number> {
   const [format, ...rest] = argv
+  if (format === 'design-md') return runDesignMd(rest, io)
   if (format !== 'fig') {
-    io.err('usage: uidx export fig [--root dir] --out <dir>\n')
+    io.err(
+      'usage: uidx export fig [--root dir] --out <dir>\n       uidx export design-md [--out DESIGN.md]\n',
+    )
     return 1
   }
   const { values } = parseArgs({

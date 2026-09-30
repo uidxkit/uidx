@@ -299,3 +299,25 @@ describe('uidx share', () => {
     }
   })
 })
+
+describe('uidx export design-md', () => {
+  it('writes tokens and components as DESIGN.md front matter', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-designmd-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'dm', private: true }))
+      await initProject(dir, 'uidx', { designSystem: true })
+      const code = await run(['export', 'design-md', '--out', 'DESIGN.md'], {
+        cwd: join(dir, '.uidx'),
+        out: () => {},
+        err: () => {},
+      } as never)
+      expect(code).toBe(0)
+      const text = await readFile(join(dir, '.uidx/DESIGN.md'), 'utf8')
+      expect(text.startsWith('---\nversion: alpha\n')).toBe(true)
+      expect(text).toContain('backgroundColor: "{colors.color-accent}"')
+      expect(text).toContain('## Components')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
