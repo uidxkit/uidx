@@ -50,30 +50,10 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     if (part === 'root') continue
     const tag = partTag(model.tag, part, tagSet)
     if (tagSet.has(tag)) continue
-    if ((root.cssParts ?? []).some((entry) => entry.name === part)) {
-      // A shadow part can be styled but not filled. What the design drew
-      // under it is lost to the code target, which is worth a word — but a
-      // word, not a failure: the identity is still right, and the library
-      // draws the part itself.
-      const bound = model.parts.find((entry) => entry.name === part)
-      const holds =
-        bound &&
-        (bound.node.children.length > 0 ||
-          bound.node.attrs.characters !== undefined ||
-          bound.node.attrs.vectorPaths !== undefined)
-      if (bound && holds) {
-        out.push(
-          diagnostic(
-            model.doc.source,
-            CODES.CONFORMANCE,
-            `part "${part}" is a shadow part of ${model.tag}: the library draws it, so what "${bound.node.name}" holds is styled through ::part() but not rendered`,
-            bound.node.openTagLoc ?? at,
-            'warning',
-          ),
-        )
-      }
-      continue
-    }
+    // A shadow part is as declared as an element part. That the library
+    // draws it, and the design's own drawing under it is for the canvas and
+    // Figma, is how such a library works — not a finding.
+    if ((root.cssParts ?? []).some((entry) => entry.name === part)) continue
     report(`part "${part}" has no element in the manifest (looked for ${tag})`)
   }
   return out

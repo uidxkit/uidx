@@ -33,7 +33,7 @@ describe migrations when an existing document or integration is affected.
   `custom-elements.json`, served to the viewer and used by `uidx codegen` when
   `--manifest` is absent. Parts a library exposes as shadow parts (`cssParts`)
   are offered beside element parts and marked; the code target styles them
-  through `::part()` and conformance warns when the design draws under one.
+  through `::part()`.
 
 ## 0.1.6 — 2026-09-25
 

@@ -215,12 +215,8 @@ A switch whose parts live in the library's shadow tree.
     expect(tsx).not.toContain('sl-switch-label')
   })
 
-  it('conforms, with a warning for what the design drew under a part the library draws', () => {
-    expect(out.diagnostics.filter((d) => d.severity === 'error')).toEqual([])
-    const warnings = out.diagnostics.filter((d) => d.severity === 'warning')
-    expect(warnings.map((d) => d.message)).toEqual([
-      'part "label" is a shadow part of sl-switch: the library draws it, so what "label" holds is styled through ::part() but not rendered',
-    ])
+  it('conforms without comment: the library drawing the part is how it works', () => {
+    expect(out.diagnostics).toEqual([])
   })
 })
 

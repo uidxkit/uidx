@@ -64,9 +64,10 @@ same bytes.
     comes from the model's `key` field;
   - a part the library exposes as a shadow part (`cssParts` in its
     manifest, rather than a `<root>-<part>` element) is styled through
-    `::part(name)` and never filled: the library draws it, so the design's
-    content under that node is not rendered by the code target, and
-    conformance warns when there is any. The inspector marks such parts.
+    `::part(name)` and never filled: the library draws it, and the design's
+    own drawing under that node serves the canvas and Figma. That is how such
+    a library works, not a finding, so conformance says nothing about it. The
+    inspector marks such parts so the author knows which kind they bound.
   - parts with their own element are emitted as compound sub-components
     (`Field.Label`) so a consumer may compose below the pattern level.
   Emitted as readable source.
