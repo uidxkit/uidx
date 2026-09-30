@@ -19,6 +19,7 @@ import {
   slots,
   variantName,
   type Diagnostic,
+  type JsonValue,
   type UidxDocument,
   type UidxNode,
   type VariableScope,
@@ -560,8 +561,44 @@ export function collectReferences(pages: readonly PageSource[]): Reference[] {
       for (const child of node.children) walk(child, inner, node.address)
     }
     walk(doc.tree, null, '')
+
+    // Styles-table cells (ADR 0016 §2) alias tokens too; they belong to the
+    // page's component. Without them a renamed token left every state's look
+    // pointing at nothing while the check stayed green.
+    const owner = doc.tree.children.find((node) => node.element === 'Component')
+    for (const row of doc.spec?.styles ?? []) {
+      const { line, column } = positionAt(doc.source, row.loc.start)
+      // One reference per token per row: the row is the location reported,
+      // so a fill and a stroke naming the same token would say it twice.
+      const seen = new Set<string>()
+      for (const [part, props] of Object.entries(row.values))
+        for (const [prop, value] of Object.entries(props))
+          for (const target of aliasTargetsIn(value)) {
+            if (!target.includes('#') || seen.has(target)) continue
+            seen.add(target)
+            out.push({
+              file,
+              kind: 'symbol',
+              from: owner?.address ?? '',
+              target,
+              prop: `${part}:${prop}`,
+              loc: row.loc,
+              line,
+              column,
+            })
+          }
+    }
   }
   return out
+}
+
+function aliasTargetsIn(value: JsonValue): string[] {
+  const direct = aliasTarget(value)
+  if (direct !== null) return [direct]
+  if (Array.isArray(value)) return value.flatMap(aliasTargetsIn)
+  if (value !== null && typeof value === 'object')
+    return Object.values(value).flatMap(aliasTargetsIn)
+  return []
 }
 
 /**

@@ -390,3 +390,73 @@ describe('renameComponent', () => {
     })
   })
 })
+
+describe('styles-table references (ADR 0016 §2)', () => {
+  const tokens = doc(
+    'tokens',
+    `<Tokens>
+  <Collection name="surface">
+    <Variable name="accent" type="COLOR" value={{ r: 0, g: 0.5, b: 1, a: 1 }} />
+    <Variable name="accentHover" type="COLOR" value={{ r: 0, g: 0.4, b: 0.9, a: 1 }} />
+  </Collection>
+</Tokens>`,
+  )
+  const button = parseOrThrow(`---
+id: button
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" fills="{surface#accent}" width={80} height={32} />
+</Page>
+
+<Styles>
+  <Style state="hover" root:fills="{surface#accentHover}" root:strokes="{surface#accentHover}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
+</Props>
+`)
+  const styled = new Map<string, UidxDocument>([
+    ['tokens.uidx', tokens],
+    ['button.uidx', button],
+  ])
+
+  it('counts a styles cell as a dependent', () => {
+    const found = buildDependentsIndex(styled).ofToken.get('surface#accentHover') ?? []
+    expect(found.map((d) => [d.kind, d.prop, d.style?.keys])).toEqual([
+      ['style', 'root:fills', { state: 'hover' }],
+      ['style', 'root:strokes', { state: 'hover' }],
+    ])
+  })
+
+  it('rewrites styles cells when the token is renamed', () => {
+    const plan = renameToken(
+      styled,
+      buildDependentsIndex(styled),
+      'surface#accentHover',
+      'accentPressed',
+    )
+    const patches = plan.byFile.get('button.uidx')!
+    const next = applyPatches(button.source, patches).source
+    expect(next).toContain('root:fills="{surface#accentPressed}"')
+    expect(next).toContain('root:strokes="{surface#accentPressed}"')
+    expect(next).not.toContain('accentHover')
+  })
+
+  it('inlines the literal into styles cells when the token is deleted', () => {
+    const plan = deleteToken(
+      styled,
+      buildTokenIndex([...styled.values()]),
+      buildDependentsIndex(styled),
+      'surface#accentHover',
+    )
+    const next = applyPatches(button.source, plan.byFile.get('button.uidx')!).source
+    expect(next).not.toContain('accentHover')
+    expect(parseOrThrow(next).spec?.styles?.[0]?.values.root?.fills).not.toBeUndefined()
+  })
+})

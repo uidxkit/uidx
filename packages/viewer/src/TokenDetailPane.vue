@@ -72,7 +72,15 @@ function warned(dependent: Dependent): boolean {
 
 function describe(dependent: Dependent): string {
   const where =
-    dependent.kind === 'mode' ? `${dependent.address} · ${dependent.mode}` : dependent.address
+    dependent.kind === 'mode'
+      ? `${dependent.address} · ${dependent.mode}`
+      : dependent.kind === 'style' && dependent.style
+        ? `${dependent.address} · ${
+            Object.entries(dependent.style.keys)
+              .map(([axis, value]) => `${axis}=${value}`)
+              .join(', ') || 'base'
+          } · ${dependent.prop}`
+        : dependent.address
   return `${where} — ${dependent.file}`
 }
 </script>

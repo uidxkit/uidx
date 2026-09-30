@@ -127,7 +127,18 @@ export function deleteCollection(
 }
 
 function dependentKey(dependent: Dependent): string {
-  return JSON.stringify([dependent.file, dependent.address, dependent.prop, dependent.mode])
+  return JSON.stringify([
+    dependent.file,
+    dependent.address,
+    dependent.prop,
+    dependent.mode,
+    dependent.style ? Object.entries(dependent.style.keys).sort() : null,
+  ])
+}
+
+function sameKeys(a: Record<string, string>, b: Record<string, string>): boolean {
+  const left = Object.entries(a)
+  return left.length === Object.keys(b).length && left.every(([key, value]) => b[key] === value)
 }
 
 function deleteDeclarations(
@@ -189,8 +200,8 @@ function deleteDeclarations(
       // Several tokens may share a fills/props array. Accumulate replacements
       // into that one attribute rather than overwriting an earlier replacement.
       const patch =
-        previous?.op === 'set'
-          ? { ...previous, value: rewriteAliases(previous.value, address, literal) }
+        previous?.op === 'set' || (previous?.op === 'style' && previous.value !== undefined)
+          ? { ...previous, value: rewriteAliases(previous.value!, address, literal) }
           : rewritePatch(pages, dependent, address, literal)
       rewrites.set(key, { dependent, patch })
       dependents.set(key, dependent)
@@ -336,6 +347,19 @@ function rewritePatch(
   from: string,
   replacement: JsonValue,
 ): UidxPatch {
+  if (dependent.kind === 'style' && dependent.style) {
+    const { keys, target, prop } = dependent.style
+    const row = pages
+      .get(dependent.file)
+      ?.spec?.styles?.find((candidate) => sameKeys(candidate.keys, keys))
+    const current = row?.values[target]?.[prop]
+    if (current === undefined) {
+      throw new Error(
+        `dependent style cell ${target}:${prop} in ${dependent.file} no longer exists`,
+      )
+    }
+    return { op: 'style', keys, target, prop, value: rewriteAliases(current, from, replacement) }
+  }
   if (dependent.kind === 'mode') {
     return {
       op: 'set-mode',
