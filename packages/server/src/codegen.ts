@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { parse, type Diagnostic, type UidxDocument } from '@uidx/format'
 import {
   generate,
+  type GenerateInput,
   type LibraryBindings,
   type Manifest as ElementsManifest,
   type Target,
@@ -79,7 +80,14 @@ async function renderDocument(
       components: headless.bindings as LibraryBindings['components'],
     }
   }
-  const result = generate({ pages, tokens, manifest, library, targets })
+  const result = generate({
+    pages,
+    tokens,
+    manifest,
+    library,
+    targets,
+    react: found.manifest.codegen?.react as GenerateInput['react'],
+  })
   diagnostics.push(...result.diagnostics)
   if (result.diagnostics.some((d) => d.severity === 'error')) return { ok: false, diagnostics }
   return { ok: true, result, diagnostics }

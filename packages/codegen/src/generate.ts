@@ -12,6 +12,7 @@ import {
 import { modelIndex } from '@uidx/schema/design-system'
 import { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime } from './react.js'
 import { emitStories } from './stories.js'
+import { emitReactAdapter, type ReactBinding } from './react-adapter.js'
 
 export type Target = 'html' | 'react' | 'contract' | 'stories'
 
@@ -25,6 +26,8 @@ export interface GenerateInput {
   /** How the library spells things and its names for this document's (`uidx.json` `headless`). */
   library?: LibraryBindings
   targets?: readonly Target[]
+  /** `uidx.json`'s `codegen.react`: components rendered onto an existing React library. */
+  react?: Record<string, ReactBinding>
 }
 
 export interface GenerateOutput {
@@ -83,6 +86,12 @@ export function generate(input: GenerateInput): GenerateOutput {
     if (tokens) files.set('react/tokens.css', tokens)
     const tags = new Set<string>()
     for (const model of rendered) {
+      const mapped = input.react?.[model.name]
+      if (mapped) {
+        // The library styles itself: the adapter carries no stylesheet.
+        files.set(`react/${model.identifier}.tsx`, emitReactAdapter(model, mapped))
+        continue
+      }
       files.set(`react/${model.identifier}.tsx`, emitReact(model, { components: byName }))
       files.set(`react/${model.stem}.css`, emitCss(model))
       if (model.tag) tags.add(model.tag)

@@ -138,6 +138,27 @@ library's. Both default to the conventions `@hwc/components` follows.
 says where `uidx codegen` writes without `--out`, and gives the viewer's
 Contract tab a Generate button that renders the same output from the server.
 
+A team whose components already exist in a React library maps identities
+onto them instead of onto custom elements: `codegen.react` names, per
+component, the module and export, and how contract props, values and events
+are spelled there. `uidx codegen` then writes a typed adapter, not a new
+component:
+
+```json
+"codegen": {
+  "out": "../generated",
+  "react": {
+    "Button": {
+      "from": "@acme/ui",
+      "props": { "emphasis": "appearance" },
+      "values": { "emphasis": { "primary": "solid" } },
+      "events": { "press": "onClick" },
+      "children": "label"
+    }
+  }
+}
+```
+
 ### CLI and MCP
 
 `npm run uidx` starts the local viewer, file synchronization server, and MCP HTTP

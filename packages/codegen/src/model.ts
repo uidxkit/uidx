@@ -316,12 +316,17 @@ export function componentModel(
   const tags = manifest ? new Set(manifestTags(manifest).keys()) : undefined
   const spec = component.spec ?? doc.spec
   const contract = spec?.contract
-  const profile = libraryProfile(library)
   const binding = library?.components?.[component.name] ?? {}
   const implemented =
     typeof component.attrs.implements?.value === 'string'
       ? component.attrs.implements.value
       : undefined
+  // With no headless element the root is a plain <div>: props and states
+  // reflect as data attributes and parts as data-part, which a div can carry.
+  const profile: LibraryProfile =
+    implemented === undefined
+      ? { props: 'data-attribute', customStates: 'data-attribute', parts: 'data-part' }
+      : libraryProfile(library)
   const tag = implemented === undefined ? undefined : (binding.tag ?? implemented)
   const parts: PartInfo[] = []
   const slots: SlotInfo[] = []

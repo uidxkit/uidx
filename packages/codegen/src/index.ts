@@ -24,3 +24,4 @@ export {
 export { emitCss, emitHtml, stateSelector } from './html.js'
 export { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime, tsType } from './react.js'
 export { checkConformance } from './conformance.js'
+export { emitReactAdapter, type ReactBinding } from './react-adapter.js'

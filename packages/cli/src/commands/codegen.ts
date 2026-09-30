@@ -3,7 +3,13 @@ import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { expand } from './check.js'
 import { formatDiagnostic, parse, type UidxDocument } from '@uidx/format'
-import { generate, type LibraryBindings, type Manifest, type Target } from '@uidx/codegen'
+import {
+  generate,
+  type GenerateInput,
+  type LibraryBindings,
+  type Manifest,
+  type Target,
+} from '@uidx/codegen'
 import { findManifest } from '@uidx/server/document'
 import type { Io } from '../cli.js'
 
@@ -102,7 +108,14 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
     }
   }
 
-  const result = generate({ pages, tokens, manifest, library, targets })
+  const result = generate({
+    pages,
+    tokens,
+    manifest,
+    library,
+    targets,
+    react: configured?.manifest.codegen?.react as GenerateInput['react'],
+  })
   for (const d of result.diagnostics) io.err(`${formatDiagnostic(d, d.file)}\n`)
   if (result.diagnostics.some((d) => d.severity === 'error')) return 1
 

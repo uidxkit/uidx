@@ -70,6 +70,8 @@ export function emitModels(models: ModelIndex): string {
     }
     lines.push('}', '')
   }
+  // No models is still a module, so `index.ts` may re-export it.
+  if (models.size === 0) lines.push('export {}')
   return `${lines.join('\n')}\n`
 }
 
@@ -434,14 +436,17 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     : ''
   const rootAttributes = [attributes, emptyAttr].filter(Boolean).join(' ')
   const classNameExpr = classed.length
-    ? `{[className, ${classed
+    ? `{[${model.tag ? '' : `'${model.stem}', `}className, ${classed
         .map((prop) =>
           prop.type === 'boolean'
             ? `${prop.name} ? '${attributeName(model, prop.name)}' : undefined`
             : `${prop.name} !== undefined ? \`${attributeName(model, prop.name)}-\${${prop.name}}\` : undefined`,
         )
         .join(', ')}].filter(Boolean).join(' ')}`
-    : '{className}'
+    : model.tag
+      ? '{className}'
+      : // Without a tag the stylesheet's root is the component's class.
+        `{['${model.stem}', className].filter(Boolean).join(' ')}`
   const events = (contract?.events ?? []).map(
     (event) => `  useElementEvent(ref, '${eventName(model, event.name)}', on${pascal(event.name)})`,
   )
@@ -489,7 +494,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
           `  )`,
         ]
       : [
-          `  const ref = useRef<HTMLElement>(null)`,
+          `  const ref = useRef<${model.tag ? 'HTMLElement' : 'HTMLDivElement'}>(null)`,
           ...events,
           `  return (`,
           `    <${rootTag} ref={ref} className=${classNameExpr} style={style}${rootAttributes ? ` ${rootAttributes}` : ''}>`,

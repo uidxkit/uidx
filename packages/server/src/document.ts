@@ -39,6 +39,8 @@ export interface Manifest {
 export interface CodegenConfig {
   out: string
   targets?: string[]
+  /** Components rendered onto an existing React library (codegen `react-adapter`). */
+  react?: Record<string, unknown>
 }
 
 /**
@@ -200,6 +202,24 @@ export async function readManifest(path: string): Promise<Manifest> {
         )
           problems.push(`${path}: "codegen.targets" may hold html, react, contract and stories`)
         else codegen.targets = targets as string[]
+      }
+      const react = config!.react
+      if (react !== undefined) {
+        if (
+          typeof react !== 'object' ||
+          react === null ||
+          Array.isArray(react) ||
+          Object.values(react).some(
+            (entry) =>
+              typeof entry !== 'object' ||
+              entry === null ||
+              typeof (entry as Record<string, unknown>).from !== 'string',
+          )
+        )
+          problems.push(
+            `${path}: "codegen.react" must map component names to { "from": module, "export"?, "props"?, "values"?, "events"?, "children"?, "omit"? }`,
+          )
+        else codegen.react = react as Record<string, unknown>
       }
     }
   }

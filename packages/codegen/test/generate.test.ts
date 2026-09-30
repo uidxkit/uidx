@@ -634,3 +634,64 @@ id: chip
     expect(css).toMatch(/\[data-node="bar"\] \{\n {2}display: flex;/)
   })
 })
+
+describe('a component with no headless element', () => {
+  const doc = parseOrThrow(`---
+id: tag
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Tag" status="draft" layoutMode="HORIZONTAL">
+    <Text name="label" characters="{label}" />
+  </Component>
+</Page>
+
+<Styles>
+  <Style tone="warn" root:opacity={0.5} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="New">Words.</Prop>
+  <Prop name="tone" type="'info' | 'warn'" default="info" visual>Tone.</Prop>
+</Props>
+`)
+  const files = generate({ pages: [{ file: 'tag.uidx', doc }], targets: ['react'] }).files
+
+  it('renders a div carrying its class and data attributes, as its CSS selects', () => {
+    const tsx = files.get('react/Tag.tsx')!
+    expect(tsx).toContain('useRef<HTMLDivElement>(null)')
+    expect(tsx).toContain(`className={['tag', className].filter(Boolean).join(' ')}`)
+    expect(tsx).toContain('data-tone={tone}')
+    expect(files.get('react/tag.css')).toContain('.tag[data-tone="warn"]')
+  })
+
+  it('writes models.ts as a module even when no model is declared', () => {
+    expect(files.get('react/models.ts')).toContain('export {}')
+  })
+})
+
+describe('mapping onto an existing React library (codegen.react)', () => {
+  it('writes an adapter that speaks the library, and no stylesheet', () => {
+    const files = generate({
+      pages: [{ file: 'checkbox.uidx', doc: CHECKBOX }],
+      targets: ['react'],
+      react: {
+        Checkbox: {
+          from: '@acme/ui',
+          export: 'Toggle',
+          props: { checked: 'isOn' },
+          events: { change: 'onToggle' },
+        },
+      },
+    }).files
+    const tsx = files.get('react/Checkbox.tsx')!
+    expect(tsx).toContain("import { Toggle as Library } from '@acme/ui'")
+    expect(tsx).toContain('isOn={checked}')
+    expect(tsx).toContain('onToggle={onChange}')
+    expect(files.has('react/checkbox.css')).toBe(false)
+  })
+})
