@@ -1747,7 +1747,14 @@ const setHeaders = computed(() => {
   const page = graph.getNode(result.rootId)
   if (!page) return []
   const place = (point: Point): Point => ({ x: point.x * zoom + pan.x, y: point.y * zoom + pan.y })
-  const out: { key: string; kind: 'column' | 'row'; text: string; x: number; y: number }[] = []
+  const out: {
+    key: string
+    kind: 'column' | 'row'
+    text: string
+    x: number
+    y: number
+    width?: number
+  }[] = []
   for (const id of page.childIds) {
     const set = graph.getNode(id)
     if (set?.type !== 'COMPONENT_SET') continue
@@ -1761,11 +1768,25 @@ const setHeaders = computed(() => {
     const headers = variantHeaders(cells)
     for (const column of headers.columns) {
       const at = place(column)
-      out.push({ key: `${id}:c:${column.text}`, kind: 'column', text: column.text, ...at })
+      out.push({
+        key: `${id}:c:${column.text}`,
+        kind: 'column',
+        text: column.text,
+        ...at,
+        ...(column.width === undefined || !Number.isFinite(column.width)
+          ? {}
+          : { width: column.width * zoom }),
+      })
     }
     // Rows are named on the right, where the canvas has room; the left edge
-    // sits against the rulers once the page is fitted.
+    // sits against the rulers once the page is fitted. The column axis is
+    // named there too, level with the column values.
     const origin = getAbsolutePosition(set, graph)
+    const firstColumn = headers.columns[0]
+    if (headers.columnAxis && firstColumn) {
+      const at = place({ x: origin.x + set.width, y: firstColumn.y })
+      out.push({ key: `${id}:axis`, kind: 'column', text: `← ${headers.columnAxis}`, ...at })
+    }
     for (const row of headers.rows) {
       const at = place({ x: origin.x + set.width, y: row.y })
       out.push({ key: `${id}:r:${row.text}`, kind: 'row', text: row.text, ...at })
@@ -2331,7 +2352,12 @@ onUnmounted(() => unwatchGraph?.())
       :key="header.key"
       class="set-header"
       :data-kind="header.kind"
-      :style="{ left: `${header.x}px`, top: `${header.y}px` }"
+      :style="{
+        left: `${header.x}px`,
+        top: `${header.y}px`,
+        ...(header.width === undefined ? {} : { maxWidth: `${Math.max(header.width, 14)}px` }),
+      }"
+      :title="header.text"
     >
       {{ header.text }}
     </div>

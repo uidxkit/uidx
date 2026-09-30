@@ -12,9 +12,10 @@ describe('variantHeaders', () => {
       cell('size=sm, state=hover', 10, 40),
       cell('size=md, state=hover', 60, 40),
     ])
+    expect(headers.columnAxis).toBe('size')
     expect(headers.columns).toEqual([
-      { text: 'size=sm', x: 10, y: 10 },
-      { text: 'size=md', x: 60, y: 10 },
+      { text: 'sm', x: 10, y: 10, width: 46 },
+      { text: 'md', x: 60, y: 10, width: Infinity },
     ])
     expect(headers.rows).toEqual([
       { text: 'state=default', x: 10, y: 20 },
@@ -24,7 +25,7 @@ describe('variantHeaders', () => {
 
   it('labels a one-axis set by its columns alone', () => {
     const headers = variantHeaders([cell('state=default', 0, 0), cell('state=checked', 50, 0)])
-    expect(headers.columns.map((c) => c.text)).toEqual(['state=default', 'state=checked'])
+    expect(headers.columns.map((c) => c.text)).toEqual(['default', 'checked'])
     expect(headers.rows).toEqual([])
   })
 

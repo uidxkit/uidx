@@ -17,12 +17,16 @@ export interface VariantCell {
 
 export interface VariantLabel {
   text: string
+  /** Canvas units the label may take before the next column starts. */
+  width?: number
   /** Canvas units: the column's left edge, or the row's vertical centre. */
   x: number
   y: number
 }
 
 export interface VariantHeaders {
+  /** The first axis, named once beside the column labels, which carry values only. */
+  columnAxis?: string
   columns: VariantLabel[]
   rows: VariantLabel[]
 }
@@ -46,9 +50,11 @@ export function variantHeaders(cells: readonly VariantCell[]): VariantHeaders {
   const rows = new Map<string, { label: VariantLabel; top: number; bottom: number }>()
   for (const { cell, coords } of parsed) {
     const [first, ...rest] = coords
-    const column = `${first![0]}=${first![1]}`
+    // Columns carry the value; the axis is named once (`columnAxis`).
+    const column = first![1]
     const known = columns.get(column)
-    if (!known || cell.x < known.x) columns.set(column, { text: column, x: cell.x, y: top })
+    if (!known || cell.x < known.x)
+      columns.set(column, { text: column, x: cell.x, y: top, width: cell.width })
     if (!rest.length) continue
     const row = rest.map(([axis, value]) => `${axis}=${value}`).join(', ')
     const span = rows.get(row)
@@ -61,11 +67,21 @@ export function variantHeaders(cells: readonly VariantCell[]): VariantHeaders {
       span.bottom = Math.max(span.bottom, cellBottom)
     }
   }
+  const many = columns.size > 1
   return {
+    ...(many ? { columnAxis: parsed[0]!.coords[0]![0] } : {}),
     // One column means the set has one value on its first axis: nothing to tell apart.
-    columns: columns.size > 1 ? [...columns.values()].sort((a, b) => a.x - b.x) : [],
+    columns: many ? spaced([...columns.values()].sort((a, b) => a.x - b.x)) : [],
     rows: [...rows.values()]
       .map(({ label, top: t, bottom }) => ({ ...label, y: (t + bottom) / 2 }))
       .sort((a, b) => a.y - b.y),
   }
+}
+
+/** Each column's room is the gap to the next. */
+function spaced(columns: VariantLabel[]): VariantLabel[] {
+  return columns.map((column, at) => ({
+    ...column,
+    width: Math.max(column.width ?? 0, (columns[at + 1]?.x ?? Infinity) - column.x - 4),
+  }))
 }

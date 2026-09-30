@@ -454,8 +454,70 @@ const sections = computed(() => {
       ? { ...field, value: node.attrs.strokeCap?.value ?? 'NONE' }
       : field,
   )
-  return sectionsFor(node, displayFields, parent.value)
+  const all = sectionsFor(node, displayFields, parent.value)
+  // A state's root sits where the arrangement puts it (ADR 0016 §4): its
+  // x and y are not the author's, so they are not offered.
+  const state = derived.value
+  if (!state || state.isDefault || state.target !== 'root') return all
+  const placed = (name: string | undefined): boolean => name === 'x' || name === 'y'
+  return all
+    .map((section) => ({
+      ...section,
+      fields: section.fields.filter(
+        (paired) => !placed(paired.field.name) && !placed(paired.pairedWith?.name),
+      ),
+    }))
+    .filter((section) => section.fields.length > 0)
 })
+
+/**
+ * What the selected state sets on this layer (ADR 0016 §2): every cell of
+ * every row that applies to the state, least specific first, the last word
+ * winning. Shown above the properties so the author sees what the state
+ * changes and can hand a value back to the base.
+ */
+const stateCells = computed(() => {
+  const state = derived.value
+  const rows = props.doc?.spec?.styles ?? []
+  if (!state || state.isDefault || !rows.length) return []
+  const applies = rows
+    .map((row, order) => ({ row, order }))
+    .filter(({ row }) =>
+      Object.entries(row.keys).every(([axis, value]) => state.keys[axis] === value),
+    )
+    .sort(
+      (a, b) =>
+        Object.keys(a.row.keys).length - Object.keys(b.row.keys).length || a.order - b.order,
+    )
+  const cells = new Map<
+    string,
+    { prop: string; value: JsonValue; keys: Record<string, string>; row: string }
+  >()
+  for (const { row } of applies) {
+    for (const [prop, value] of Object.entries(row.values[state.target] ?? {})) {
+      cells.set(prop, {
+        prop,
+        value,
+        keys: row.keys,
+        row: Object.entries(row.keys)
+          .map(([axis, v]) => `${axis}=${v}`)
+          .join(', '),
+      })
+    }
+  }
+  return [...cells.values()]
+})
+
+function showCell(value: JsonValue): string {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/** Hands a value back to the base: the cell leaves its row. */
+function resetCell(cell: { prop: string; keys: Record<string, string> }): void {
+  const state = derived.value
+  if (!state) return
+  emit('patches', [{ op: 'style', keys: { ...cell.keys }, target: state.target, prop: cell.prop }])
+}
 /**
  * The fill this node is, or null (story F5, ADR 0007 §2).
  *
@@ -1480,6 +1542,27 @@ function onDetach(prop: string, value: JsonValue): void {
       <p v-else-if="writable === false" class="note warn">
         Reconnect to edit. You can still inspect properties and export.
       </p>
+
+      <section v-if="stateCells.length" class="state-cells" aria-label="What this state sets">
+        <p class="state-cells-title">This state sets</p>
+        <ul>
+          <li v-for="cell in stateCells" :key="cell.prop">
+            <code class="state-cell-prop">{{ cell.prop }}</code>
+            <span class="state-cell-value" :title="showCell(cell.value)">{{
+              showCell(cell.value)
+            }}</span>
+            <span class="state-cell-row" :title="`from the row ${cell.row}`">{{ cell.row }}</span>
+            <button
+              type="button"
+              :disabled="writable === false"
+              :title="`Remove ${cell.prop} from the ${cell.row} row — the base value returns`"
+              @click="resetCell(cell)"
+            >
+              Reset
+            </button>
+          </li>
+        </ul>
+      </section>
 
       <!--
       A fill's two states, as the two gestures that reach them (ADR 0007 §2).
@@ -2634,5 +2717,53 @@ h2 {
 .fill-buttons button:disabled {
   color: var(--text-faint);
   cursor: default;
+}
+.state-cells {
+  margin: 8px 12px 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--ui-size);
+}
+.state-cells-title {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+}
+.state-cells ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.state-cells li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+  grid-template-areas: 'prop value reset' 'row row reset';
+  gap: 0 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+.state-cell-prop {
+  grid-area: prop;
+}
+.state-cell-value {
+  grid-area: value;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.state-cell-row {
+  grid-area: row;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.state-cells button {
+  grid-area: reset;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
 }
 </style>

@@ -114,6 +114,29 @@ try {
     await page.locator('.example img').first().waitFor({ timeout: 15_000 })
   })
 
+  await journey(
+    'a state names what it sets, and Reset hands a value back to the base',
+    async () => {
+      await open('?page=checkbox.uidx')
+      const header = page.locator('.set-header', { hasText: /^\s*checked\s*$/ }).first()
+      await header.waitFor()
+      const box = await header.boundingBox()
+      await page.mouse.click(box.x + 10, box.y + box.height + 18)
+      const cells = page.locator('.state-cells')
+      await cells.getByText('strokes').waitFor()
+      await cells
+        .locator('li', { hasText: 'strokes' })
+        .getByRole('button', { name: 'Reset' })
+        .click()
+      await until(
+        async () =>
+          !/state="checked"[^\n]*root:strokes/.test(
+            await readFile(join(docroot, 'checkbox.uidx'), 'utf8'),
+          ),
+      )
+    },
+  )
+
   await journey('the Models face lists the Contact model and who receives it', async () => {
     await open('?page=contact-list.uidx&view=models')
     await page.getByText('Contact', { exact: true }).first().waitFor()
