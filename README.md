@@ -171,6 +171,20 @@ npx --no-install uidx check
 npx --no-install uidx fmt --check
 ```
 
+Building the design system and keeping product code on it:
+
+```sh
+npx --no-install uidx init --design-system   # starter tokens and a Button
+npx --no-install uidx tokens import tokens.json   # DTCG, from Figma or Tokens Studio
+npx --no-install uidx adopt path/to/custom-elements.json
+npx --no-install uidx components              # what agents and developers build with
+npx --no-install uidx lint src                # token literals and raw elements in app code
+npx --no-install uidx diff --base origin/main # breaking contract and token changes
+npx --no-install uidx share --out site        # a static review site
+npx --no-install uidx export fig --out figma  # Figma files
+npx --no-install uidx init --ci               # all of the above on every pull request
+```
+
 The CLI also supports reading, creating, editing, and rendering pages. See the
 [CLI guide](packages/cli/README.md) and [agent architecture](packages/agent/README.md).
 

@@ -6,6 +6,60 @@ describe migrations when an existing document or integration is affected.
 
 ## Unreleased
 
+- **Fixed: token refactors missed the styles table.** A token used only in
+  `<Style>` rows showed 0 uses, a rename left those rows dangling, a delete
+  did not inline them, and `uidx check` stayed green while codegen emitted an
+  undefined CSS variable. Dependents, rename/delete plans, usage counts and
+  UIDX401 now read `<Styles>`.
+- **Agents write the design-system model.** `uidx apply`, MCP `uidx_apply` and
+  `eval` gain `set_style`, `declare`, `set_model` and `set_field` (eval:
+  `style`, `declare`, `undeclare`, `model`, `field`). The shipped skills teach
+  identities (contract, `<Styles>`, models, repeat, behaviour), with a new
+  `uidx-design-system` skill; UIDX153 warns when `<Variant>` trees share one
+  anatomy and differ only in values.
+- **Agents building product use the design system.** MCP `uidx_components`,
+  `uidx_component`, `uidx_tokens` and `uidx components`, `uidx component
+  <Name>`, `uidx tokens list`: contracts, import and usage lines, resolved
+  tokens with CSS variables. `uidx init` writes a uidx block into AGENTS.md
+  (and CLAUDE.md when present).
+- **`uidx lint`** checks application code against the design system: colour
+  literals a token names, raw elements a component stands for. Exits 1 on
+  findings.
+- **`uidx diff --base <ref>`** reports design-system changes with breaking ones
+  marked; **`uidx init --ci`** writes a pull-request workflow that checks,
+  lints, posts the diff and uploads a review site.
+- **`uidx share`** writes a static, read-only site: page pictures, component
+  docs, tokens.
+- **Tokens as DTCG 2025.10:** `uidx tokens import|export`, resolver documents
+  for modes.
+- **`uidx adopt <custom-elements.json>`** drafts an identity per element a
+  headless library ships; **`uidx init --design-system`** writes a starter
+  system (tiered tokens, a Button); the overview of a document with no
+  component shows how to start.
+- **`uidx export fig`** writes one Figma file per page (first slice of F2).
+- A list's **`empty` state**: styled like `hover`, drawn on the canvas with no
+  rows, `[data-empty]` in CSS, set by the React wrapper.
+- A **Docs face** per component: intent, contract, behaviour, examples drawn by
+  the renderer, where it is used, and the component as the generated code
+  renders it (`/__uidx/preview`).
+- The canvas **labels variant sets** (column and row values); the inspector
+  says **what a state sets** and offers Reset to the base; a state's root no
+  longer offers x and y.
+- Codegen: a **`stories`** target (Storybook CSF from samples, visual values and
+  examples), a **`cem`** target (Custom Elements Manifest 2.1.0 with an
+  `x-uidx` extension), and **`codegen.react`** to map identities onto an
+  existing React library through typed adapters.
+- Fixed in codegen: frames that hug their width emit `inline-flex` (a Button
+  no longer stretches); components with no `implements` render a `<div>` with
+  their class and data attributes and a matching ref type; `models.ts` is a
+  module when no model is declared; a state row targeting a `<Slot>` selects
+  `[data-slot]`.
+- `pnpm test:journeys` walks the first hour in a real browser (overview,
+  canvas, contract, state reset, docs, code preview, models, an agent edit)
+  in the canvas canary job.
+
+### Earlier in this release
+
 - The design-system model (ADRs 0012–0017). A `.uidx` file may now carry a
   `## Contract` (props, events, slots, form, accessibility; `<State>` only for
   states the element produces itself, since a visual boolean prop is a state
