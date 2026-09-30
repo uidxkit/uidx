@@ -58,8 +58,11 @@ prop named after the slot (`renderItem(item, index)`), with the slot's
 placeholder as the default content, and `accepts` on the declared slot
 constrains what a consumer passes. A repeat on any other layer is the
 component's own, rendered in place. The toolbar's Repeat tool writes
-`repeat="{…}"` on the selected layer with the first list its contract can
-place; the Contract tab edits the list and `as` from the layer. The canvas
+`repeat="{…}"` on the selected layer with the nearest list it can place — an
+enclosing item's list field before the contract's own lists, so a layer
+inside a row walks the row — and names a nested item after its list
+(`child` for `{item.children}`), since `item` would hide the outer item; the
+Contract tab edits the list and `as` from the layer. The canvas
 expands a repeat to one row per sample, the n-th resolving `{as.*}` from the
 n-th samples: the first row is the layer itself, selected and edited like any
 other, and the rows after it (`row-2`, `row-3`) are generated echoes that

@@ -15,6 +15,7 @@ import {
   repeatFor,
   type ComponentModel,
   type PartInfo,
+  vectorPaint,
 } from './model.js'
 
 /**
@@ -338,7 +339,8 @@ function markup(
             : undefined,
         )
         .filter((data): data is string => typeof data === 'string')
-      const svg = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">${d.map((data) => `<path d="${escapeHtml(data)}" fill="currentColor" />`).join('')}</svg>`
+      const paint = vectorPaint(node)
+      const svg = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">${d.map((data) => `<path d="${escapeHtml(data)}" ${paint} />`).join('')}</svg>`
       const [open, close] = (info && partTags(info)) ?? [
         `<span data-node="${node.name}">`,
         '</span>',

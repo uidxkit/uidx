@@ -80,8 +80,16 @@ property, and the viewer writes the matching cell of the `state="hover"` row
 edit to the default combination lands on the base tree, which is what the
 default draws. What a state cannot change — where a variant sits, a layer's
 name, the structure below it — is refused with the reason; structure is the
-base tree's or an authored `<Variant>`'s. Code targets never expand; they emit
-one component whose CSS is keyed by attributes and states.
+base tree's or an authored `<Variant>`'s. Rotation is a look, not a place: a
+chevron turns when a row opens, and the CSS target renders it as a
+transform, so a state may set it. The set is drawn as soon as an axis exists,
+rows or no rows — a visual prop is a state the moment it is declared — so the
+first row is written the same way as every other, by selecting the state on
+the canvas and changing something, never by hand. An instance chooses its
+state from what it is handed: `open={true}` on the use, or a bound
+`{item.expanded}` inside a repeat, resolved in the consumer's scope (ADR 0017
+§2). Code targets never expand; they emit one component whose CSS is keyed
+by attributes and states.
 
 ### 5. Audit
 

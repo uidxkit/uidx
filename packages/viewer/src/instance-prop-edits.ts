@@ -9,6 +9,7 @@ import {
   type UidxDocument,
   type UidxNode,
   type UidxPatch,
+  aliasTarget,
 } from '@uidx/format'
 
 /**
@@ -220,6 +221,9 @@ export function unusedInstanceProps(
       }
       continue
     }
+    // `{item.expanded}` is a binding to the enclosing item (ADR 0017 §2), not
+    // a value of the wrong type: the Contract tab shows what it receives.
+    if (typeof value === 'string' && aliasTarget(value) !== null) continue
     const declaration = declared.get(name)
     if (!declaration) out.push({ name, reason: 'undeclared', value })
     else if (!matchesType(declaration.type, value)) out.push({ name, reason: 'mistyped', value })

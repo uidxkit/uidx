@@ -64,6 +64,20 @@ describe migrations when an existing document or integration is affected.
   the instance would sit inside. Removing the last declaration removes the
   empty `## Contract` heading; `uidx codegen` takes directories as `check`
   does.
+- From a second walkthrough, a tree with a disclosure chevron: a visual prop
+  draws its state set at once, rows or no rows, so the first style row is
+  written by selecting the state on the canvas rather than by hand; rotation
+  is a look a state may set (a chevron turns when a row opens), rendered as a
+  transform by the CSS target; a use's bound value chooses the state on the
+  canvas, so rows repeat open or closed as their samples say; a text bound to
+  a boolean or a number is spelled out rather than crashing the layout; the
+  canvas receives the shared model index it was meant to (a list's model on
+  another page now draws its samples on the canvas, not only in thumbnails);
+  a pen-drawn vector stays stroked in the code targets; the Repeat tool names
+  a nested repeat's item after its list (`child` for `{item.children}`) and
+  offers the enclosing item's lists first; a sized component's layout reads
+  Free, so choosing Column writes it; an instance's bound prop is no longer
+  called mistyped.
 - Fixed: a component edited structurally kept its contract (the incremental
   patch path dropped the spec until a full parse), and `uidx check` no longer
   reports `repeat="{items}"` or `{item.field}` as unknown component

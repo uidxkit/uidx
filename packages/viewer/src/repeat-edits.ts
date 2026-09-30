@@ -17,6 +17,21 @@ export interface RepeatTarget {
   component: UidxNode
   /** The first list the layer may walk. */
   list: string
+  /**
+   * The item's name when the default `item` would hide an enclosing item:
+   * `child` for `{item.children}`, `tag` for `{item.tags}`. Absent at the
+   * top level, where `item` is the name and is not written.
+   */
+  as?: string
+}
+
+/** `children` → `child`, `tags` → `tag`, `entries` → `entry`; the last segment of the list. */
+function singular(list: string): string {
+  const last = list.split('.').at(-1) ?? 'item'
+  if (last === 'children') return 'child'
+  if (last.endsWith('ies')) return `${last.slice(0, -3)}y`
+  if (last.endsWith('s') && last.length > 2) return last.slice(0, -1)
+  return `${last}Item`
 }
 
 /** Elements that are structure rather than layers: a repeat rides on what they hold. */
@@ -34,7 +49,22 @@ export function repeatTargetFor(
   const component = enclosingComponent(doc, address)
   if (!component) return null
   const [list] = placeableLists(component, node, models)
-  return list ? { node, component, list } : null
+  if (!list) return null
+  // Nested in another repeat (the list is an item's field), the row needs a
+  // name of its own; `item` would hide the outer item's bindings.
+  if (!list.includes('.')) return { node, component, list }
+  const taken = new Set<string>()
+  const walk = (current: UidxNode): void => {
+    if (current.attrs.repeat !== undefined) {
+      const as = current.attrs.as?.value
+      taken.add(typeof as === 'string' && as !== '' ? as : 'item')
+    }
+    for (const child of current.children) walk(child)
+  }
+  walk(component)
+  let as = singular(list)
+  for (let n = 2; taken.has(as); n++) as = `${singular(list)}${n}`
+  return { node, component, list, as }
 }
 
 /**
@@ -52,6 +82,9 @@ export function newRepeatFor(
   return {
     patches: [
       { op: 'add', address: target.node.address, prop: 'repeat', value: toAlias(target.list) },
+      ...(target.as
+        ? [{ op: 'add' as const, address: target.node.address, prop: 'as', value: target.as }]
+        : []),
     ],
     address: target.node.address,
   }

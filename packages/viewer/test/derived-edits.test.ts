@@ -93,6 +93,16 @@ describe('routing an edit on a derived variant', () => {
     expect(
       routeDerivedPatches(doc, [{ op: 'remove-node', address: 'Checkbox#state=hover/root/ring' }]),
     ).toEqual({ refused: expect.stringContaining('drawn from the base tree') })
+    // Rotation is a look: a chevron turns when a row opens, and CSS renders it.
+    expect(
+      routeDerivedPatches(doc, [
+        { op: 'set', address: 'Checkbox#state=hover/root/ring', prop: 'rotation', value: 90 },
+      ]),
+    ).toEqual({
+      patches: [
+        { op: 'style', keys: { state: 'hover' }, target: 'ring', prop: 'rotation', value: 90 },
+      ],
+    })
   })
 
   it('round-trips: the routed edit lands in the file as a row cell', () => {

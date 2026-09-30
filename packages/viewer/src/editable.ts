@@ -340,8 +340,18 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
       // default-shaped list would offer a paint the file does not have.
       // A loose edge shows a dash, not a number: the pin does not hold it, so
       // any value would be an offer the resolver ignores.
+      // A component that states a size is a fixed box, laid out free; the
+      // hugging column `componentSizing` gives a sizeless one is not its
+      // default, and showing Column pressed would make the click that means
+      // "make it a column" write nothing.
       value:
-        looseEdge || LIST_CONTROLS.has(ui.control) ? null : (defaultFor(element, name) ?? null),
+        looseEdge || LIST_CONTROLS.has(ui.control)
+          ? null
+          : name === 'layoutMode' &&
+              element === 'Component' &&
+              (node.attrs.width !== undefined || node.attrs.height !== undefined)
+            ? 'NONE'
+            : (defaultFor(element, name) ?? null),
       raw: '',
       boundTo: null,
       readonlyReason: looseEdge ? LOOSE_EDGE_REASON : (shapeReason ?? reasonFor(name)),

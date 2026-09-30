@@ -192,6 +192,30 @@ export interface SlotInfo {
 }
 
 /** An element drawn once per item of a list (ADR 0017 §2). */
+/**
+ * How a vector's paths are painted in SVG: a stroked outline (a chevron, an
+ * icon drawn with the pen) keeps its stroke and weight, a filled shape keeps
+ * its fill; both take the text colour, as `currentColor`.
+ */
+export function vectorPaint(node: UidxNode): string {
+  const fills = node.attrs.fills?.value
+  const strokes = node.attrs.strokes?.value
+  const filled = Array.isArray(fills) && fills.length > 0
+  const stroked = Array.isArray(strokes) && strokes.length > 0
+  if (!stroked || filled) return 'fill="currentColor"'
+  const weight =
+    typeof node.attrs.strokeWeight?.value === 'number' ? node.attrs.strokeWeight.value : 1
+  const cap =
+    typeof node.attrs.strokeCap?.value === 'string'
+      ? node.attrs.strokeCap.value.toLowerCase()
+      : 'butt'
+  const join =
+    typeof node.attrs.strokeJoin?.value === 'string'
+      ? node.attrs.strokeJoin.value.toLowerCase()
+      : 'miter'
+  return `fill="none" stroke="currentColor" stroke-width="${weight}" stroke-linecap="${cap}" stroke-linejoin="${join}"`
+}
+
 export interface RepeatInfo {
   node: UidxNode
   /** The alias target: `items`, or `item.children` for a nested repeat. */

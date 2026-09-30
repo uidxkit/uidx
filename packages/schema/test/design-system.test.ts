@@ -398,6 +398,62 @@ describe('repeat draws an element once per item (ADR 0017 §2)', () => {
   })
 })
 
+describe('a use asks for a state with a bound value (ADR 0017 §2, ADR 0016)', () => {
+  const LIST = page(
+    'todo',
+    `  <Component name="Todo" status="draft" layoutMode="VERTICAL">
+    <Instance name="row" component="Checkbox" repeat="{items}" props={{ checked: '{item.done}' }} />
+  </Component>`,
+    `
+## Contract
+
+<Props>
+  <Prop name="items" type="Task[]">Rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Task">
+  One task.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="done" type="boolean" sample={[true, false]}>Whether it is checked.</Field>
+</Model>
+`,
+  )
+  it('spells out a text bound to a boolean or a number rather than crashing the layout', () => {
+    const source = LIST.replace(
+      `<Instance name="row" component="Checkbox" repeat="{items}" props={{ checked: '{item.done}' }} />`,
+      `<Frame name="row" repeat="{items}"><Text name="flag" characters="{item.done}" /></Frame>`,
+    )
+    const scene = toSceneGraph(parseOrThrow(source), { resolveAlias })
+    expect(scene.graph.getNode('Todo#row/flag')!.text).toBe('true')
+    expect(scene.graph.getNode('Todo#row-2/flag')!.text).toBe('false')
+  })
+
+  it('draws the set of a component with a visual prop before any style row exists', () => {
+    const bare = CHECKBOX_SOURCE.replace(/<Styles>[\s\S]*?<\/Styles>\n/, '')
+    const doc = parseOrThrow(bare)
+    expect(doc.spec?.styles ?? []).toEqual([])
+    const scene = toSceneGraph(doc, { resolveAlias })
+    expect(scene.graph.getNode('Checkbox')!.type).toBe('COMPONENT_SET')
+    const set = scene.graph.getNode('Checkbox')!
+    const names = (set.childIds as string[]).map((id) => id.slice('Checkbox#'.length))
+    expect(names.some((name) => name.includes('state=checked'))).toBe(true)
+  })
+
+  it('draws each row in the state its sample says', () => {
+    const checkbox = parseOrThrow(CHECKBOX_SOURCE)
+    const index = componentIndex(checkbox, parseOrThrow(LIST))
+    const scene = toSceneGraph(parseOrThrow(LIST), {
+      resolveAlias,
+      resolveComponent: (name) => index.get(name),
+    })
+    // `state="checked"` shows the indicator; the default hides it.
+    expect(scene.graph.getNode('Todo#row/root/check')!.visible).toBe(true)
+    expect(scene.graph.getNode('Todo#row-2/root/check')!.visible).toBe(false)
+  })
+})
+
 describe('auditDesignSystem', () => {
   const codes = (source: string) => auditDesignSystem(parseOrThrow(source)).map((d) => d.code)
 

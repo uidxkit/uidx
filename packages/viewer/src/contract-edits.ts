@@ -336,9 +336,10 @@ function enclosingRepeats(component: UidxNode, node: UidxNode, models?: ModelInd
 }
 
 /**
- * The lists a repeat on this layer may walk (ADR 0017 §2): the contract's
- * list props as `items`, and the list fields of every enclosing item as
- * `person.tags` — what a tree or a grouped list nests on.
+ * The lists a repeat on this layer may walk (ADR 0017 §2): the list fields
+ * of every enclosing item as `person.tags`, nearest first — what a tree or
+ * a grouped list nests on, and the likeliest answer for a layer inside a
+ * row — then the contract's list props as `items`.
  */
 export function placeableLists(
   component: UidxNode | null,
@@ -347,11 +348,11 @@ export function placeableLists(
 ): string[] {
   if (!component) return []
   const out: string[] = []
-  for (const prop of component.spec?.contract?.props ?? [])
-    if (prop.type.trim().endsWith('[]')) out.push(prop.name)
-  for (const scope of enclosingRepeats(component, node, models))
+  for (const scope of [...enclosingRepeats(component, node, models)].reverse())
     for (const field of scope.model?.fields ?? [])
       if (field.type.trim().endsWith('[]')) out.push(`${scope.as}.${field.name}`)
+  for (const prop of component.spec?.contract?.props ?? [])
+    if (prop.type.trim().endsWith('[]')) out.push(prop.name)
   return out
 }
 

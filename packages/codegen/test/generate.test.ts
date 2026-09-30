@@ -78,6 +78,24 @@ id: tree-item
   <Field name="children" type="TreeNode[]">Below it.</Field>
 </Model>
 `
+  it('keeps a pen-drawn chevron stroked rather than filled, in HTML and React', () => {
+    const stroked = ITEM.replace(
+      '<Text name="label" characters="{node.label}" />',
+      `<Vector name="chevron" width={12} height={12} strokes={[{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }]} strokeWeight={2} strokeCap="ROUND" strokeJoin="ROUND" vectorPaths={[{ windingRule: 'NONZERO', data: 'M0 0L12 6L0 12' }]} />
+    <Text name="label" characters="{node.label}" />`,
+    )
+    const out = generate({
+      pages: [{ file: 'tree-item.uidx', doc: parseOrThrow(stroked) }],
+      tokens: [],
+    })
+    expect(out.files.get('html/tree-item.html')).toContain(
+      '<path d="M0 0L12 6L0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />',
+    )
+    expect(out.files.get('react/TreeItem.tsx')).toContain(
+      'fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"',
+    )
+  })
+
   it('hands the nearest item of the right type to the model prop, and an explicit item field as written', () => {
     const out = generate({
       pages: [

@@ -15,8 +15,13 @@ import { derivedTarget, type DerivedTarget } from '@uidx/schema'
  * Pure, like every edit helper here: patches in, patches or a refusal out.
  */
 
-/** Properties a state may not change: where a variant sits is the arrangement's. */
-const NOT_A_STYLE: ReadonlySet<string> = new Set(['x', 'y', 'rotation', 'name', 'part'])
+/**
+ * Properties a state may not change: where a variant sits is the arrangement's,
+ * and what a layer is named or binds is the base tree's. Rotation is a look —
+ * a chevron turns when a row opens, and the CSS target renders it as a
+ * transform — so a state may set it.
+ */
+const NOT_A_STYLE: ReadonlySet<string> = new Set(['x', 'y', 'name', 'part'])
 
 export type Routed = { patches: UidxPatch[] } | { refused: string }
 

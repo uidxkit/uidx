@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseOrThrow, type UidxNode } from '@uidx/format'
+import { parseOrThrow, resolve, type UidxNode } from '@uidx/format'
 import { editableProps, isMapped, parentOf, sectionsFor, selectedNode } from '../src/editable'
 
 const PAGE = parseOrThrow(`---
@@ -38,6 +38,19 @@ id: loose
 const node = (address: string): UidxNode => selectedNode(PAGE.tree, [address])!
 const field = (address: string, name: string) =>
   editableProps(node(address)).find((f) => f.name === name)!
+
+describe('a component that states a size', () => {
+  it('shows Free as its layout mode, so choosing Column writes it', () => {
+    const doc = parseOrThrow(
+      `---\nid: p\n---\n\n## Visual Contract\n\n<Page>\n  <Component name="Box" status="draft" width={200} height={100} />\n  <Component name="Hug" status="draft"><Frame name="in" /></Component>\n</Page>\n`,
+    )
+    const mode = (name: string) =>
+      editableProps(resolve(doc.tree, name)!).find((field) => field.name === 'layoutMode')?.value
+    expect(mode('Box')).toBe('NONE')
+    // A sizeless component hugs a column (`componentSizing`), and says so.
+    expect(mode('Hug')).toBe('VERTICAL')
+  })
+})
 
 describe('selectedNode', () => {
   it('finds a node by address', () => {

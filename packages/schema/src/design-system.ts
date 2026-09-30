@@ -363,11 +363,12 @@ export function styleTarget(tree: UidxNode, target: string): UidxNode | undefine
 
 /** Whether a component's variants are derived from its styles table. */
 export function derivesVariants(component: UidxNode): boolean {
+  // A visual prop is a state (ADR 0016 §1), so a component that declares one
+  // draws its set at once, rows or no rows: the author selects the state on
+  // the canvas and the first change writes the first row. Waiting for a row
+  // to exist left the first one to be written by hand.
   return (
-    component.element === 'Component' &&
-    !hasVariants(component) &&
-    (component.spec?.styles?.length ?? 0) > 0 &&
-    axesOf(component.spec).size > 0
+    component.element === 'Component' && !hasVariants(component) && axesOf(component.spec).size > 0
   )
 }
 

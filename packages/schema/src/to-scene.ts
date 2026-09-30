@@ -668,14 +668,42 @@ function parseCoordinates(name: string): Map<string, string> {
  * an error here; `uidx check` reports it at the use site, which is where the
  * author can do something about it.
  */
-export function variantFor(definition: UidxNode, instance: UidxNode | null): UidxNode | undefined {
+export function variantFor(
+  definition: UidxNode,
+  instance: UidxNode | null,
+  /**
+   * The consumer's scope, for a value the use binds rather than states:
+   * `props={{ open: '{item.expanded}' }}` in a repeat asks for the state the
+   * row's sample says (ADR 0017 §2), and an unbound alias asks for nothing.
+   */
+  resolveAlias?: AliasResolver,
+): UidxNode | undefined {
   if (!hasVariants(definition)) return undefined
   const { axes } = componentVariants(definition)
   const asked = defaultCombination(axes)
-  const assigned = instance ? declaredInstanceValues(instance).values : new Map()
+  const assigned = new Map<string, JsonValue>()
+  for (const [name, raw] of instance ? declaredInstanceValues(instance).values : new Map()) {
+    const target = aliasTarget(raw)
+    const value = target === null ? raw : resolveAlias?.(target)
+    if (value !== undefined) assigned.set(name, value)
+  }
   for (const [axis, domain] of axes) {
     const value = assigned.get(axis)
     if (typeof value === 'string' && domain.includes(value)) asked.set(axis, value)
+  }
+  // A derived set (ADR 0016) has a `state` axis whose values are the visual
+  // boolean props: `open={true}` on the use asks for `state=open`. The first
+  // one set wins, since a styles table draws one state at a time.
+  const states = axes.get('state')
+  if (states && !assigned.has('state')) {
+    for (const prop of definition.spec?.contract?.props ?? []) {
+      if (prop.visual && prop.type === 'boolean' && assigned.get(prop.name) === true) {
+        if (states.includes(prop.name)) {
+          asked.set('state', prop.name)
+          break
+        }
+      }
+    }
   }
   const wanted = variantName(asked)
   return definition.children.find((child) => child.name === wanted)
@@ -855,7 +883,7 @@ function instanceProps(
   // A component with states *is* whichever state this use asked for (ADR 0005
   // §4), so the base is the chosen variant rather than the set — the set is a
   // container for four looks and has none of its own.
-  const source = variantFor(definition, node) ?? definition
+  const source = variantFor(definition, node, options.resolveAlias) ?? definition
   return {
     ...scenePropsFor(
       source,
@@ -884,7 +912,7 @@ export function instanceRootProps(
   options: SceneOptions,
   warnings: string[] = [],
 ): Partial<SceneNode> {
-  const source = variantFor(definition, instance) ?? definition
+  const source = variantFor(definition, instance, options.resolveAlias) ?? definition
   return {
     ...scenePropsFor(
       source,
@@ -1151,7 +1179,7 @@ function expandInstance(
    * the override by path and a consuming file never embeds which state it was
    * written against (§3, and ADR 0003's rationale 2).
    */
-  const chosen = variantFor(definition, node)
+  const chosen = variantFor(definition, node, options.resolveAlias)
   if (hasVariants(definition) && !chosen) {
     warnings.push(
       `${node.address}: "${name}" has no variant for the combination this instance asks for`,
@@ -1224,7 +1252,7 @@ export function generatedChildProps(
       ]),
     ),
   }
-  const root = variantFor(definition, instance) ?? definition
+  const root = variantFor(definition, instance, options.resolveAlias) ?? definition
   const inherited = relative.includes('/') ? {} : frameSizing(instance, root)
   const changed = overrideMap(instance).get(relative)
   return {

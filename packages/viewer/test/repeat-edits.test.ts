@@ -65,8 +65,11 @@ describe('where a repeat may go', () => {
       ),
     )
     expect(repeatTargetFor(repeated, ['List#group'])).toBeNull()
-    // Inside a repeat the item's own lists are on offer, after the contract's.
-    expect(repeatTargetFor(repeated, ['List#group/tag'])).toMatchObject({ list: 'items' })
+    // Inside a repeat the item's own lists come first: a nested layer walks the item.
+    expect(repeatTargetFor(repeated, ['List#group/tag'])).toMatchObject({
+      list: 'item.tags',
+      as: 'tag',
+    })
     const noList = parseOrThrow(
       page(
         `  <Component name="List" status="draft"><Instance name="row" component="Row" /></Component>`,

@@ -15,6 +15,7 @@ import {
   repeatFor,
   type ComponentModel,
   type RepeatInfo,
+  vectorPaint,
 } from './model.js'
 
 /**
@@ -152,7 +153,11 @@ function svgFor(node: UidxNode): string {
         : undefined,
     )
     .filter((data): data is string => typeof data === 'string')
-  return `<svg viewBox="0 0 ${width} ${height}" width={${width}} height={${height}} aria-hidden="true">${d.map((data) => `<path d="${data}" fill="currentColor" />`).join('')}</svg>`
+  const paint = vectorPaint(node)
+    .replace(/stroke-width="/g, 'strokeWidth="')
+    .replace(/stroke-linecap="/g, 'strokeLinecap="')
+    .replace(/stroke-linejoin="/g, 'strokeLinejoin="')
+  return `<svg viewBox="0 0 ${width} ${height}" width={${width}} height={${height}} aria-hidden="true">${d.map((data) => `<path d="${data}" ${paint} />`).join('')}</svg>`
 }
 
 /** `renderOption` for a repeating slot named `option` (ADR 0017 §2). */
