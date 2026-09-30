@@ -76,6 +76,8 @@ import { rebasePatches } from './patch-rebase'
 import { HOME, pageInUrl, upgradedView, urlWithView, viewToOpen, type View } from './page-url'
 import TokensPane, { type TokenEditIntent } from './TokensPane.vue'
 import ModelsPane from './ModelsPane.vue'
+import DocsPane from './DocsPane.vue'
+import { componentDocs, exampleDocument, type DocsExample } from './docs-model'
 import { modelsViewModel, pagesForModels, undeclaredModels } from './model-edits'
 import TokenDetailPane from './TokenDetailPane.vue'
 import RemoveCollectionDialog from './RemoveCollectionDialog.vue'
@@ -372,6 +374,47 @@ const stamps = computed(() => {
   }
   return out
 })
+
+/** The Docs face's page: the open file's component, read from its identity. */
+const docsModel = computed(() => {
+  const now = view.value
+  if (now.kind !== 'docs') return null
+  const doc = pages.value.get(now.file)
+  return doc ? componentDocs(now.file, doc, dependents.value) : null
+})
+
+/** Moves when a token's value does, so an example redraws with it. */
+const tokenGeneration = ref(0)
+watch(tokens, () => (tokenGeneration.value += 1))
+
+/** Draws one example of the Docs face as a one-instance page. */
+function renderExample(example: DocsExample): Promise<string | null> {
+  const now = view.value
+  const docs = docsModel.value
+  if (now.kind !== 'docs' || !docs) return Promise.resolve(null)
+  const file = `${now.file}#example/${example.name}`
+  const doc = exampleDocument(docs.name, example)
+  if (!doc) return Promise.resolve(null)
+  return thumbnailer.request({
+    file,
+    doc,
+    tokens: sceneTokens.value,
+    literals: tokens.value,
+    components: components.value,
+    models: models.value,
+    revision: home.value.cards.find((card) => card.file === now.file)?.revision ?? null,
+    definitions: definitions.value,
+    assets: null,
+    fonts: fontGeneration.value,
+    width: 480,
+    height: 280,
+  })
+}
+
+function onDocsOpen(file: string, address?: string): void {
+  openView({ kind: 'page', file })
+  if (address) selection.value = [address]
+}
 
 function renderThumb(card: PageCard): Promise<string | null> {
   const doc = pages.value.get(card.file)
@@ -850,7 +893,7 @@ watch(
 )
 
 /** Workspace faces. Elements is disabled for a token-only page. */
-function toggleFace(kind: 'page' | 'tokens' | 'fonts' | 'models'): void {
+function toggleFace(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
   const now = view.value
   if (now.kind === 'home' || now.kind === kind) return
   if (kind === 'page' && !renderable.value) return
@@ -1763,6 +1806,7 @@ onUnmounted(() => socket.close())
         'without-inspector':
           view.kind === 'fonts' ||
           view.kind === 'models' ||
+          view.kind === 'docs' ||
           (view.kind === 'tokens' && !selectedTokenRow),
       }"
     >
@@ -1828,6 +1872,14 @@ onUnmounted(() => socket.close())
         as this view.
       -->
       <ErrorBoundary v-else-if="view.kind === 'fonts'" pane="Fonts"><FontsPane /></ErrorBoundary>
+      <ErrorBoundary v-else-if="view.kind === 'docs'" pane="Docs">
+        <DocsPane
+          :docs="docsModel"
+          :render="renderExample"
+          :stamp="`${definitions}:${fontGeneration}:${tokenGeneration}`"
+          @open="onDocsOpen"
+        />
+      </ErrorBoundary>
       <ErrorBoundary v-else-if="view.kind === 'models'" pane="Models">
         <ModelsPane
           :cards="modelCards"

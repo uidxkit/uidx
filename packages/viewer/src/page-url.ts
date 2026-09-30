@@ -69,6 +69,8 @@ export type View =
   | { kind: 'fonts'; file: string }
   /** The document's models (ADR 0015 §1), gathered from every page like tokens are. */
   | { kind: 'models'; file: string }
+  /** The page's component as a documentation page: words, contract, behaviour, examples. */
+  | { kind: 'docs'; file: string }
 
 export const HOME: View = { kind: 'home' }
 
@@ -78,7 +80,12 @@ const VIEW_PARAM = 'view'
 export function urlWithView(href: string, view: View): string {
   const url = new URL(view.kind === 'home' ? href : urlWithPage(href, view.file))
   if (view.kind === 'home') url.searchParams.delete(PARAM)
-  if (view.kind === 'tokens' || view.kind === 'fonts' || view.kind === 'models')
+  if (
+    view.kind === 'tokens' ||
+    view.kind === 'fonts' ||
+    view.kind === 'models' ||
+    view.kind === 'docs'
+  )
     url.searchParams.set(VIEW_PARAM, view.kind)
   else url.searchParams.delete(VIEW_PARAM)
   return url.toString()
@@ -103,7 +110,7 @@ export function viewToOpen(href: string, pages: readonly string[], entry: string
     // An unknown value falls through to the page view: a link from a future
     // version should still show the page rather than nothing.
     const view = new URL(href).searchParams.get(VIEW_PARAM)
-    return view === 'tokens' || view === 'fonts' || view === 'models'
+    return view === 'tokens' || view === 'fonts' || view === 'models' || view === 'docs'
       ? { kind: view, file: wanted }
       : { kind: 'page', file: wanted }
   }
