@@ -759,7 +759,6 @@ function instanceValues(
  * an array, a union nobody spelt — is trusted; `uidx check` is the audit.
  */
 function matchesSpecType(prop: PropSpec, value: JsonValue): boolean {
-  if (prop.model || prop.type === undefined) return true
   if (prop.type === 'boolean') return typeof value === 'boolean'
   if (prop.type === 'number') return typeof value === 'number'
   if (prop.type === 'string' || /^'[^']*'(\s*\|\s*'[^']*')*$/.test(prop.type))

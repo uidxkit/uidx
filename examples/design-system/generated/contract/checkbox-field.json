@@ -16,42 +16,39 @@
     "props": [
       {
         "name": "label",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "The option's name.",
-        "type": "string",
         "sample": "Remember me"
       },
       {
         "name": "description",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "Helper text under the label.",
-        "type": "string",
         "sample": "Stay signed in on this device."
       },
       {
         "name": "errorMessage",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "Validation text, shown while in error.",
-        "type": "string",
         "sample": "Choose one option."
       },
       {
         "name": "error",
+        "type": "boolean",
         "controllable": false,
         "visual": false,
         "description": "Whether the field is in its error state.",
-        "type": "boolean",
         "default": false
       }
     ],
     "events": [],
-    "states": {
-      "structural": [],
-      "styling": []
-    },
+    "states": [],
     "parts": [],
     "slots": [],
     "composes": [

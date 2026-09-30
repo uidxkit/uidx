@@ -1,5 +1,5 @@
-import type { JsonValue, UidxNode } from '@uidx/format'
-import { specBindings, STATE_AXIS, styleTarget } from '@uidx/schema/design-system'
+import type { ContractSpec, JsonValue, UidxNode } from '@uidx/format'
+import { specBindings, STATE_AXIS, stateKind, styleTarget } from '@uidx/schema/design-system'
 import { cssDeclarations, cssRule, type CssKind } from './css.js'
 import { boundPath, boundProp, type ComponentModel } from './model.js'
 
@@ -15,15 +15,15 @@ export interface HtmlContext {
 }
 
 /** How a state of the contract is selected in CSS. */
-export function stateSelector(state: string): string {
-  switch (state) {
-    case 'hover':
-      return ':hover'
-    case 'focus':
-      return ':focus-visible'
-    case 'active':
-    case 'pressed':
-      return ':active'
+export function stateSelector(state: string, contract?: ContractSpec): string {
+  switch (stateKind(state, contract)) {
+    case 'interaction':
+      return state === 'hover' ? ':hover' : state === 'focus' ? ':focus-visible' : ':active'
+    // A state the element produces itself, exposed through ElementInternals.
+    case 'declared':
+      return `:state(${state})`
+    // A visual boolean prop, reflected as an attribute — and the fallback
+    // for a name the contract cannot place, which the audit has reported.
     default:
       return `[${state}]`
   }
@@ -116,7 +116,7 @@ export function emitCss(model: ComponentModel): string {
   for (const row of model.spec?.styles ?? []) {
     let scoped = root
     for (const [axis, value] of Object.entries(row.keys)) {
-      scoped += axis === STATE_AXIS ? stateSelector(value) : `[${axis}="${value}"]`
+      scoped += axis === STATE_AXIS ? stateSelector(value, model.contract) : `[${axis}="${value}"]`
     }
     for (const [part, props] of Object.entries(row.values)) {
       const info = part === 'root' ? undefined : model.parts.find((entry) => entry.name === part)

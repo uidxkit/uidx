@@ -7,9 +7,14 @@ describe migrations when an existing document or integration is affected.
 ## Unreleased
 
 - The design-system model (ADRs 0012–0017). A `.uidx` file may now carry a
-  `## Contract` (props, events, states, parts, slots, form, accessibility),
+  `## Contract` (props, events, slots, form, accessibility; `<State>` only for
+  states the element produces itself, since a visual boolean prop is a state
+  and `hover`/`focus`/`active` are the browser's; `<Part>` descriptions are
+  optional, the tree's `part=` bindings being the declaration),
   `## Behavior` guidelines, `## Models` and `## Examples` after its visual
-  contract, and a `<Styles>` table beside the root. Declarations only: nothing
+  contract, and a `<Styles>` table beside the root. Models are shared across
+  pages and named by a prop's type (`Contact`, `Contact[]`); a repeating slot
+  names the list prop it iterates (`of="items"`). Declarations only: nothing
   in the file computes. The viewer draws a styles table as the variant set it
   derives, resolves `{item.field}` bindings to a model's samples and `{prop}`
   to the prop's `sample` or default, expands `<Repeat>` into sample rows, and

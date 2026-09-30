@@ -8,7 +8,14 @@ import {
   type UidxDocument,
   type UidxNode,
 } from '@uidx/format'
-import { axesOf, modelByRef, specBindings } from '@uidx/schema/design-system'
+import {
+  axesOf,
+  modelByRef,
+  modelIndex,
+  modelOfType,
+  specBindings,
+  type ModelIndex,
+} from '@uidx/schema/design-system'
 
 /**
  * What every code target reads: a component's identity, contract and tree,
@@ -158,6 +165,8 @@ export interface ComponentModel {
    * props passed through — a pattern, not a new element (ADR 0012 §3).
    */
   composes: UidxNode | undefined
+  /** The models a prop's type may name, across the document (ADR 0015 §1). */
+  models: ModelIndex
 }
 
 /** The prop a bare `{name}` alias names, if the contract declares it. */
@@ -174,19 +183,24 @@ export function boundPath(model: ComponentModel, value: JsonValue): string[] | n
   const target = aliasTarget(value)
   if (target === null || target.includes('#') || !target.includes('.')) return null
   const path = target.split('.')
-  const prop = model.contract?.props.find((entry) => entry.name === path[0] && entry.model)
+  const prop = model.contract?.props.find(
+    (entry) =>
+      entry.name === path[0] && modelOfType(entry.type, model.spec, model.models)?.list === false,
+  )
   return prop ? path : null
 }
 
-/** The declared model a prop or slot refers to. */
+/** The declared model a name refers to, on this page or any other. */
 export function modelOf(model: ComponentModel, ref: string | undefined) {
-  return modelByRef(model.spec, ref)
+  return modelByRef(model.spec, ref, model.models)
 }
 
 export function componentModel(
   component: UidxNode,
   doc: UidxDocument,
   manifest?: Manifest,
+  /** Every model the document set declares; this page's alone when absent. */
+  models?: ModelIndex,
 ): ComponentModel {
   const tags = manifest ? new Set(manifestTags(manifest).keys()) : undefined
   const spec = component.spec ?? doc.spec
@@ -243,6 +257,7 @@ export function componentModel(
     node: component,
     spec,
     contract,
+    models: models ?? modelIndex([doc]),
     parts,
     slots,
     repeats,

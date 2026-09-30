@@ -15,9 +15,9 @@
           "default",
           "checked",
           "indeterminate",
+          "disabled",
           "hover",
-          "focus",
-          "disabled"
+          "focus"
         ]
       }
     }
@@ -26,41 +26,41 @@
     "props": [
       {
         "name": "checked",
+        "type": "boolean",
         "controllable": true,
         "visual": true,
         "description": "Whether the option is selected.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "indeterminate",
+        "type": "boolean",
         "controllable": true,
         "visual": true,
         "description": "Mixed state for a parent summarising children.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "disabled",
+        "type": "boolean",
         "controllable": false,
         "visual": true,
         "description": "Inert and dimmed.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "name",
+        "type": "string",
         "controllable": false,
         "visual": false,
-        "description": "Form field name.",
-        "type": "string"
+        "description": "Form field name."
       },
       {
         "name": "value",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "Submitted while checked.",
-        "type": "string",
         "default": "on"
       }
     ],
@@ -71,21 +71,8 @@
         "detail": "{ checked: boolean }"
       }
     ],
-    "states": {
-      "structural": [
-        "checked",
-        "indeterminate"
-      ],
-      "styling": [
-        "hover",
-        "focus",
-        "disabled"
-      ]
-    },
-    "parts": [
-      "checked-indicator",
-      "indeterminate-indicator"
-    ],
+    "states": [],
+    "parts": [],
     "slots": [],
     "composes": [
       "Field"

@@ -25,49 +25,40 @@
     "props": [
       {
         "name": "label",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "The control's name, shown beside it.",
-        "type": "string",
         "sample": "Email"
       },
       {
         "name": "description",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "Secondary text: hints and consequences.",
-        "type": "string",
         "sample": "We never share it."
       },
       {
         "name": "errorMessage",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "Validation text, shown only while in error.",
-        "type": "string",
         "sample": "Enter a valid address."
       },
       {
         "name": "error",
+        "type": "boolean",
         "controllable": false,
         "visual": true,
         "description": "Whether the field is in its error state.",
-        "type": "boolean",
         "default": false
       }
     ],
     "events": [],
-    "states": {
-      "structural": [
-        "error"
-      ],
-      "styling": []
-    },
-    "parts": [
-      "label",
-      "description",
-      "error"
-    ],
+    "states": [],
+    "parts": [],
     "slots": [
       {
         "name": "control",

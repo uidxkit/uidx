@@ -30,6 +30,38 @@ const button = (props: string, body: string) =>
 const codes = (pages: Parameters<typeof buildSymbolTable>[0]): string[] =>
   buildSymbolTable(pages).diagnostics.map((d) => d.code)
 
+describe('bindings to a contract (ADR 0013 §5, ADR 0015 §2)', () => {
+  it('resolves {label} to a contract prop and {item.name} to a model prop', () => {
+    const doc = parseOrThrow(
+      `${page(
+        'row',
+        `  <Component name="Row" status="draft" implements="x-row">
+    <Text name="name" characters="{item.name}" />
+    <Text name="hint" characters="{hint}" />
+    <Text name="lost" characters="{nothing}" />
+  </Component>`,
+      )}
+## Contract
+
+<Props>
+  <Prop name="item" type="Contact">The row.</Prop>
+  <Prop name="hint" type="string" sample="Hi">Words.</Prop>
+</Props>
+
+## Models
+
+<Model name="Contact">
+  A person.
+  <Field name="name" type="string" sample="Ada">Name.</Field>
+</Model>
+`,
+    )
+    const diagnostics = buildSymbolTable([{ file: 'row.uidx', doc }]).diagnostics
+    expect(diagnostics.map((d) => d.code)).toEqual([WORKSPACE_CODES.UNRESOLVED_REFERENCE])
+    expect(diagnostics[0]!.message).toContain('"Row" declares no property "nothing"')
+  })
+})
+
 const TOKENS = {
   file: 'tokens.uidx',
   doc: parseOrThrow(

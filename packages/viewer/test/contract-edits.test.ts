@@ -65,7 +65,10 @@ const CHECKBOX = page(
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires on toggle.</Event>
 </Events>
-<Parts>checked-indicator, indeterminate-indicator</Parts>
+<Parts>
+  <Part name="checked-indicator">The mark while checked.</Part>
+  <Part name="indeterminate-indicator">The mark while mixed.</Part>
+</Parts>
 `,
 )
 
@@ -84,7 +87,7 @@ const LIST = page(
   <Prop name="items" type="Item[]">Rows.</Prop>
 </Props>
 <Slots>
-  <Slot name="option" repeats model="{models#Item}" accepts="hwc-row">One per item.</Slot>
+  <Slot name="option" repeats of="items" accepts="hwc-row">One per item.</Slot>
   <Slot name="empty">While empty.</Slot>
 </Slots>
 

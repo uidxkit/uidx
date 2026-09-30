@@ -11,10 +11,12 @@ import type {
   FieldSpec,
   JsonValue,
   ModelSpec,
+  PartSpec,
   PropSpec,
   Range,
   SlotSpec,
   SpecNode,
+  StateSpec,
   StyleRow,
 } from './types.js'
 
@@ -45,8 +47,8 @@ export type RegionName = (typeof REGION_NAMES)[number]
 const CONTRACT_ELEMENTS: Record<string, readonly string[]> = {
   Props: ['Prop'],
   Events: ['Event'],
-  States: [],
-  Parts: [],
+  States: ['State'],
+  Parts: ['Part'],
   Slots: ['Slot'],
   Form: [],
   Accessibility: [],
@@ -245,7 +247,7 @@ export class SpecLowerer {
     const spec: ContractSpec = {
       props: [],
       events: [],
-      states: { structural: [], styling: [] },
+      states: [],
       parts: [],
       slots: [],
       composes: [],
@@ -263,28 +265,27 @@ export class SpecLowerer {
           for (const child of node.children) {
             const name = this.str(child, 'name')
             if (!name) continue
-            const model = this.str(child, 'model', false)
-            const type = this.str(child, 'type', false)
-            if (!model && !type) {
+            if (child.attrs.model !== undefined) {
               this.error(
                 CODES.BAD_SPEC,
-                `<Prop name="${name}"> needs a "type" or a "model"`,
+                `<Prop name="${name}">: a model is named by its type — write type="Contact" (ADR 0015 §2)`,
                 child.loc,
               )
             }
+            const type = this.str(child, 'type')
+            if (!type) continue
             if (spec.props.some((prop) => prop.name === name)) {
               this.error(CODES.BAD_SPEC, `<Prop name="${name}"> is declared twice`, child.loc)
               continue
             }
             const prop: PropSpec = {
               name,
+              type,
               controllable: this.flag(child, 'controllable'),
               visual: this.flag(child, 'visual'),
               description: this.described(child),
               loc: child.loc,
             }
-            if (type) prop.type = type
-            if (model) prop.model = model
             if (child.attrs.default !== undefined) prop.default = child.attrs.default
             if (child.attrs.sample !== undefined) prop.sample = child.attrs.sample
             spec.props.push(prop)
@@ -301,13 +302,42 @@ export class SpecLowerer {
           }
           break
         case 'States':
-          spec.states = {
-            structural: this.stringList(node, 'structural'),
-            styling: this.stringList(node, 'styling'),
+          if (node.attrs.structural !== undefined || node.attrs.styling !== undefined) {
+            this.error(
+              CODES.BAD_SPEC,
+              '<States>: a boolean prop marked visual is a state already; declare here only the states the element produces itself, as <State name="…">',
+              node.loc,
+            )
+          }
+          for (const child of node.children) {
+            const name = this.str(child, 'name')
+            if (!name) continue
+            if (spec.states.some((state) => state.name === name)) {
+              this.error(CODES.BAD_SPEC, `<State name="${name}"> is declared twice`, child.loc)
+              continue
+            }
+            const state: StateSpec = { name, description: this.described(child), loc: child.loc }
+            spec.states.push(state)
           }
           break
         case 'Parts':
-          spec.parts = this.names(node)
+          if (node.text !== '' && node.children.length === 0) {
+            this.error(
+              CODES.BAD_SPEC,
+              '<Parts> lists parts as <Part name="…">description</Part> children',
+              node.loc,
+            )
+          }
+          for (const child of node.children) {
+            const name = this.str(child, 'name')
+            if (!name) continue
+            if (spec.parts.some((part) => part.name === name)) {
+              this.error(CODES.BAD_SPEC, `<Part name="${name}"> is declared twice`, child.loc)
+              continue
+            }
+            const part: PartSpec = { name, description: child.text, loc: child.loc }
+            spec.parts.push(part)
+          }
           break
         case 'Slots':
           for (const child of node.children) {
@@ -319,14 +349,21 @@ export class SpecLowerer {
               description: this.described(child),
               loc: child.loc,
             }
-            const model = this.str(child, 'model', false)
+            const of = this.str(child, 'of', false)
             const accepts = this.str(child, 'accepts', false)
-            if (model) slot.model = model
+            if (of) slot.of = of
             if (accepts) slot.accepts = accepts
-            if (slot.repeats && (!model || !accepts)) {
+            if (child.attrs.model !== undefined) {
               this.error(
                 CODES.BAD_SPEC,
-                `<Slot name="${name}"> repeats, so it needs a "model" and an "accepts" (ADR 0017 §1)`,
+                `<Slot name="${name}">: a repeating slot names the list prop it iterates — write of="items" (ADR 0017 §1)`,
+                child.loc,
+              )
+            }
+            if (slot.repeats && (!of || !accepts)) {
+              this.error(
+                CODES.BAD_SPEC,
+                `<Slot name="${name}"> repeats, so it needs an "of" naming the list prop and an "accepts" (ADR 0017 §1)`,
                 child.loc,
               )
             }

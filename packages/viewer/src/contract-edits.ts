@@ -96,7 +96,7 @@ export type ContractView = ComponentView | PartView | RepeatView | SlotView | Ot
 
 /** The parts a component may bind, from the library element and the contract. */
 export function declaredParts(component: UidxNode, element: HeadlessElement | null): PartRow[] {
-  const contract = component.spec?.contract?.parts ?? []
+  const contract = (component.spec?.contract?.parts ?? []).map((part) => part.name)
   const rows = new Map<string, PartRow>()
   for (const part of element?.parts ?? [])
     rows.set(part.name, { name: part.name, declaredBy: 'library', kind: part.kind, boundTo: null })

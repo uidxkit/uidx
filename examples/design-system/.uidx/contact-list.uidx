@@ -31,22 +31,12 @@ Contact.
   <Prop name="name" type="string">Form field name shared by every option.</Prop>
   <Prop name="disabled" type="boolean" default={false} visual>Every option inert.</Prop>
 </Props>
-<States structural={[]} styling={['disabled']} />
 <Slots>
-  <Slot name="option" repeats model="{models#Contact}" accepts="hwc-radio">One option per element of `items`.</Slot>
+  <Slot name="option" repeats of="items" accepts="hwc-radio">One option per element of `items`.</Slot>
   <Slot name="empty">Shown instead of the options while `items` is empty.</Slot>
 </Slots>
 <Accessibility role="radiogroup" keyboard="Arrow keys move the choice" />
 <Composes with="ContactOption, Field" />
-
-## Models
-
-<Model name="Contact">
-  One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.
-  <Field name="id" type="string" key sample={['ada', 'grace', 'linus']}>Stable identity, used for keys and as the submitted value.</Field>
-  <Field name="name" type="string" sample={['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds']}>Full display name.</Field>
-  <Field name="email" type="string" optional sample={['ada@example.com', null, 'linus@example.com']}>Omitted when unknown; the row hides the line.</Field>
-</Model>
 
 ## Behavior
 

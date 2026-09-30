@@ -5,6 +5,7 @@ import {
   hasVariants,
   slots as slotsOf,
   type Diagnostic,
+  type ModelSpec,
   type UidxDocument,
   type UidxNode,
 } from '@uidx/format'
@@ -13,10 +14,14 @@ import {
   axesOf,
   enumValues,
   modelByRef,
+  modelOfType,
   ROOT_PART,
+  slotModel,
+  stateKind,
   styleTarget,
   STATE_AXIS,
   DEFAULT_STATE,
+  type ModelIndex,
 } from './design-system.js'
 
 /**
@@ -27,7 +32,7 @@ import {
  *
  * Pure: a document in, diagnostics out. `uidx check` runs it on every page.
  */
-export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
+export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagnostic[] {
   const out: Diagnostic[] = []
   const error = (code: string, message: string, loc: { start: number; end: number }) =>
     out.push(diagnostic(doc.source, code, message, loc))
@@ -38,38 +43,52 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
   const components = doc.tree.children.filter((node) => node.element === 'Component')
 
   /* ------------------------------------------------------------ models */
-  const usedByRepeat = new Set<string>()
+  // A model is named by a prop's type (ADR 0015 §2) and may live on another
+  // page. Without an index only this page can answer, so a name nobody here
+  // declares is left alone; `uidx check` passes the whole document's.
+  const known = (name: string | undefined) => modelByRef(spec, name, models)
   for (const slot of spec?.contract?.slots ?? []) {
-    const model = modelByRef(spec, slot.model)
-    if (slot.model && !model) {
+    if (!slot.repeats) continue
+    const prop = spec?.contract?.props.find((entry) => entry.name === slot.of)
+    if (!prop) {
       error(
         CODES.MODEL_FIELD,
-        `slot "${slot.name}" names a model that is not declared: ${slot.model}`,
+        `slot "${slot.name}" iterates "${slot.of}", which is not a prop of the contract`,
         slot.loc,
       )
+      continue
     }
-    if (model) usedByRepeat.add(model.name)
-  }
-  for (const prop of spec?.contract?.props ?? []) {
-    if (prop.model && !modelByRef(spec, prop.model)) {
+    if (!prop.type.endsWith('[]')) {
       error(
         CODES.MODEL_FIELD,
-        `prop "${prop.name}" names a model that is not declared: ${prop.model}`,
-        prop.loc,
+        `slot "${slot.name}" iterates "${slot.of}", whose type ${prop.type} is not a list`,
+        slot.loc,
+      )
+      continue
+    }
+    const model = slotModel(slot, spec, models)
+    if (model) {
+      // Checked here, where the repeat is, rather than at the model: the
+      // model may live on another page and not know it fills a repeat.
+      const keys = model.fields.filter((field) => field.key)
+      if (keys.length !== 1) {
+        error(
+          CODES.MODEL_FIELD,
+          `slot "${slot.name}" repeats ${model.name}, so exactly one of its fields must be the key; found ${keys.length}`,
+          slot.loc,
+        )
+      }
+    } else if (models) {
+      error(
+        CODES.MODEL_FIELD,
+        `slot "${slot.name}" iterates "${slot.of}" of type ${prop.type}, but no page declares a model named ${prop.type.slice(0, -2)}`,
+        slot.loc,
       )
     }
   }
   for (const model of spec?.models ?? []) {
-    const keys = model.fields.filter((field) => field.key)
-    if (usedByRepeat.has(model.name) && keys.length !== 1) {
-      error(
-        CODES.MODEL_FIELD,
-        `model "${model.name}" fills a repeating slot, so exactly one field must be its key; found ${keys.length}`,
-        model.loc,
-      )
-    }
     for (const field of model.fields) {
-      if (!field.optional && field.sample === undefined && !modelByRef(spec, field.type)) {
+      if (!field.optional && field.sample === undefined && !known(field.type)) {
         error(
           CODES.MODEL_FIELD,
           `field "${model.name}.${field.name}" is required, so it needs a sample the design tools can draw`,
@@ -93,7 +112,9 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
     }
 
     /* ------------------------------------------------------------- parts */
-    const declaredParts = new Set((contract?.parts ?? []).filter((part) => part !== ROOT_PART))
+    const declaredParts = new Set(
+      (contract?.parts ?? []).map((part) => part.name).filter((part) => part !== ROOT_PART),
+    )
     const bound = new Map<string, UidxNode[]>()
     const walk = (node: UidxNode): void => {
       const part = node.attrs.part?.value
@@ -117,13 +138,6 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
         )
         continue
       }
-      if (contract && !declaredParts.has(part)) {
-        error(
-          CODES.PART_BINDING,
-          `part="${part}" is not declared in <Parts>`,
-          nodes[0]!.attrs.part!.loc,
-        )
-      }
       if (nodes.length > 1) {
         error(
           CODES.PART_BINDING,
@@ -137,8 +151,8 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
         if (!bound.has(part)) {
           error(
             CODES.PART_BINDING,
-            `part "${part}" is declared in <Parts> but no node binds it with part="${part}"`,
-            contract.loc,
+            `part "${part}" is described in <Parts> but no node binds it with part="${part}"`,
+            contract.parts.find((entry) => entry.name === part)?.loc ?? contract.loc,
           )
         }
       }
@@ -211,7 +225,9 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
 
     /* ---------------------------------------------------------- bindings */
     const modelProps = new Map(
-      (contract?.props ?? []).filter((prop) => prop.model).map((prop) => [prop.name, prop]),
+      (contract?.props ?? [])
+        .filter((prop) => modelOfType(prop.type, spec, models)?.list === false)
+        .map((prop) => [prop.name, prop]),
     )
     const checkBindings = (node: UidxNode): void => {
       for (const attr of Object.values(node.attrs)) {
@@ -227,7 +243,7 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
           )
           continue
         }
-        let model = modelByRef(spec, prop.model)
+        let model: ModelSpec | undefined = modelOfType(prop.type, spec, models)?.model
         for (const segment of path) {
           const field = model?.fields.find((entry) => entry.name === segment)
           if (!field) {
@@ -239,7 +255,7 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
             model = undefined
             break
           }
-          model = modelByRef(spec, field.type)
+          model = modelByRef(spec, field.type, models)
         }
       }
       for (const child of node.children) checkBindings(child)
@@ -258,12 +274,21 @@ export function auditDesignSystem(doc: UidxDocument): Diagnostic[] {
     for (const row of rows) {
       for (const [axis, value] of Object.entries(row.keys)) {
         const domain = axes.get(axis)
-        if (!domain) {
+        if (axis === STATE_AXIS) {
+          if (stateKind(value, contract) === undefined) {
+            const prop = contract?.props.find((entry) => entry.name === value)
+            error(
+              CODES.STYLE_ROW,
+              prop?.type === 'boolean'
+                ? `<Style state="${value}">: "${value}" is a boolean prop; mark it visual to draw it as a state`
+                : `<Style state="${value}">: "${value}" is not a visual boolean prop, an interaction state (hover, focus, active) or a <State> the element declares`,
+              row.loc,
+            )
+          }
+        } else if (!domain) {
           error(
             CODES.STYLE_ROW,
-            axis === STATE_AXIS
-              ? `<Style state="${value}">: the contract declares no states`
-              : `<Style ${axis}="${value}">: "${axis}" is not a visual enum prop of the contract`,
+            `<Style ${axis}="${value}">: "${axis}" is not a visual enum prop of the contract`,
             row.loc,
           )
         } else if (!domain.includes(value)) {

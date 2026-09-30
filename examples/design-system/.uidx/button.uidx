@@ -47,8 +47,6 @@ label is consumer text.
   <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
   <Prop name="type" type="'button' | 'submit' | 'reset'" default="button">What activation does to the enclosing form.</Prop>
 </Props>
-<States structural={[]} styling={['hover', 'focus', 'disabled']} />
-<Parts>leading-icon, label</Parts>
 <Form submits="nothing of its own; type=submit calls the form's requestSubmit, type=reset resets it" />
 <Accessibility role="button" keyboard="Enter and Space activate" />
 

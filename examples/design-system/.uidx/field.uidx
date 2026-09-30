@@ -34,8 +34,6 @@ where it sits; the consumer supplies the words.
   <Prop name="errorMessage" type="string" sample="Enter a valid address.">Validation text, shown only while in error.</Prop>
   <Prop name="error" type="boolean" default={false} visual>Whether the field is in its error state.</Prop>
 </Props>
-<States structural={['error']} styling={[]} />
-<Parts>label, description, error</Parts>
 <Slots>
   <Slot name="control">The wrapped control: a checkbox, a radio, a text input.</Slot>
 </Slots>

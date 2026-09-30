@@ -192,8 +192,6 @@ A switch whose parts live in the library's shadow tree.
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires on toggle.</Event>
 </Events>
-<States structural={['checked']} styling={[]} />
-<Parts>thumb, label</Parts>
 `)
   const out = generate({
     pages: [{ file: 'switch.uidx', doc: page }],
@@ -313,7 +311,7 @@ describe('conformance (ADR 0013 §4)', () => {
 describe('types', () => {
   it("resolves model references and the format's image and date types", () => {
     const model = componentModel(CONTACT_ITEM.tree.children[0]!, CONTACT_ITEM)
-    expect(tsType(model, undefined, '{models#Contact}')).toBe('Contact')
+    expect(tsType(model, 'Contact')).toBe('Contact')
     expect(tsType(model, 'Contact[]')).toBe('Contact[]')
     expect(tsType(model, 'image')).toBe('string')
     expect(tsType(model, "'a' | 'b'")).toBe("'a' | 'b'")

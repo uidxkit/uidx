@@ -26,9 +26,9 @@
         ],
         "state": [
           "default",
+          "disabled",
           "hover",
-          "focus",
-          "disabled"
+          "focus"
         ]
       }
     }
@@ -37,58 +37,48 @@
     "props": [
       {
         "name": "label",
+        "type": "string",
         "controllable": false,
         "visual": false,
         "description": "The button's text.",
-        "type": "string",
         "sample": "Save changes"
       },
       {
         "name": "variant",
+        "type": "'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link'",
         "controllable": false,
         "visual": true,
         "description": "Emphasis.",
-        "type": "'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link'",
         "default": "primary"
       },
       {
         "name": "size",
+        "type": "'small' | 'medium' | 'large'",
         "controllable": false,
         "visual": true,
         "description": "Padding and type scale.",
-        "type": "'small' | 'medium' | 'large'",
         "default": "medium"
       },
       {
         "name": "disabled",
+        "type": "boolean",
         "controllable": false,
         "visual": true,
         "description": "Inert and dimmed.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "type",
+        "type": "'button' | 'submit' | 'reset'",
         "controllable": false,
         "visual": false,
         "description": "What activation does to the enclosing form.",
-        "type": "'button' | 'submit' | 'reset'",
         "default": "button"
       }
     ],
     "events": [],
-    "states": {
-      "structural": [],
-      "styling": [
-        "hover",
-        "focus",
-        "disabled"
-      ]
-    },
-    "parts": [
-      "leading-icon",
-      "label"
-    ],
+    "states": [],
+    "parts": [],
     "slots": [],
     "composes": [],
     "form": {

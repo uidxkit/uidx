@@ -4,6 +4,7 @@ import { tokensCss } from './css.js'
 import { checkConformance } from './conformance.js'
 import { emitCss, emitHtml } from './html.js'
 import { componentModel, type ComponentModel, type Manifest } from './model.js'
+import { modelIndex } from '@uidx/schema/design-system'
 import { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime } from './react.js'
 
 export type Target = 'html' | 'react' | 'contract'
@@ -36,13 +37,15 @@ export function generate(input: GenerateInput): GenerateOutput {
   const files = new Map<string, string>()
   const diagnostics: GenerateOutput['diagnostics'] = []
 
+  // Models are shared across pages (ADR 0015 §1): one index for every component.
+  const index = modelIndex(input.pages.map((page) => page.doc))
   const models: ComponentModel[] = []
   const owner = new Map<ComponentModel, string>()
   for (const { file, doc } of input.pages) {
     if (doc.tree.element === 'Tokens') continue
     for (const node of doc.tree.children) {
       if (node.element !== 'Component') continue
-      const model = componentModel(node, doc, input.manifest)
+      const model = componentModel(node, doc, input.manifest, index)
       models.push(model)
       owner.set(model, file)
     }
@@ -71,32 +74,13 @@ export function generate(input: GenerateInput): GenerateOutput {
   if (targets.has('react')) {
     if (tokens) files.set('react/tokens.css', tokens)
     const tags = new Set<string>()
-    const modelSpecs = new Map<
-      string,
-      { spec: ComponentModel['spec']; model: ComponentModel['spec'] }
-    >()
     for (const model of rendered) {
       files.set(`react/${model.identifier}.tsx`, emitReact(model, { components: byName }))
       files.set(`react/${model.stem}.css`, emitCss(model))
       if (model.tag) tags.add(model.tag)
-      for (const part of model.parts) tags.add(part.tag)
-      for (const spec of model.spec?.models ?? [])
-        modelSpecs.set(spec.name, { spec: model.spec, model: model.spec })
+      for (const part of model.parts) if (part.kind === 'element') tags.add(part.tag)
     }
-    const allModels = [
-      ...new Map(
-        rendered.flatMap((model) =>
-          (model.spec?.models ?? []).map((m) => [m.name, { m, spec: model.spec }]),
-        ),
-      ).values(),
-    ]
-    files.set(
-      'react/models.ts',
-      emitModels(
-        allModels.map((entry) => entry.m),
-        mergeSpecs(allModels.map((entry) => entry.spec)),
-      ),
-    )
+    files.set('react/models.ts', emitModels(index))
     files.set('react/runtime.ts', emitRuntime())
     files.set('react/elements.d.ts', emitElementTypes([...tags]))
     files.set('react/index.ts', emitIndex(rendered))
@@ -115,21 +99,4 @@ export function generate(input: GenerateInput): GenerateOutput {
   }
 
   return { files, diagnostics }
-}
-
-/** One spec whose models are the union of several files' models, for `models.ts`. */
-function mergeSpecs(
-  specs: readonly (ComponentModel['spec'] | undefined)[],
-): ComponentModel['spec'] {
-  const models = new Map<string, NonNullable<ComponentModel['spec']>['models']>()
-  const merged: NonNullable<NonNullable<ComponentModel['spec']>['models']> = []
-  for (const spec of specs) {
-    for (const model of spec?.models ?? []) {
-      if (!models.has(model.name)) {
-        models.set(model.name, [model])
-        merged.push(model)
-      }
-    }
-  }
-  return { models: merged }
 }

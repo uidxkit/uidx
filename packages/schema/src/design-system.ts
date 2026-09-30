@@ -33,23 +33,64 @@ import {
  * never links them, and a gesture on one produces no patch (ADR 0016 §4).
  */
 
-/** The `state` axis every component with declared states has (ADR 0016 §1). */
-export const STATE_AXIS = 'state'
-export const DEFAULT_STATE = 'default'
+import { axesOf, DEFAULT_STATE, STATE_AXIS } from '@uidx/format'
 /** The styles-table name for the component's own frame (ADR 0016 §2). */
 export const ROOT_PART = 'root'
 
 /* --------------------------------------------------------------- models */
 
-/** `{models#Contact}` → the model named `Contact` in `spec`, or undefined. */
+/** Every model a document set declares, by name (ADR 0015 §1: models are shared across pages). */
+export type ModelIndex = ReadonlyMap<string, ModelSpec>
+
+export function modelIndex(docs: Iterable<UidxDocument>): Map<string, ModelSpec> {
+  const out = new Map<string, ModelSpec>()
+  for (const doc of docs)
+    for (const model of doc.spec?.models ?? []) if (!out.has(model.name)) out.set(model.name, model)
+  return out
+}
+
+/**
+ * `Contact` → the model of that name: this page's first, then the shared
+ * index. A `{models#Contact}` spelling still resolves, so a file written
+ * before models were named by type keeps working.
+ */
 export function modelByRef(
   spec: DocumentSpec | undefined,
   ref: string | undefined,
+  models?: ModelIndex,
 ): ModelSpec | undefined {
-  if (!spec?.models || ref === undefined) return undefined
+  if (ref === undefined) return undefined
   const target = aliasTarget(ref) ?? ref
   const name = target.includes('#') ? target.slice(target.indexOf('#') + 1) : target
-  return spec.models.find((model) => model.name === name)
+  return spec?.models?.find((model) => model.name === name) ?? models?.get(name)
+}
+
+/**
+ * The model a type string names (ADR 0015 §2): `Contact` is one, `Contact[]`
+ * a list of them. Anything else — `string`, an enum, `image` — is not a
+ * model and answers undefined.
+ */
+export function modelOfType(
+  type: string | undefined,
+  spec: DocumentSpec | undefined,
+  models?: ModelIndex,
+): { model: ModelSpec; list: boolean } | undefined {
+  if (!type) return undefined
+  const list = type.endsWith('[]')
+  const model = modelByRef(spec, list ? type.slice(0, -2) : type, models)
+  return model ? { model, list } : undefined
+}
+
+/** The model each filling of a repeating slot receives: the element type of the prop it iterates. */
+export function slotModel(
+  slot: { of?: string } | undefined,
+  spec: DocumentSpec | undefined,
+  models?: ModelIndex,
+): ModelSpec | undefined {
+  if (!slot?.of) return undefined
+  const prop = spec?.contract?.props.find((entry) => entry.name === slot.of)
+  const found = modelOfType(prop?.type, spec, models)
+  return found?.list ? found.model : undefined
 }
 
 /**
@@ -92,8 +133,11 @@ export function specBindings(
     }
   }
   for (const prop of spec.contract.props) {
-    const model = modelByRef(spec, prop.model)
-    if (model) bindModel(prop.name, model, 0)
+    const found = modelOfType(prop.type, spec)
+    // A list prop binds nothing of its own: its elements reach the row
+    // component one at a time, through that component's own model prop.
+    if (found && !found.list) bindModel(prop.name, found.model, 0)
+    else if (found) continue
     else {
       // The sample is what a demonstration shows; the default is what the
       // contract promises. A prop with neither stays unbound, and a text
@@ -106,58 +150,21 @@ export function specBindings(
 }
 
 /* ------------------------------------------------------------------ axes */
+// The axes of a component are a fact about its contract alone, so they live
+// in `@uidx/format` (`contract.ts`) where the server's lint can read them
+// too; re-exported here so callers of this module see one surface.
+export {
+  axesOf,
+  DEFAULT_STATE,
+  enumValues,
+  INTERACTION_STATES,
+  STATE_AXIS,
+  stateAxis,
+  stateKind,
+  visualAxes,
+} from '@uidx/format'
 
-/** `'a' | 'b'` → `['a', 'b']`; anything else is not an enum. */
-export function enumValues(type: string | undefined): string[] | null {
-  if (!type) return null
-  const parts = type.split('|').map((part) => part.trim())
-  const values: string[] = []
-  for (const part of parts) {
-    const match = /^'([^']*)'$|^"([^"]*)"$/.exec(part)
-    if (!match) return null
-    values.push(match[1] ?? match[2] ?? '')
-  }
-  return values.length ? values : null
-}
-
-/** The visual enum props of a contract, each with its values, default first. */
-export function visualAxes(contract: ContractSpec | undefined): Map<string, string[]> {
-  const axes = new Map<string, string[]>()
-  for (const prop of contract?.props ?? []) {
-    if (!prop.visual) continue
-    const values = enumValues(prop.type)
-    if (!values) continue
-    const fallback = typeof prop.default === 'string' ? prop.default : undefined
-    axes.set(
-      prop.name,
-      fallback && values.includes(fallback)
-        ? [fallback, ...values.filter((value) => value !== fallback)]
-        : values,
-    )
-  }
-  return axes
-}
-
-/** Every state the contract declares, `default` first (ADR 0016 §1). */
-export function stateAxis(contract: ContractSpec | undefined): string[] {
-  const states = [
-    ...(contract?.states.structural ?? []),
-    ...(contract?.states.styling ?? []),
-  ].filter((state) => state !== DEFAULT_STATE)
-  return [DEFAULT_STATE, ...states]
-}
-
-/**
- * The variant space of a component: its visual enum props and its states,
- * in declaration order with the state axis last. Empty when the contract
- * declares neither, which is also when nothing needs deriving.
- */
-export function axesOf(spec: DocumentSpec | undefined): Map<string, string[]> {
-  const axes = visualAxes(spec?.contract)
-  const states = stateAxis(spec?.contract)
-  if (states.length > 1) axes.set(STATE_AXIS, states)
-  return axes
-}
+/* --------------------------------------------------------- derivation */
 
 function combinations(axes: ReadonlyMap<string, readonly string[]>): Map<string, string>[] {
   let out: Map<string, string>[] = [new Map()]
@@ -169,8 +176,6 @@ function combinations(axes: ReadonlyMap<string, readonly string[]>): Map<string,
   }
   return out
 }
-
-/* --------------------------------------------------------- derivation */
 
 function synthAttr(
   name: string,

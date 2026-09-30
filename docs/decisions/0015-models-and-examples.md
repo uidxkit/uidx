@@ -35,13 +35,15 @@ and sample values so the canvas and Figma have something to draw.
   a `null` entry shows the absent-optional layout. Required fields must have
   a sample.
 - Exactly one `key` field per model used by a repeating slot.
-- Models live in the file that uses them or on a shared models page, and are
-  referenced as `{models#Contact}`, the alias syntax tokens already use.
+- Models are shared across the document: declared once, in the file of the
+  component that displays them or on a shared models page, and named by a
+  prop's `type` — `Contact`, or `Contact[]` for a list. The audit refuses a
+  second declaration of the same name, and a name no page declares.
 
 ### 2. Bindings are lookups
 
-A prop declared with `model="{models#Contact}"` makes `{item.name}` a legal
-alias inside the component's visual contract, resolving to the prop's field.
+A prop declared with `type="Contact"` makes `{item.name}` a legal alias inside
+the component's visual contract, resolving to the prop's field.
 In the canvas it resolves to the model's sample (the n-th sample inside a
 repeat); in code to `item.name`; in Figma to a text or image property. Only
 `{prop.field}` and `{prop.field.field}` are allowed — no operators, no

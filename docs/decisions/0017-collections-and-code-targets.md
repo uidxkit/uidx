@@ -18,13 +18,13 @@ A slot may repeat, carry a model, and constrain what fills it:
 
 ```mdx
 <Slots>
-  <Slot name="item" repeats model="{models#Contact}" accepts="hwc-list-item">One filling per element of `items`.</Slot>
+  <Slot name="item" repeats of="items" accepts="hwc-list-item">One filling per element of `items`.</Slot>
 </Slots>
 ```
 
-- `repeats` means one filling per element of the prop whose type is the
-  model array.
-- `model` is the parameter each filling receives.
+- `repeats` means one filling per element of a list prop.
+- `of` names that prop; its element type is the model each filling receives,
+  so the model is written once, on the prop.
 - `accepts` names the headless root an item component must implement; the
   audit refuses a filling that does not.
 

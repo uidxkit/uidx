@@ -28,30 +28,36 @@ parser recognised there before is unchanged; the new regions are parsed into
 ```mdx
 <Props>
   <Prop name="checked" type="boolean" default={false} controllable visual>Whether the option is selected.</Prop>
-  <Prop name="item" model="{models#Contact}">The row to show.</Prop>
+  <Prop name="item" type="Contact">The row to show.</Prop>
 </Props>
 <Events><Event name="change" detail="{ checked: boolean }">Fires once per user toggle.</Event></Events>
-<States structural={['checked', 'indeterminate']} styling={['hover', 'focus', 'disabled']} />
-<Parts>checked-indicator, indeterminate-indicator</Parts>
+<States><State name="invalid">The element failed its own validation.</State></States>
+<Parts><Part name="checked-indicator">The mark drawn while checked.</Part></Parts>
 <Slots><Slot name="label">Consumer text; styled here, filled there.</Slot></Slots>
 <Form participates submits="value while checked, nothing otherwise" />
 <Accessibility role="checkbox" keyboard="Space toggles" />
 <Composes with="Field" />
 ```
 
-- `Prop`: `name`, `type` (a TypeScript-ish type string, or `model`), `default`,
-  `sample` (a demonstration value for the canvas and generated markup, in the
-  sense of ADR 0015 §1 — a required text prop has no default and still needs
-  words to draw; it changes nothing in generated code), `controllable`
-  (framework adapters add controlled/uncontrolled handling), `visual` (may
-  drive appearance: an axis in ADR 0016 and a Figma variant property). Text
-  content is the description and is required.
+- `Prop`: `name`, `type` (a TypeScript-ish type string; a name that matches a
+  `<Model>` on any page means the prop receives that model, `Contact[]` a list
+  of them — ADR 0015 §2), `default`, `sample` (a demonstration value for the
+  canvas and generated markup, in the sense of ADR 0015 §1 — a required text
+  prop has no default and still needs words to draw; it changes nothing in
+  generated code), `controllable` (framework adapters add
+  controlled/uncontrolled handling), `visual` (drawn in the variant set: an
+  enum prop is an axis, a boolean prop is a state — ADR 0016 §1). Text content
+  is the description and is required.
 - `Event`: `name`, `detail`; description required.
-- `States`: `structural` states mount or unmount parts; `styling` states only
-  change appearance. Both are the headless root's states.
-- `Parts`: the part names the headless root defines. Every one must be bound
-  in the visual contract by `part="…"`.
-- `Slot`: consumer-filled positions; `repeats`, `model` and `accepts` are
+- `States`: only the states the element produces itself — `invalid` after
+  validation, `open` on a disclosure that manages itself — as `<State name>`
+  with a description. A boolean prop marked `visual` is a state already, and
+  the browser's `hover`, `focus` and `active` need no declaration; most
+  contracts have no `<States>` at all.
+- `Parts`: optional descriptions of the headless root's parts, as `<Part
+  name>`. The tree's `part="…"` bindings are the declaration; a part described
+  here must be bound.
+- `Slot`: consumer-filled positions; `repeats`, `of` and `accepts` are
   ADR 0017 §1. A slot named here must be a `<Slot name="…">` in the visual
   contract.
 - `Form`, `Accessibility`, `Composes`: declarations copied into `SPEC.md` and

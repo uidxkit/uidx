@@ -38,8 +38,12 @@ Lets a user toggle one option.
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires once per user toggle.</Event>
 </Events>
-<States structural={['checked']} styling={['hover', 'focus', 'disabled']} />
-<Parts>root, checked-indicator</Parts>
+<States>
+  <State name="invalid">The element failed its own validation.</State>
+</States>
+<Parts>
+  <Part name="checked-indicator">The mark shown while checked.</Part>
+</Parts>
 <Slots>
   <Slot name="label">Consumer text, styled here.</Slot>
 </Slots>
@@ -84,11 +88,12 @@ describe('spec regions', () => {
     expect(spec.contract!.events).toMatchObject([
       { name: 'change', detail: '{ checked: boolean }' },
     ])
-    expect(spec.contract!.states).toEqual({
-      structural: ['checked'],
-      styling: ['hover', 'focus', 'disabled'],
-    })
-    expect(spec.contract!.parts).toEqual(['root', 'checked-indicator'])
+    expect(spec.contract!.states.map((state) => [state.name, state.description])).toEqual([
+      ['invalid', 'The element failed its own validation.'],
+    ])
+    expect(spec.contract!.parts.map((part) => [part.name, part.description])).toEqual([
+      ['checked-indicator', 'The mark shown while checked.'],
+    ])
     expect(spec.contract!.slots).toMatchObject([{ name: 'label', repeats: false }])
     expect(spec.contract!.form).toEqual({
       participates: true,
@@ -192,13 +197,31 @@ describe('spec regions', () => {
     expect(noSample.diagnostics).toEqual([])
   })
 
-  it('refuses a repeating slot without a model and an accepted root', () => {
+  it('refuses a repeating slot without the list prop it iterates and an accepted root', () => {
     const base = '---\nid: r\n---\n\n## Visual Contract\n\n<Page><Frame name="a" /></Page>\n'
     const { diagnostics } = parse(
       `${base}\n## Contract\n\n<Slots><Slot name="item" repeats>Rows.</Slot></Slots>\n`,
     )
     expect(diagnostics.map((d) => d.code)).toEqual([CODES.BAD_SPEC])
-    expect(diagnostics[0]!.message).toContain('accepts')
+    expect(diagnostics[0]!.message).toContain('"of"')
+  })
+
+  it('names the old spellings and says what replaced them', () => {
+    const base = '---\nid: r\n---\n\n## Visual Contract\n\n<Page><Frame name="a" /></Page>\n'
+    const messages = (region: string) =>
+      parse(`${base}\n## Contract\n\n${region}\n`).diagnostics.map((d) => d.message)
+    expect(messages(`<States structural={['checked']} styling={['hover']} />`)[0]).toContain(
+      'visual is a state already',
+    )
+    expect(messages('<Parts>a, b</Parts>')[0]).toContain('<Part name=')
+    expect(
+      messages('<Props><Prop name="item" model="{models#Contact}">Row.</Prop></Props>')[0],
+    ).toContain('type="Contact"')
+    expect(
+      messages(
+        '<Slots><Slot name="item" repeats model="{models#Contact}" accepts="x-row">Rows.</Slot></Slots>',
+      )[0],
+    ).toContain('of="items"')
   })
 
   it('reports an element a region does not know, with what it allows', () => {

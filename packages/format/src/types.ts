@@ -481,10 +481,12 @@ export interface SpecNode {
 /** A `<Prop>` of the contract (ADR 0013 §2). */
 export interface PropSpec {
   name: string
-  /** A TypeScript-ish type string, or undefined when `model` is set. */
-  type?: string
-  /** A `{models#Name}` reference, for a prop that receives a model. */
-  model?: string
+  /**
+   * A TypeScript-ish type string. A name that matches a `<Model>` — on this
+   * page or any other — means the prop receives that model (ADR 0015 §2);
+   * `Contact[]` is a list of them.
+   */
+  type: string
   default?: JsonValue
   /**
    * A demonstration value for the canvas and generated markup, shown where
@@ -505,12 +507,31 @@ export interface EventSpec {
   loc: Range
 }
 
+/**
+ * A state the element produces itself (ADR 0013 §2): `invalid` after
+ * validation, `open` on a disclosure that manages itself. Not a prop, since
+ * the consumer cannot set it, and not the browser's `hover` or `focus`,
+ * which need no declaration. Rendered as `:state(name)` in CSS.
+ */
+export interface StateSpec {
+  name: string
+  description: string
+  loc: Range
+}
+
+/** A part of the headless root, described (ADR 0013 §2). Optional: the tree's `part="…"` bindings are the declaration. */
+export interface PartSpec {
+  name: string
+  description: string
+  loc: Range
+}
+
 /** A consumer-filled position (ADR 0013 §2, ADR 0017 §1). */
 export interface SlotSpec {
   name: string
   repeats: boolean
-  /** The model each filling receives, for a repeating slot. */
-  model?: string
+  /** The list prop a repeating slot iterates; its element type is the model each filling receives. */
+  of?: string
   /** The headless root a filling must implement, for a repeating slot. */
   accepts?: string
   description: string
@@ -520,8 +541,8 @@ export interface SlotSpec {
 export interface ContractSpec {
   props: PropSpec[]
   events: EventSpec[]
-  states: { structural: string[]; styling: string[] }
-  parts: string[]
+  states: StateSpec[]
+  parts: PartSpec[]
   slots: SlotSpec[]
   form?: { participates: boolean; submits?: string }
   accessibility?: Record<string, JsonValue>

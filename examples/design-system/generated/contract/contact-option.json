@@ -13,9 +13,9 @@
         "state": [
           "default",
           "checked",
+          "disabled",
           "hover",
-          "focus",
-          "disabled"
+          "focus"
         ]
       }
     }
@@ -24,40 +24,40 @@
     "props": [
       {
         "name": "item",
+        "type": "Contact",
         "controllable": false,
         "visual": false,
-        "description": "The person this option stands for. Display-ready; nothing is derived here.",
-        "model": "{models#Contact}"
+        "description": "The person this option stands for. Display-ready; nothing is derived here."
       },
       {
         "name": "checked",
+        "type": "boolean",
         "controllable": true,
         "visual": true,
         "description": "Whether this option is the chosen one.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "disabled",
+        "type": "boolean",
         "controllable": false,
         "visual": true,
         "description": "Inert and dimmed.",
-        "type": "boolean",
         "default": false
       },
       {
         "name": "value",
+        "type": "string",
         "controllable": false,
         "visual": false,
-        "description": "Submitted when chosen; normally the contact's id.",
-        "type": "string"
+        "description": "Submitted when chosen; normally the contact's id."
       },
       {
         "name": "name",
+        "type": "string",
         "controllable": false,
         "visual": false,
-        "description": "Form field name, shared with the group.",
-        "type": "string"
+        "description": "Form field name, shared with the group."
       }
     ],
     "events": [
@@ -67,19 +67,8 @@
         "detail": "{ checked: boolean }"
       }
     ],
-    "states": {
-      "structural": [
-        "checked"
-      ],
-      "styling": [
-        "hover",
-        "focus",
-        "disabled"
-      ]
-    },
-    "parts": [
-      "checked-indicator"
-    ],
+    "states": [],
+    "parts": [],
     "slots": [],
     "composes": [
       "ContactList"

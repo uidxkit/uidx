@@ -4,7 +4,7 @@ import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
 import { formatDiagnostic, parse, type UidxDocument } from '@uidx/format'
 import { generate, type Manifest, type Target } from '@uidx/codegen'
-import { findManifest } from '@uidx/server'
+import { findManifest } from '@uidx/server/document'
 import type { Io } from '../cli.js'
 
 /**

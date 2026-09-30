@@ -58,8 +58,6 @@ Lets a user toggle one option.
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires once per user toggle.</Event>
 </Events>
-<States structural={['checked', 'indeterminate']} styling={['hover', 'focus', 'disabled']} />
-<Parts>checked-indicator</Parts>
 
 ## Behavior
 
@@ -91,8 +89,6 @@ Pairs a control with its label, description and error.
   <Prop name="description" type="string">Helper text.</Prop>
   <Prop name="error" type="boolean" default={false} visual>Shows the error state.</Prop>
 </Props>
-<States structural={['error']} styling={[]} />
-<Parts>label, description</Parts>
 <Slots><Slot name="control">The wrapped control.</Slot></Slots>
 `)
 
@@ -118,15 +114,13 @@ id: contact-item
 ## Contract
 
 <Props>
-  <Prop name="item" model="{models#Contact}">The row to show.</Prop>
+  <Prop name="item" type="Contact">The row to show.</Prop>
   <Prop name="checked" type="boolean" default={false} controllable visual>Whether this row is the chosen one.</Prop>
   <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
   <Prop name="value" type="string">Submitted when chosen.</Prop>
   <Prop name="name" type="string">Form field name.</Prop>
 </Props>
 <Events><Event name="change" detail="{ checked: boolean }">Fires when chosen.</Event></Events>
-<States structural={['checked']} styling={['disabled']} />
-<Parts>checked-indicator</Parts>
 
 ## Models
 
@@ -161,18 +155,9 @@ id: contact-list
   <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
 </Props>
 <Slots>
-  <Slot name="item" repeats model="{models#Contact}" accepts="hwc-radio">One per row.</Slot>
+  <Slot name="item" repeats of="items" accepts="hwc-radio">One per row.</Slot>
   <Slot name="empty">Shown while empty.</Slot>
 </Slots>
-
-## Models
-
-<Model name="Contact">
-  One row of the list.
-  <Field name="id" type="string" key sample="c1">Identity.</Field>
-  <Field name="name" type="string" sample={['Ada', 'Grace']}>Display name.</Field>
-  <Field name="email" type="string" optional sample={['ada@example.com', null]}>Omitted when unknown.</Field>
-</Model>
 `)
 
 export const MANIFEST = {

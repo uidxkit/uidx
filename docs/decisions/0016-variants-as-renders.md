@@ -17,9 +17,14 @@ everything else is a computation over identity, props and theme.
 
 ### 1. Axes come from the contract
 
-A component's variant space is its `visual` enum props (ADR 0013 §2) plus the
-states its headless root declares. A `variants={{ … }}` attribute is no longer
-needed; when both are present they must agree.
+A component's variant space is its `visual` enum props (ADR 0013 §2), each an
+axis, plus one `state` axis. The `state` axis is `default`, then every
+`visual` boolean prop in declaration order, then the interaction states the
+styles table names (`hover`, `focus`, `active` — the browser's, never
+declared), then the states the element declares itself (`<State>`, ADR 0013
+§2). Enum props are axes, booleans are states: that is the whole rule, and it
+is why a boolean is never declared twice. A `variants={{ … }}` attribute is no
+longer needed; when both are present they must agree.
 
 ### 2. Appearance variants: a styles table
 

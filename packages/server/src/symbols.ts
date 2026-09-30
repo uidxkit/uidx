@@ -3,6 +3,7 @@ import {
   isUnitLength,
   UNITLESS_NUMBER_PROPS,
   aliasTarget,
+  axesOf,
   BINDING_RULE,
   bindingFits,
   componentProps,
@@ -267,7 +268,10 @@ function checkInstanceValues(pages: readonly PageSource[]): (Diagnostic & { file
         // ADR 0005 §4: an axis is assigned through the same `props` object F7
         // fills in, and §2 makes the two names one namespace — so both are read
         // out of the same map here, and neither can be mistaken for the other.
-        const { axes } = componentVariants(component)
+        // A component with a styles table derives its axes from its contract
+        // (ADR 0016 §1) and declares no `variants` attribute.
+        const authored = componentVariants(component).axes
+        const axes = authored.size ? authored : axesOf(component.spec)
         const known = [...declared.keys(), ...axes.keys()]
 
         const { line, column } = positionAt(
@@ -285,6 +289,11 @@ function checkInstanceValues(pages: readonly PageSource[]): (Diagnostic & { file
         let sound = true
         for (const [key, value] of instanceProps(node).values) {
           const domain = axes.get(key)
+          // `{label}` passes the enclosing component's own prop through (ADR
+          // 0017 §3); its value is that component's business, checked where
+          // it is declared.
+          if ((domain || declared.has(key)) && typeof value === 'string' && aliasTarget(value))
+            continue
           if (domain) {
             if (typeof value !== 'string' || !domain.includes(value)) {
               sound = false
@@ -327,7 +336,9 @@ function checkInstanceValues(pages: readonly PageSource[]): (Diagnostic & { file
         // designed is a mistake at the *use* site rather than in the component.
         // Only asked when every axis value was legal — otherwise this would
         // repeat a complaint the loop above already made, in worse words.
-        if (axes.size && sound) {
+        // A derived set (ADR 0016) draws every combination by construction,
+        // so there is nothing sparse to ask about.
+        if (authored.size && sound) {
           const asked = askedCombination(node, axes)
           if (!component.children.some((child) => child.name === asked)) {
             out.push({
@@ -775,6 +786,12 @@ function checkPropertyBinding(
     ]
   }
 
+  // `{item.name}` reads a field of a model prop (ADR 0015 §2): the head is
+  // the prop, and the audit checks the field against the model.
+  if (reference.target.includes('.')) {
+    const head = reference.target.slice(0, reference.target.indexOf('.'))
+    if (component.spec?.contract?.props.some((prop) => prop.name === head)) return []
+  }
   const declared = componentProps(component).declared
   const declaration = declared.get(reference.target)
   if (!declaration) {

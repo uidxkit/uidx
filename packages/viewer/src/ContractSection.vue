@@ -103,7 +103,9 @@ function findNode(root: UidxNode, address: string): UidxNode | null {
 /** `'  '`-indented so the picker reads as the layer tree does. */
 const indent = (depth: number): string => '  '.repeat(depth)
 
-const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?? prop.type ?? ''
+/** A visual boolean is drawn as a state of the set (ADR 0016 §1); the list says so. */
+const isState = (prop: { type: string; visual: boolean }): boolean =>
+  prop.visual && prop.type === 'boolean'
 </script>
 
 <template>
@@ -313,7 +315,11 @@ const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?
         </div>
       </template>
 
-      <template v-if="contract && (contract.props.length || contract.events.length)">
+      <template
+        v-if="
+          contract && (contract.props.length || contract.events.length || contract.states.length)
+        "
+      >
         <header class="head">
           <span class="title">Contract</span>
           <span class="of">from the file</span>
@@ -324,8 +330,31 @@ const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?
           class="row read"
           :data-prop="prop.name"
         >
-          <span class="name" :title="prop.description">{{ prop.name }}</span>
-          <span class="type" :title="typeOf(prop)">{{ typeOf(prop) }}</span>
+          <span class="name" :title="prop.description">
+            <span class="name-text">{{ prop.name }}</span>
+            <span
+              v-if="isState(prop)"
+              class="pill"
+              title="A visual boolean: drawn as a state of the set, styled by a state row"
+              >state</span
+            >
+          </span>
+          <span class="type" :title="prop.type">{{ prop.type }}</span>
+          <span class="reset-spacer" />
+        </div>
+        <div
+          v-for="state in contract.states"
+          :key="state.name"
+          class="row read"
+          :data-state="state.name"
+        >
+          <span class="name" :title="state.description">
+            <span class="name-text">{{ state.name }}</span>
+            <span class="pill" title="A state the element produces itself, styled through :state()"
+              >element</span
+            >
+          </span>
+          <span class="type">state</span>
           <span class="reset-spacer" />
         </div>
         <div
@@ -602,7 +631,13 @@ const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?
   min-height: var(--row-h);
   padding: 2px 0;
 }
+.name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .pill {
+  flex: none;
   padding: 0 5px;
   border-radius: 999px;
   background: var(--raised);

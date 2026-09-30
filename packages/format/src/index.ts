@@ -114,8 +114,20 @@ export {
   type PropSpec,
   type SlotSpec,
   type SpecNode,
+  type StateSpec,
+  type PartSpec,
   type StyleRow,
 } from './types.js'
 export { buildSpec, REGION_NAMES, SpecLowerer, type Region, type RegionName } from './spec.js'
 export { SCOPE_FOR_PROP, scopesForProp } from './scope-for-prop.js'
 export * from './lengths.js'
+export {
+  axesOf,
+  DEFAULT_STATE,
+  enumValues,
+  INTERACTION_STATES,
+  STATE_AXIS,
+  stateAxis,
+  stateKind,
+  visualAxes,
+} from './contract.js'

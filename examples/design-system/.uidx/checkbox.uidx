@@ -41,8 +41,6 @@ box and its marks are the design system's; the label comes from a Field.
 <Events>
   <Event name="change" detail="{ checked: boolean }">Fires once per user toggle, never when set from code.</Event>
 </Events>
-<States structural={['checked', 'indeterminate']} styling={['hover', 'focus', 'disabled']} />
-<Parts>checked-indicator, indeterminate-indicator</Parts>
 <Form participates submits="value while checked, nothing otherwise" />
 <Accessibility role="checkbox" keyboard="Space toggles" />
 <Composes with="Field" />

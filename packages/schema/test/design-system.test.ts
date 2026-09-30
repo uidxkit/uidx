@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CODES, parseOrThrow, type JsonValue, type UidxNode } from '@uidx/format'
-import { auditDesignSystem, contractJson, toSceneGraph } from '../src/index.js'
+import { auditDesignSystem, contractJson, modelIndex, toSceneGraph } from '../src/index.js'
 
 /**
  * The design-system model on the scene side (ADRs 0013–0017): a styles table
@@ -42,8 +42,7 @@ const CHECKBOX_SOURCE = page(
   <Prop name="size" type="'sm' | 'md'" default="md" visual>Box size.</Prop>
   <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
 </Props>
-<States structural={['checked']} styling={['hover', 'disabled']} />
-<Parts>checked-indicator</Parts>
+<Parts><Part name="checked-indicator">The mark drawn while checked.</Part></Parts>
 <Slots><Slot name="label">Consumer text.</Slot></Slots>
 `,
 )
@@ -63,13 +62,14 @@ describe('a styles table derives the variant set (ADR 0016)', () => {
   it('draws the component as a set with one tree per combination, default first', () => {
     expect(set.type).toBe('COMPONENT_SET')
     const names = (set.childIds ?? []).map((id) => scene.graph.getNode(id)!.name)
-    // Two sizes, default first, times four states, default first.
+    // Two sizes, default first, times four states: default, then the visual
+    // booleans in prop order, then the interaction states the table names.
     expect(names).toHaveLength(8)
     expect(names[0]).toBe('size=md, state=default')
     expect(names).toContain('size=sm, state=checked')
     expect(set.componentPropertyDefinitions?.map((d) => [d.name, d.variantOptions])).toEqual([
       ['size', ['md', 'sm']],
-      ['state', ['default', 'checked', 'hover', 'disabled']],
+      ['state', ['default', 'checked', 'disabled', 'hover']],
     ])
   })
 
@@ -129,9 +129,8 @@ const ROW_SOURCE = page(
 ## Contract
 
 <Props>
-  <Prop name="item" model="{models#Contact}">The row to show.</Prop>
+  <Prop name="item" type="Contact">The row to show.</Prop>
 </Props>
-<Parts>name, email, city</Parts>
 
 ## Models
 
@@ -144,7 +143,7 @@ const ROW_SOURCE = page(
   <Field name="id" type="string" key sample="c1">Identity.</Field>
   <Field name="name" type="string" sample={['Ada', 'Grace']}>Display name.</Field>
   <Field name="email" type="string" optional sample={['ada@example.com', null]}>Omitted when unknown.</Field>
-  <Field name="address" type="{models#Address}">Where they live.</Field>
+  <Field name="address" type="Address">Where they live.</Field>
 </Model>
 `,
 )
@@ -164,17 +163,9 @@ const LIST_SOURCE = page(
   <Prop name="items" type="Contact[]">Rows to show.</Prop>
 </Props>
 <Slots>
-  <Slot name="item" repeats model="{models#Contact}" accepts="hwc-list-item">One per row.</Slot>
+  <Slot name="item" repeats of="items" accepts="hwc-list-item">One per row.</Slot>
   <Slot name="empty">Shown while there are no rows.</Slot>
 </Slots>
-
-## Models
-
-<Model name="Contact">
-  One row.
-  <Field name="id" type="string" key sample="c1">Identity.</Field>
-  <Field name="name" type="string" sample={['Ada', 'Grace']}>Display name.</Field>
-</Model>
 `,
 )
 
@@ -229,7 +220,6 @@ describe('a composition passes its own props through (ADR 0017 §3)', () => {
 <Props>
   <Prop name="label" type="string" sample="Email">The control's name.</Prop>
 </Props>
-<Parts>label</Parts>
 <Slots><Slot name="control">The control.</Slot></Slots>
 `,
     ),
@@ -360,9 +350,14 @@ describe('auditDesignSystem', () => {
 
   it('demands samples, keys and real fields of models', () => {
     expect(codes(ROW_SOURCE.replace(` sample={['Ada', 'Grace']}`, ''))).toContain(CODES.MODEL_FIELD)
-    expect(codes(LIST_SOURCE.replace(' key sample="c1"', ' sample="c1"'))).toContain(
+    // The model lives on the row's page; the list's repeat still needs its key.
+    const noKey = modelIndex([parseOrThrow(ROW_SOURCE.replace(' key sample="c1"', ' sample="c1"'))])
+    expect(auditDesignSystem(parseOrThrow(LIST_SOURCE), noKey).map((d) => d.code)).toContain(
       CODES.MODEL_FIELD,
     )
+    expect(
+      auditDesignSystem(parseOrThrow(LIST_SOURCE), modelIndex([parseOrThrow(ROW_SOURCE)])),
+    ).toEqual([])
     expect(codes(ROW_SOURCE.replace('{item.email}', '{item.phone}'))).toContain(CODES.BINDING)
     expect(codes(ROW_SOURCE.replace('{item.email}', '{row.email}'))).toContain(CODES.BINDING)
   })
@@ -385,7 +380,7 @@ describe('contractJson', () => {
         status: 'stable',
         boundParts: ['checked-indicator'],
         treeSlots: ['label'],
-        axes: { size: ['md', 'sm'], state: ['default', 'checked', 'hover', 'disabled'] },
+        axes: { size: ['md', 'sm'], state: ['default', 'checked', 'disabled', 'hover'] },
       },
     ])
     expect(JSON.stringify(json)).not.toContain('"loc"')

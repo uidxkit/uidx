@@ -46,7 +46,8 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     }
   }
   const tagSet = new Set(tags.keys())
-  for (const part of model.contract.parts) {
+  // The tree's bindings are the parts this component uses (ADR 0013 §3).
+  for (const { name: part } of model.parts) {
     if (part === 'root') continue
     const tag = partTag(model.tag, part, tagSet)
     if (tagSet.has(tag)) continue

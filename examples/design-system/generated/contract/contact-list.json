@@ -21,41 +21,36 @@
     "props": [
       {
         "name": "items",
+        "type": "Contact[]",
         "controllable": false,
         "visual": false,
-        "description": "The people to choose from, in order.",
-        "type": "Contact[]"
+        "description": "The people to choose from, in order."
       },
       {
         "name": "name",
+        "type": "string",
         "controllable": false,
         "visual": false,
-        "description": "Form field name shared by every option.",
-        "type": "string"
+        "description": "Form field name shared by every option."
       },
       {
         "name": "disabled",
+        "type": "boolean",
         "controllable": false,
         "visual": true,
         "description": "Every option inert.",
-        "type": "boolean",
         "default": false
       }
     ],
     "events": [],
-    "states": {
-      "structural": [],
-      "styling": [
-        "disabled"
-      ]
-    },
+    "states": [],
     "parts": [],
     "slots": [
       {
         "name": "option",
         "repeats": true,
         "description": "One option per element of items .",
-        "model": "{models#Contact}",
+        "of": "items",
         "accepts": "hwc-radio"
       },
       {
@@ -73,50 +68,6 @@
       "keyboard": "Arrow keys move the choice"
     }
   },
-  "models": [
-    {
-      "name": "Contact",
-      "description": "One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.",
-      "fields": [
-        {
-          "name": "id",
-          "type": "string",
-          "key": true,
-          "optional": false,
-          "description": "Stable identity, used for keys and as the submitted value.",
-          "sample": [
-            "ada",
-            "grace",
-            "linus"
-          ]
-        },
-        {
-          "name": "name",
-          "type": "string",
-          "key": false,
-          "optional": false,
-          "description": "Full display name.",
-          "sample": [
-            "Ada Lovelace",
-            "Grace Hopper",
-            "Linus Torvalds"
-          ]
-        },
-        {
-          "name": "email",
-          "type": "string",
-          "key": false,
-          "optional": true,
-          "description": "Omitted when unknown; the row hides the line.",
-          "sample": [
-            "ada@example.com",
-            null,
-            "linus@example.com"
-          ]
-        }
-      ]
-    }
-  ],
   "behavior": [
     {
       "id": "one-choice",

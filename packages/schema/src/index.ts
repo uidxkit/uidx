@@ -134,4 +134,10 @@ export {
   stateAxis,
   styleTarget,
   visualAxes,
+  modelIndex,
+  modelOfType,
+  slotModel,
+  stateKind,
+  INTERACTION_STATES,
+  type ModelIndex,
 } from './design-system.js'
