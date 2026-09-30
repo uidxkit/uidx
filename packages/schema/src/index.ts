@@ -150,3 +150,4 @@ export {
   type RepeatAttrs,
   type RepeatScope,
 } from './design-system.js'
+export { DTCG_VERSION, fromDtcg, toDtcg, type DtcgExport, type DtcgImport } from './dtcg.js'

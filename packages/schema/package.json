@@ -24,6 +24,16 @@
       "development": "./src/design-system-audit.ts",
       "types": "./dist/design-system-audit.d.ts",
       "default": "./dist/design-system-audit.js"
+    },
+    "./dtcg": {
+      "development": "./src/dtcg.ts",
+      "types": "./dist/dtcg.d.ts",
+      "default": "./dist/dtcg.js"
+    },
+    "./token-index": {
+      "development": "./src/token-index.ts",
+      "types": "./dist/token-index.d.ts",
+      "default": "./dist/token-index.js"
     }
   },
   "files": [

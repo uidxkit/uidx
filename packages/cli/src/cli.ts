@@ -20,6 +20,7 @@ import { runMcp } from './commands/mcp.js'
 import { runInit } from './commands/init.js'
 import { runContract } from './commands/contract.js'
 import { runCodegen } from './commands/codegen.js'
+import { runTokens } from './commands/tokens.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -37,6 +38,10 @@ Usage:
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
+  uidx tokens import <file.json...> [--out tokens.uidx] [--modes a,b]
+                          Design Tokens (DTCG 2025.10) files or a resolver as a <Tokens> page
+  uidx tokens export [glob...] --out <dir>
+                          the document's tokens as DTCG files, modes via resolver.json
   uidx migrate tokens <file...>
                           write the type every <Variable> now declares
 
@@ -148,6 +153,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return await runContract(rest, io)
       case 'codegen':
         return await runCodegen(rest, io)
+      case 'tokens':
+        return await runTokens(rest, io)
       case 'dev':
         return runOpen(rest, io)
       case 'audit':
