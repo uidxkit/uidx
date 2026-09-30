@@ -62,6 +62,11 @@ same bytes.
     => ReactNode`, generic over the model's generated type, with `ItemComponent`
     accepted as sugar for a component whose `item` prop is that model; the key
     comes from the model's `key` field;
+  - a part the library exposes as a shadow part (`cssParts` in its
+    manifest, rather than a `<root>-<part>` element) is styled through
+    `::part(name)` and never filled: the library draws it, so the design's
+    content under that node is not rendered by the code target, and
+    conformance warns when there is any. The inspector marks such parts.
   - parts with their own element are emitted as compound sub-components
     (`Field.Label`) so a consumer may compose below the pattern level.
   Emitted as readable source.

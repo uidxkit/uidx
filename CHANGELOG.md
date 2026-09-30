@@ -31,7 +31,9 @@ describe migrations when an existing document or integration is affected.
   file's contract beside the bindings and counts the parts still to bind.
   `uidx.json` gains an optional `"headless"` path to the library's
   `custom-elements.json`, served to the viewer and used by `uidx codegen` when
-  `--manifest` is absent.
+  `--manifest` is absent. Parts a library exposes as shadow parts (`cssParts`)
+  are offered beside element parts and marked; the code target styles them
+  through `::part()` and conformance warns when the design draws under one.
 
 ## 0.1.6 — 2026-09-25
 

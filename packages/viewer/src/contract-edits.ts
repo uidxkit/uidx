@@ -22,6 +22,8 @@ export interface PartRow {
   name: string
   /** Where the name is declared: the library, the file's `<Parts>`, or both. */
   declaredBy: 'library' | 'contract' | 'both'
+  /** How the library exposes it; absent for a part only the contract declares. */
+  kind?: 'element' | 'shadow'
   /** The layer bound to it, or null while unbound. */
   boundTo: { address: string; name: string; element: string } | null
 }
@@ -61,7 +63,7 @@ export interface PartView {
   component: UidxNode
   partValue: string | null
   /** Every declared part; `takenBy` names the other layer holding it. */
-  options: { name: string; takenBy: string | null }[]
+  options: { name: string; takenBy: string | null; kind?: 'element' | 'shadow' }[]
   /** True when neither the library nor the contract declares any part. */
   undeclared: boolean
 }
@@ -96,8 +98,8 @@ export type ContractView = ComponentView | PartView | RepeatView | SlotView | Ot
 export function declaredParts(component: UidxNode, element: HeadlessElement | null): PartRow[] {
   const contract = component.spec?.contract?.parts ?? []
   const rows = new Map<string, PartRow>()
-  for (const name of element?.parts ?? [])
-    rows.set(name, { name, declaredBy: 'library', boundTo: null })
+  for (const part of element?.parts ?? [])
+    rows.set(part.name, { name: part.name, declaredBy: 'library', kind: part.kind, boundTo: null })
   for (const name of contract) {
     const row = rows.get(name)
     if (row) row.declaredBy = 'both'
@@ -219,6 +221,7 @@ function partView(node: UidxNode, component: UidxNode, library: HeadlessLibrary 
     return {
       name: row.name,
       takenBy: holder && holder.address !== node.address ? holder.name : null,
+      ...(row.kind ? { kind: row.kind } : {}),
     }
   })
   // A value nothing declares still shows, so the row never lies about the file.

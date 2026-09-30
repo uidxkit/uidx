@@ -12,7 +12,7 @@ import {
   setRepeatCount,
   setRepeatSlot,
 } from '../src/contract-edits'
-import { parseHeadless } from '../src/headless'
+import { parseHeadless, type HeadlessLibrary } from '../src/headless'
 
 /**
  * Binding the visual tree to its code render from the inspector (ADR 0013 §3,
@@ -108,11 +108,13 @@ describe('the headless library, as parsed', () => {
       'hwc-text-input',
     ])
     expect(LIBRARY.elements.get('hwc-checkbox')!.parts).toEqual([
-      'checked-indicator',
-      'indeterminate-indicator',
+      { name: 'checked-indicator', kind: 'element' },
+      { name: 'indeterminate-indicator', kind: 'element' },
     ])
-    expect(LIBRARY.elements.get('hwc-text-input')!.parts).toEqual(['leading-icon'])
-    expect(LIBRARY.elements.get('hwc-text')!.parts).toEqual(['glyph'])
+    expect(LIBRARY.elements.get('hwc-text-input')!.parts).toEqual([
+      { name: 'leading-icon', kind: 'element' },
+    ])
+    expect(LIBRARY.elements.get('hwc-text')!.parts).toEqual([{ name: 'glyph', kind: 'shadow' }])
     expect(LIBRARY.elements.get('hwc-field')!.slots).toEqual(['', 'control'])
   })
 })
@@ -128,9 +130,10 @@ describe('what the tab shows', () => {
       {
         name: 'checked-indicator',
         declaredBy: 'both',
+        kind: 'element',
         boundTo: { address: 'Checkbox#check', name: 'check', element: 'Vector' },
       },
-      { name: 'indeterminate-indicator', declaredBy: 'both', boundTo: null },
+      { name: 'indeterminate-indicator', declaredBy: 'both', kind: 'element', boundTo: null },
     ])
     // Bound layers leave the candidate list; instances never enter it.
     expect(view.candidates.map((c) => c.name)).toEqual(['dash', 'ring'])
@@ -152,8 +155,8 @@ describe('what the tab shows', () => {
     if (view.kind !== 'part') throw new Error(view.kind)
     expect(view.partValue).toBeNull()
     expect(view.options).toEqual([
-      { name: 'checked-indicator', takenBy: 'check' },
-      { name: 'indeterminate-indicator', takenBy: null },
+      { name: 'checked-indicator', takenBy: 'check', kind: 'element' },
+      { name: 'indeterminate-indicator', takenBy: null, kind: 'element' },
     ])
   })
 
@@ -184,6 +187,37 @@ describe('what the tab shows', () => {
     const doc = parseOrThrow(bare)
     expect(contractView(doc, resolve(doc.tree, 'loose'), LIBRARY).kind).toBe('other')
     expect(contractView(doc, null, LIBRARY).kind).toBe('page')
+  })
+})
+
+describe('a shadow part in the tab', () => {
+  it('is offered like any other, and marked so the author knows it cannot be filled', () => {
+    const doc = parseOrThrow(
+      page(
+        'glyph',
+        `  <Component name="Glyph" status="draft" implements="hwc-text">
+    <Frame name="mark" width={8} height={8} />
+  </Component>`,
+      ),
+    )
+    const view = contractView(doc, resolve(doc.tree, 'Glyph'), LIBRARY)
+    if (view.kind !== 'component') throw new Error(view.kind)
+    expect(view.parts).toEqual([
+      { name: 'glyph', declaredBy: 'library', kind: 'shadow', boundTo: null },
+    ])
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Glyph'), library: LIBRARY, writable: true },
+    })
+    expect(section.find('[data-part="glyph"] .pill').text()).toBe('shadow')
+    const layer = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Glyph#mark'), library: LIBRARY, writable: true },
+    })
+    expect(
+      layer
+        .find('[data-field="part"] select')
+        .findAll('option')
+        .map((o) => o.text().trim()),
+    ).toEqual(['Nothing — design only', 'glyph · shadow'])
   })
 })
 
@@ -243,7 +277,12 @@ describe('the writes', () => {
 })
 
 describe('the Contract section', () => {
-  const mountFor = (source: string, address: string | null, writable = true, library = LIBRARY) => {
+  const mountFor = (
+    source: string,
+    address: string | null,
+    writable = true,
+    library: HeadlessLibrary | null = LIBRARY,
+  ) => {
     const doc = parseOrThrow(source)
     return mount(ContractSection, {
       props: { doc, node: address ? resolve(doc.tree, address) : null, library, writable },

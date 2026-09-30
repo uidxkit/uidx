@@ -66,7 +66,7 @@ function selectorFor(model: ComponentModel, node: UidxNode, root: string): strin
   const part = model.partOf.get(node)
   if (part !== undefined) {
     const info = model.parts.find((entry) => entry.name === part)!
-    return `${root} ${info.tag}`
+    return info.kind === 'shadow' ? `${root}::part(${part})` : `${root} ${info.tag}`
   }
   if (node.element === 'Slot') return `${root} [data-slot="${node.name}"]`
   return `${root} [data-node="${node.name}"]`
@@ -126,7 +126,9 @@ export function emitCss(model: ComponentModel): string {
         part === 'root'
           ? scoped
           : info
-            ? `${scoped} ${info.tag}`
+            ? info.kind === 'shadow'
+              ? `${scoped}::part(${part})`
+              : `${scoped} ${info.tag}`
             : `${scoped} [data-node="${part}"]`
       rules.push(cssRule(selector, cssDeclarations(props, target ? kindOf(target) : 'container')))
     }
@@ -171,6 +173,10 @@ function markup(
   const pad = '  '.repeat(depth)
   const part = model.partOf.get(node)
   const info = part === undefined ? undefined : model.parts.find((entry) => entry.name === part)
+  // A shadow part is the library's to draw: styled from outside through
+  // `::part()`, never filled. Nothing to emit here; conformance reports what
+  // the design put under it.
+  if (info?.kind === 'shadow') return []
   const children = (): string[] =>
     node.children.flatMap((child) => markup(model, child, ctx, samples, depth + 1, index, fills))
 

@@ -8,10 +8,20 @@ import { shallowRef } from 'vue'
  * *roots* an author may implement, and which parts and slots each root has.
  * The rest — attributes, events — is shown for orientation and never written.
  */
+/**
+ * A part as the library exposes it: an element of its own (`<root>-<part>`,
+ * which can hold the design's content) or a shadow part (`cssParts`, styled
+ * through `::part()` and drawn by the library).
+ */
+export interface HeadlessPart {
+  name: string
+  kind: 'element' | 'shadow'
+}
+
 export interface HeadlessElement {
   tag: string
-  /** The part names this root offers, from `<tag>-<part>` elements and `cssParts`. */
-  parts: string[]
+  /** The parts this root offers, from `<tag>-<part>` elements and `cssParts`. */
+  parts: HeadlessPart[]
   /** Slot names; `''` is the default slot. */
   slots: string[]
   attributes: string[]
@@ -63,7 +73,7 @@ export function parseHeadless(path: string, manifest: unknown): HeadlessLibrary 
       if (typeof tag !== 'string' || tag === '' || declared.has(tag)) continue
       declared.set(tag, {
         tag,
-        parts: names(declaration.cssParts),
+        parts: names(declaration.cssParts).map((name) => ({ name, kind: 'shadow' as const })),
         slots: names(declaration.slots),
         attributes: names(declaration.attributes),
         events: names(declaration.events),
@@ -90,7 +100,10 @@ export function parseHeadless(path: string, manifest: unknown): HeadlessLibrary 
   for (const [tag, root] of partOf) {
     const owner = declared.get(root)!
     const part = tag.slice(root.length + 1)
-    if (!owner.parts.includes(part)) owner.parts.push(part)
+    const known = owner.parts.find((entry) => entry.name === part)
+    // An element wins over a cssPart of the same name: it can hold content.
+    if (known) known.kind = 'element'
+    else owner.parts.push({ name: part, kind: 'element' })
   }
 
   const roots = [...declared.values()]

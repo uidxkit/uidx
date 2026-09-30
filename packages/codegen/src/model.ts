@@ -26,6 +26,8 @@ export interface Manifest {
       attributes?: { name: string; type?: { text?: string } }[]
       events?: { name: string }[]
       slots?: { name: string }[]
+      /** Shadow parts, styled from outside through `::part()`. */
+      cssParts?: { name: string }[]
     }[]
   }[]
 }
@@ -66,6 +68,25 @@ export function pascal(name: string): string {
  * tag that ends with the part name and shares the longest prefix with the
  * root — `hwc-breadcrumbs` owns `hwc-breadcrumb-item`.
  */
+export type PartKind = 'element' | 'shadow'
+
+/**
+ * Which kind of part the library offers under this name (ADR 0017 §3).
+ *
+ * An element wins when one exists, since it can hold the design's content; a
+ * `cssParts` entry on the root makes it a shadow part. Without a manifest, or
+ * for a name the manifest lacks, `element` is assumed and conformance says so.
+ */
+export function partKind(rootTag: string, part: string, manifest?: Manifest): PartKind {
+  if (!manifest) return 'element'
+  const tags = manifestTags(manifest)
+  const tagSet = new Set(tags.keys())
+  if (tagSet.has(partTag(rootTag, part, tagSet))) return 'element'
+  return (tags.get(rootTag)?.cssParts ?? []).some((entry) => entry.name === part)
+    ? 'shadow'
+    : 'element'
+}
+
 export function partTag(rootTag: string, part: string, tags?: ReadonlySet<string>): string {
   const conventional = `${rootTag}-${part}`
   if (!tags || tags.has(conventional)) return conventional
@@ -88,6 +109,11 @@ export interface PartInfo {
   name: string
   node: UidxNode
   tag: string
+  /**
+   * How the library exposes the part: an element of its own (`<root>-<part>`),
+   * or a shadow part styled through `::part()` and drawn by the library.
+   */
+  kind: PartKind
 }
 
 export interface SlotInfo {
@@ -176,7 +202,12 @@ export function componentModel(
   const walk = (node: UidxNode): void => {
     const part = node.attrs.part?.value
     if (typeof part === 'string') {
-      parts.push({ name: part, node, tag: tag ? partTag(tag, part, tags) : `x-${part}` })
+      parts.push({
+        name: part,
+        node,
+        tag: tag ? partTag(tag, part, tags) : `x-${part}`,
+        kind: tag ? partKind(tag, part, manifest) : 'element',
+      })
       partOf.set(node, part)
     }
     if (node.element === 'Slot') {

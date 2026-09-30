@@ -209,6 +209,12 @@ const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?
         >
           {{ row.name }}
           <span v-if="row.declaredBy === 'contract' && view.element" class="flag">?</span>
+          <span
+            v-if="row.kind === 'shadow'"
+            class="pill"
+            title="A shadow part: styled through ::part() and drawn by the library. What the bound layer holds stays design-only."
+            >shadow</span
+          >
         </span>
         <button
           v-if="row.boundTo"
@@ -368,7 +374,8 @@ const typeOf = (prop: { type?: string; model?: string }): string => prop.model ?
             :value="option.name"
             :disabled="option.takenBy !== null"
           >
-            {{ option.name }}{{ option.takenBy ? ` · bound to ${option.takenBy}` : '' }}
+            {{ option.name }}{{ option.kind === 'shadow' ? ' · shadow' : ''
+            }}{{ option.takenBy ? ` · bound to ${option.takenBy}` : '' }}
           </option>
         </select>
         <button

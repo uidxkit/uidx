@@ -149,6 +149,81 @@ A checkbox with its words.
   })
 })
 
+describe('a shadow part (cssParts in the manifest)', () => {
+  const manifest = {
+    modules: [
+      {
+        declarations: [
+          {
+            tagName: 'sl-switch',
+            attributes: [{ name: 'checked' }],
+            events: [{ name: 'change' }],
+            cssParts: [{ name: 'thumb' }, { name: 'label' }],
+          },
+        ],
+      },
+    ],
+  }
+  const page = parseOrThrow(`---
+id: switch
+---
+
+A switch whose parts live in the library's shadow tree.
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="stable" implements="sl-switch" layoutMode="HORIZONTAL">
+    <Frame name="thumb" part="thumb" width={16} height={16} fills="{surface#control}" />
+    <Text name="label" part="label" characters="{label}" fontSize={14} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" thumb:fills="{surface#accent}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} controllable visual>On or off.</Prop>
+  <Prop name="label" type="string">The words.</Prop>
+</Props>
+<Events>
+  <Event name="change" detail="{ checked: boolean }">Fires on toggle.</Event>
+</Events>
+<States structural={['checked']} styling={[]} />
+<Parts>thumb, label</Parts>
+`)
+  const out = generate({
+    pages: [{ file: 'switch.uidx', doc: page }],
+    tokens: [TOKENS],
+    manifest,
+  })
+
+  it('styles it through ::part() and emits no element for it', () => {
+    const css = out.files.get('html/switch.css')!
+    expect(css).toContain('sl-switch::part(thumb) {')
+    expect(css).toContain('sl-switch[checked]::part(thumb) {')
+    expect(css).toContain('sl-switch::part(label) {')
+    const html = out.files.get('html/switch.html')!
+    expect(html).not.toContain('sl-switch-thumb')
+    expect(html).not.toContain('sl-switch-label')
+    expect(html).toContain('<sl-switch>')
+    const tsx = out.files.get('react/Switch.tsx')!
+    expect(tsx).not.toContain('Switch.Label')
+    expect(tsx).not.toContain('sl-switch-label')
+  })
+
+  it('conforms, with a warning for what the design drew under a part the library draws', () => {
+    expect(out.diagnostics.filter((d) => d.severity === 'error')).toEqual([])
+    const warnings = out.diagnostics.filter((d) => d.severity === 'warning')
+    expect(warnings.map((d) => d.message)).toEqual([
+      'part "label" is a shadow part of sl-switch: the library draws it, so what "label" holds is styled through ::part() but not rendered',
+    ])
+  })
+})
+
 describe('the React target', () => {
   it('types props and events from the contract and wraps the headless root', () => {
     const tsx = file('react/Checkbox.tsx')

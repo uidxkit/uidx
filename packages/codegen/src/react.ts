@@ -259,7 +259,8 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
   const compound: { name: string; tag: string; part: string }[] = []
   for (const part of model.parts) {
     const prop = boundProp(model, part.node.attrs.characters?.value ?? null)
-    if (prop && part.node.element === 'Text')
+    // A shadow part has no element to compose below the root.
+    if (prop && part.node.element === 'Text' && part.kind === 'element')
       compound.push({ name: pascal(part.name), tag: part.tag, part: part.name })
   }
 
@@ -267,6 +268,8 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     const pad = '  '.repeat(depth)
     const part = model.partOf.get(node)
     const info = part === undefined ? undefined : model.parts.find((entry) => entry.name === part)
+    // As in the HTML target: a shadow part is drawn by the library.
+    if (info?.kind === 'shadow') return []
     const children = () => node.children.flatMap((child) => render(child, depth + 1))
     switch (node.element) {
       case 'Repeat': {
