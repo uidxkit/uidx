@@ -9,10 +9,16 @@ import {
   hasLengthUnits,
   isUnitLength,
   isAlias,
+  toAlias,
 } from '@uidx/format'
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
-import { contractIssues, contractView, textBindingCandidates } from './contract-edits'
+import {
+  contractIssues,
+  contractView,
+  fieldBindingCandidates,
+  textBindingCandidates,
+} from './contract-edits'
 import { describe as describeDerived } from './derived-edits'
 import type { CodegenState, HeadlessCandidate, HeadlessLibrary } from './headless'
 
@@ -50,6 +56,7 @@ import {
   type PropGroup,
   type TokenIndex,
   type ModelIndex,
+  STRUCTURAL_PROPS,
 } from '@uidx/schema'
 import { pinWrites, type PinFrame, type PinWrites } from './pin-writes'
 import {
@@ -765,6 +772,14 @@ function sectionLink(group: PropGroup) {
   const node = active.value
   if (!prop || !props.doc || !node) return null
   const candidates = bindCandidates(props.doc, node.address, prop)
+  // Visibility also follows an enclosing item's field (`{item.expanded}`),
+  // the way a checkbox in the body does: a tree's children frame shows only
+  // while its node is open. Declared props are already in `candidates`.
+  if (prop === 'visible' && candidates) {
+    for (const { alias } of itemFieldBindings(node, 'boolean')) {
+      candidates.push({ name: alias, declaration: { type: 'BOOLEAN', default: false } })
+    }
+  }
   const held = node.attrs[prop]?.value
   const target = held !== undefined ? aliasTarget(held) : null
   // Either binding moves the action from the header to the bound value.
@@ -847,10 +862,33 @@ function isPropertyBound(field: EditableProp): boolean {
 
 /** Linking and unlinking are structural: they go at the document, like `props`. */
 function onLink(prop: string, name: string): void {
-  const address = active.value?.address
-  if (!props.doc || !address) return
-  const patches = bindProperty(props.doc, address, prop, name)
-  if (patches) emit('patches', patches)
+  const node = active.value
+  if (!props.doc || !node) return
+  const patches = bindProperty(props.doc, node.address, prop, name)
+  if (patches) {
+    emit('patches', patches)
+    return
+  }
+  // Not a declared prop: an item field offered by `sectionLink`, written as
+  // the alias it is, the way the body's pickers write theirs.
+  if (itemFieldBindings(node, 'boolean').some((b) => b.alias === name)) {
+    const op = node.attrs[prop] === undefined ? 'add' : 'set'
+    emit('patches', [{ op, address: node.address, prop, value: toAlias(name) }])
+  }
+}
+
+/** The enclosing repeats' fields of one kind — `item.expanded`, never a bare prop. */
+function itemFieldBindings(
+  node: UidxNode,
+  kind: 'boolean' | 'number' | 'text',
+): { alias: string; label: string }[] {
+  if (!props.doc) return []
+  return fieldBindingCandidates(
+    enclosingComponent(props.doc, node.address),
+    node,
+    kind,
+    props.models,
+  ).filter((b) => b.alias.includes('.'))
 }
 
 /**
@@ -1212,6 +1250,30 @@ const textBindings = computed(() => {
   return textBindingCandidates(enclosingComponent(props.doc, node.address), node, props.models)
 })
 
+/**
+ * What any field may bind to, by the kind of value it takes: a checkbox
+ * takes an item's booleans (`visible="{item.done}"`), a number its numbers.
+ * Structural and paint fields take none; the token pill is theirs.
+ */
+/** Paint fields route through their own alias path below; a fill alias is a colour, not a binding. */
+const PAINT_PROPS: ReadonlySet<string> = new Set(['fills', 'strokes'])
+
+function bindingsFor(field: EditableProp): { alias: string; label: string }[] | undefined {
+  const node = active.value
+  if (!node || !props.doc) return undefined
+  if (field.name === 'characters') return textBindings.value
+  const kind =
+    field.control === 'boolean' ? 'boolean' : field.control === 'number' ? 'number' : null
+  if (!kind || STRUCTURAL_PROPS.includes(field.name)) return undefined
+  const found = fieldBindingCandidates(
+    enclosingComponent(props.doc, node.address),
+    node,
+    kind,
+    props.models,
+  )
+  return found.length ? found : undefined
+}
+
 function onCommit(prop: string, value: JsonValue): void {
   if (!active.value) return
   const address = active.value.address
@@ -1221,7 +1283,7 @@ function onCommit(prop: string, value: JsonValue): void {
    * the sample already shows. It goes straight to the file, as a fill's
    * alias does below.
    */
-  if (prop === 'characters' && isAlias(value)) {
+  if (isAlias(value) && !PAINT_PROPS.has(prop)) {
     preview.value = null
     emit('patches', [
       { op: active.value.attrs[prop] === undefined ? 'add' : 'set', address, prop, value },
@@ -1858,7 +1920,7 @@ function onDetach(prop: string, value: JsonValue): void {
                     :editable="editable(paired.field)"
                     :swatches="swatches"
                     :candidates="candidatesFor(paired.field)"
-                    :bindings="paired.field.name === 'characters' ? textBindings : undefined"
+                    :bindings="bindingsFor(paired.field)"
                     :variables="variablesFor(paired.field)"
                     :component-name="componentName"
                     :tokens="tokens"

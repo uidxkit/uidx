@@ -213,6 +213,11 @@ function redeclare(
     if (value === undefined || value === false) delete attrs[key]
     else attrs[key] = value
   }
+  // A boolean prop is an axis the moment it is visual (ADR 0016 §1), and an
+  // axis needs a default to order its values by; one retyped to boolean
+  // gets `false` unless the form said otherwise.
+  if (kind === 'prop' && change.attrs?.type === 'boolean' && attrs.default === undefined)
+    attrs.default = false
   const description =
     change.description === undefined || change.description === ''
       ? current.description
@@ -225,11 +230,19 @@ function remove(kind: ContractKind, name: string): void {
   if (open.value === `${kind}:${name}`) open.value = null
 }
 
+/** The type a new prop gets; a boolean is a state the moment it is visual, so it comes with a default. */
+const addType = ref<'string' | 'number' | 'boolean'>('string')
+
 function add(): void {
   const name = addName.value.trim()
   if (!name) return
   const kind = addKind.value
-  const attrs: Record<string, JsonValue> = kind === 'prop' ? { type: 'string' } : {}
+  const attrs: Record<string, JsonValue> =
+    kind === 'prop'
+      ? addType.value === 'boolean'
+        ? { type: 'boolean', default: false }
+        : { type: addType.value }
+      : {}
   send(declare(kind, name, { attrs, description: `${PLACEHOLDER}the ${kind} "${name}".` }))
   addName.value = ''
   open.value = `${kind}:${name}`
@@ -846,7 +859,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       </template>
 
       <!-- Add a declaration -->
-      <div class="row add" data-field="add-declaration">
+      <div class="row add" :class="{ typed: addKind === 'prop' }" data-field="add-declaration">
         <select v-model="addKind" class="pick" :disabled="!writable" aria-label="Kind to add">
           <option value="prop">Prop</option>
           <option value="event">Event</option>
@@ -862,6 +875,18 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           placeholder="name"
           @keydown.enter="add"
         />
+        <select
+          v-if="addKind === 'prop'"
+          v-model="addType"
+          class="pick narrow"
+          :disabled="!writable"
+          aria-label="Type to add"
+          title="A boolean comes with default={false}; make it visual to design it as a state"
+        >
+          <option value="string">text</option>
+          <option value="number">number</option>
+          <option value="boolean">boolean</option>
+        </select>
         <button
           type="button"
           class="reset"
@@ -1450,6 +1475,12 @@ code {
 .row.add {
   grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) 24px;
   margin-top: 4px;
+}
+.row.add.typed {
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 0.7fr) 24px;
+}
+.pick.narrow {
+  min-width: 0;
 }
 .faint {
   color: var(--text-faint);

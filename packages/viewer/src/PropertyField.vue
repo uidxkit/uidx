@@ -44,7 +44,7 @@ const props = defineProps<{
    * all; empty is "nothing declared yet", which still offers Create.
    */
   candidates?: { name: string; declaration: { type: string; default: JsonValue } }[] | null
-  /** What a text may bind to, offered beside Content; absent for anything but a text. */
+  /** What this field may bind to — an item's field, a prop — offered beside the control. */
   bindings?: { alias: string; label: string }[]
   /**
    * What a bound *number* row displays while scrubbing — number-typed
@@ -349,6 +349,7 @@ const segmented = computed(
             :disabled="!editable"
             @input="actions.input($event)"
             @keydown="actions.keydown($event)"
+            @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"
             @blur="actions.commitEdit($event)"
           />
           <template v-else>
@@ -369,6 +370,20 @@ const segmented = computed(
           @change="selectUnit"
         />
       </span>
+      <select
+        v-if="bindings && bindings.length"
+        class="bind narrow"
+        :value="''"
+        :disabled="!editable"
+        :aria-label="`Bind ${field.label} to`"
+        :title="`Bind ${field.label} to a field of the item or a prop`"
+        @change="onBind(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="">{ }</option>
+        <option v-for="binding in bindings" :key="binding.alias" :value="binding.alias">
+          {{ '{' + binding.alias + '}' }} — {{ binding.label }}
+        </option>
+      </select>
       <button
         v-if="editable"
         ref="variablesTrigger"
@@ -395,6 +410,21 @@ const segmented = computed(
       @change="onToggle"
     />
     <label :for="`f-${field.name}`" class="check-label">{{ field.label }}</label>
+    <!-- A boolean bound to an item's field: `visible="{item.done}"` (ADR 0015 §2). -->
+    <select
+      v-if="bindings && bindings.length"
+      class="bind narrow"
+      :value="''"
+      :disabled="!editable"
+      :aria-label="`Bind ${field.label} to`"
+      :title="`Bind ${field.label} to a field of the item or a prop`"
+      @change="onBind(($event.target as HTMLSelectElement).value)"
+    >
+      <option value="">{ }</option>
+      <option v-for="binding in bindings" :key="binding.alias" :value="binding.alias">
+        {{ '{' + binding.alias + '}' }} — {{ binding.label }}
+      </option>
+    </select>
   </template>
 
   <template v-else-if="field.control === 'text' && field.name === 'characters'">
@@ -641,6 +671,13 @@ const segmented = computed(
   margin-top: 4px;
   font-size: 11px;
   color: var(--text-dim);
+}
+.bind.narrow {
+  margin-top: 0;
+  margin-left: 4px;
+  max-width: 3.2em;
+  padding: 2px 2px;
+  flex: none;
 }
 .number {
   display: flex;

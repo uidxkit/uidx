@@ -12,6 +12,7 @@ import {
   scaffoldFromLibrary,
   setImplements,
   setPart,
+  fieldBindingCandidates,
   moveRepeatOnto,
   setReceives,
   setRepeat,
@@ -354,6 +355,24 @@ describe('what the tab shows', () => {
     ).toEqual(['item.id', 'item.label', 'item.depth'])
   })
 
+  it('offers a checkbox the booleans in scope and a number the numbers, and nothing else', () => {
+    const row = parseOrThrow(TREE)
+    const models = modelIndex([row, parseOrThrow(ROW_PAGE)])
+    const inTree = resolve(row.tree, 'Tree#node/children')!
+    const tree = resolve(row.tree, 'Tree')
+    expect(fieldBindingCandidates(tree, inTree, 'boolean', models).map((b) => b.alias)).toEqual([])
+    expect(fieldBindingCandidates(tree, inTree, 'number', models).map((b) => b.alias)).toEqual([
+      'item.depth',
+    ])
+    const item = parseOrThrow(ROW_PAGE)
+    const label = resolve(item.tree, 'TreeItem#label')!
+    expect(
+      fieldBindingCandidates(resolve(item.tree, 'TreeItem'), label, 'number', models).map(
+        (b) => b.alias,
+      ),
+    ).toEqual(['node.depth', 'depth'])
+  })
+
   it('for a layer outside any component, and for a page: nothing to bind', () => {
     const doc = parseOrThrow(bare)
     expect(contractView(doc, resolve(doc.tree, 'loose'), LIBRARY).kind).toBe('other')
@@ -558,6 +577,28 @@ describe('the Contract section', () => {
     // An instance below shows the same rows, unset.
     const instance = mountFor(LIST, 'List#option/row')
     expect(instance.find('[data-field="repeat"]').attributes('data-set')).toBe('false')
+  })
+
+  it('declares a boolean prop with its default, so the state axis is well formed', async () => {
+    const section = mountFor(CHECKBOX, 'Checkbox')
+    await section
+      .find('[data-field="add-declaration"] select[aria-label="Type to add"]')
+      .setValue('boolean')
+    await section.find('[data-field="add-declaration"] input').setValue('open')
+    await section.find('[aria-label="Add declaration"]').trigger('click')
+    expect(section.emitted('patches')!.at(-1)).toEqual([
+      [
+        {
+          op: 'contract',
+          kind: 'prop',
+          name: 'open',
+          declaration: {
+            attrs: { type: 'boolean', default: false },
+            description: 'Describe the prop "open".',
+          },
+        },
+      ],
+    ])
   })
 
   it('goes read-only with the socket', () => {
@@ -780,5 +821,60 @@ describe('the inspector tabs', () => {
     expect(pane.find('[data-field="implements"] select').exists()).toBe(true)
     await pane.find('[data-part="checked-indicator"] .layer').trigger('click')
     expect(pane.emitted('select')).toEqual([['Checkbox#check']])
+  })
+})
+
+/**
+ * A tree's children frame shows only while its node is open. Visibility is
+ * a header pill, not a checkbox row, so the pill has to offer the enclosing
+ * item's booleans as the body's checkboxes do — and write the alias itself,
+ * since `item.expanded` is no declared prop.
+ */
+describe('visibility follows an item field from the Appearance pill', () => {
+  const OPEN_TREE = page(
+    'open-tree',
+    `  <Component name="Tree" status="draft" layoutMode="VERTICAL">
+    <Slot name="node" repeat="{nodes}">
+      <Frame name="children" width={10} height={10} />
+    </Slot>
+  </Component>`,
+    `
+## Contract
+
+<Props>
+  <Prop name="nodes" type="TreeNode[]">The top-level nodes.</Prop>
+</Props>
+
+## Models
+
+<Model name="TreeNode">
+  One node.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="expanded" type="boolean" sample={[true, false]}>Open?</Field>
+</Model>
+`,
+  )
+
+  it('offers the item boolean and writes it as the binding it is', async () => {
+    const doc = parseOrThrow(OPEN_TREE)
+    const pane = mount(PropertiesPane, {
+      props: {
+        doc,
+        selection: ['Tree#node/children'],
+        writable: true,
+        headless: LIBRARY,
+        models: modelIndex([doc]),
+      },
+    })
+    const header = pane
+      .findAll('.section')
+      .find((s) => s.find('.section-title').text() === 'Appearance')!
+    await header.find('.section-link .apply-property').trigger('click')
+    const rows = pane.findAll('.assign-popup .popup-row:not(.variable-row)')
+    expect(rows.map((r) => r.find('.row-name').text())).toEqual(['item.expanded'])
+    await rows[0]!.trigger('click')
+    expect(pane.emitted('patches')?.[0]?.[0]).toEqual([
+      { op: 'add', address: 'Tree#node/children', prop: 'visible', value: '{item.expanded}' },
+    ])
   })
 })

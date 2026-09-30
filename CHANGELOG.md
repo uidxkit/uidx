@@ -64,6 +64,13 @@ describe migrations when an existing document or integration is affected.
   the instance would sit inside. Removing the last declaration removes the
   empty `## Contract` heading; `uidx codegen` takes directories as `check`
   does.
+- For designers who never open the file: a page that cannot be drawn keeps
+  its last frame and says why in a banner instead of going blank; a number
+  field commits on Enter as well as on leaving it; declaring a prop offers
+  its type, and a boolean comes with `default={false}`; a checkbox, a
+  number or the visibility pill binds to an item's field or a prop from a
+  picker beside it, as a text does, and any `{…}` committed from the inspector is
+  written as the binding it is.
 - From a second walkthrough, a tree with a disclosure chevron: a visual prop
   draws its state set at once, rows or no rows, so the first style row is
   written by selecting the state on the canvas rather than by hand; rotation

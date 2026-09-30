@@ -1157,6 +1157,12 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // `replaceGraph` drops the editor's selection, and a rebuild is not the
     // author deselecting anything — the shell still holds what they picked.
     applySelection(props.selection ?? [])
+  } catch (error) {
+    // A page that cannot be drawn says so and keeps the last frame it drew,
+    // rather than going blank with the reason in a console nobody has open.
+    // The file is still the file; the next edit tries again.
+    const reason = error instanceof Error ? error.message : String(error)
+    emit('notice', `The page could not be drawn (${reason}). The last drawn state is kept.`)
   } finally {
     applyingRemote = false
     // The file's new state is on the canvas — including the file's values for

@@ -490,45 +490,65 @@ export function moveRepeatOnto(container: UidxNode, row: UidxNode): UidxPatch[] 
   return out
 }
 
+/** What kind of value a field takes, for offering bindings of that kind. */
+export type BindingKind = 'text' | 'number' | 'boolean'
+
+/** Whether a declared type (`string`, `number`, `boolean`, `'a' | 'b'`) fits a field of this kind. */
+function fits(type: string, kind: BindingKind): boolean {
+  const text = type.trim()
+  if (kind === 'boolean') return text === 'boolean'
+  if (kind === 'number') return text === 'number'
+  return text !== 'boolean' && !text.endsWith('[]')
+}
+
 /**
- * What a text may bind to from the layer (ADR 0015 §2): the fields of every
- * enclosing item, and the component's own props — anything a `{…}` in
- * `characters` could name. Empty outside a component.
+ * What a field may bind to from the layer (ADR 0015 §2): the fields of every
+ * enclosing item, a model prop's fields one level deep, and the component's
+ * own props — anything a `{…}` in the attribute could name, of the kind the
+ * field takes. A text takes words and numbers; a checkbox takes booleans; a
+ * number takes numbers. Empty outside a component.
  */
-export function textBindingCandidates(
+export function fieldBindingCandidates(
   component: UidxNode | null,
   node: UidxNode,
+  kind: BindingKind,
   models?: ModelIndex,
 ): { alias: string; label: string }[] {
   if (!component) return []
   const out: { alias: string; label: string }[] = []
+  const offer = (alias: string, type: string): void => {
+    if (fits(type, kind)) out.push({ alias, label: `${alias} · ${type.trim()}` })
+  }
   for (const scope of [...enclosingRepeats(component, node, models)].reverse()) {
     for (const field of scope.model?.fields ?? []) {
       if (modelByRef(component.spec, typeName(field.type).name, models)) continue
-      out.push({
-        alias: `${scope.as}.${field.name}`,
-        label: `${scope.as}.${field.name} · ${field.type}`,
-      })
+      offer(`${scope.as}.${field.name}`, field.type)
     }
   }
   for (const prop of component.spec?.contract?.props ?? []) {
     const { name, list } = typeName(prop.type)
     const model = modelByRef(component.spec, name, models)
     if (!model) {
-      out.push({ alias: prop.name, label: `${prop.name} · ${prop.type}` })
+      offer(prop.name, prop.type)
       continue
     }
     // A model prop's fields, one level deep (ADR 0015 §2): `{node.label}`.
     if (list) continue
     for (const field of model.fields) {
       if (modelByRef(component.spec, typeName(field.type).name, models)) continue
-      out.push({
-        alias: `${prop.name}.${field.name}`,
-        label: `${prop.name}.${field.name} · ${field.type}`,
-      })
+      offer(`${prop.name}.${field.name}`, field.type)
     }
   }
   return out
+}
+
+/** The text form of `fieldBindingCandidates`, kept for the Content field. */
+export function textBindingCandidates(
+  component: UidxNode | null,
+  node: UidxNode,
+  models?: ModelIndex,
+): { alias: string; label: string }[] {
+  return fieldBindingCandidates(component, node, 'text', models)
 }
 
 /**
