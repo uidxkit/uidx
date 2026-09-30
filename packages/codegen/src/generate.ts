@@ -11,8 +11,9 @@ import {
 } from './model.js'
 import { modelIndex } from '@uidx/schema/design-system'
 import { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime } from './react.js'
+import { emitStories } from './stories.js'
 
-export type Target = 'html' | 'react' | 'contract'
+export type Target = 'html' | 'react' | 'contract' | 'stories'
 
 export interface GenerateInput {
   /** Component pages: every `<Component>` with an `implements` or a contract is rendered. */
@@ -91,6 +92,10 @@ export function generate(input: GenerateInput): GenerateOutput {
     files.set('react/runtime.ts', emitRuntime())
     files.set('react/elements.d.ts', emitElementTypes([...tags]))
     files.set('react/index.ts', emitIndex(rendered))
+    // Stories import the React wrappers, so they ride with the React target.
+    if (targets.has('stories'))
+      for (const model of rendered)
+        files.set(`react/${model.identifier}.stories.tsx`, emitStories(model, Boolean(tokens)))
   }
 
   if (targets.has('contract')) {

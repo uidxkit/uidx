@@ -575,3 +575,34 @@ describe('the empty state of a list (ADR 0017 §4)', () => {
     )
   })
 })
+
+describe('the stories target (ADR 0015 §3)', () => {
+  const stories = generate({
+    pages: PAGES,
+    tokens: [TOKENS],
+    manifest: MANIFEST,
+    targets: ['react', 'stories'],
+  }).files
+
+  it('writes one CSF file per React component', () => {
+    expect([...stories.keys()].filter((path) => path.endsWith('.stories.tsx')).sort()).toEqual([
+      'react/Checkbox.stories.tsx',
+      'react/ContactItem.stories.tsx',
+      'react/ContactList.stories.tsx',
+      'react/Field.stories.tsx',
+    ])
+  })
+
+  it('gives a list prop its model samples and each visual value a story', () => {
+    const list = stories.get('react/ContactList.stories.tsx')!
+    expect(list).toContain(`import type { Meta, StoryObj } from '@storybook/react'`)
+    expect(list).toContain('component: ContactList,')
+    expect(list).toMatch(/items: \[\s*\{/)
+    expect(list).toContain('export const Disabled: Story = { args: { disabled: true } }')
+  })
+
+  it('is not written without the React target', () => {
+    const only = generate({ pages: PAGES, tokens: [TOKENS], targets: ['stories'] }).files
+    expect([...only.keys()]).toEqual([])
+  })
+})

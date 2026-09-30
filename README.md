@@ -134,7 +134,7 @@ things differently, without editing a design:
 (`element`, `data-part`). `bindings` maps a component's identity names to the
 library's. Both default to the conventions `@hwc/components` follows.
 
-`codegen` is optional too: `{ "out": "../generated", "targets": ["html", "react", "contract"] }`
+`codegen` is optional too: `{ "out": "../generated", "targets": ["html", "react", "contract"] }` (add `"stories"` for Storybook CSF files beside the React components)
 says where `uidx codegen` writes without `--out`, and gives the viewer's
 Contract tab a Generate button that renders the same output from the server.
 

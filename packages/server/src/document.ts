@@ -194,9 +194,11 @@ export async function readManifest(path: string): Promise<Manifest> {
       if (targets !== undefined) {
         if (
           !Array.isArray(targets) ||
-          targets.some((target) => !['html', 'react', 'contract'].includes(target as string))
+          targets.some(
+            (target) => !['html', 'react', 'contract', 'stories'].includes(target as string),
+          )
         )
-          problems.push(`${path}: "codegen.targets" may hold html, react and contract`)
+          problems.push(`${path}: "codegen.targets" may hold html, react, contract and stories`)
         else codegen.targets = targets as string[]
       }
     }

@@ -96,8 +96,8 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
       : parsed.values.target!.split(',').map((t) => t.trim())
   ) as Target[]
   for (const target of targets) {
-    if (!['html', 'react', 'contract'].includes(target)) {
-      io.err(`unknown target "${target}"; choose from html, react, contract\n`)
+    if (!['html', 'react', 'contract', 'stories'].includes(target)) {
+      io.err(`unknown target "${target}"; choose from html, react, contract, stories\n`)
       return 1
     }
   }
