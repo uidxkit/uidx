@@ -5,7 +5,6 @@ import {
   hasVariants,
   METADATA_ATTRS,
   variantName,
-  type ContractSpec,
   type DocumentSpec,
   type FieldSpec,
   type JsonValue,
@@ -33,7 +32,7 @@ import {
  * never links them, and a gesture on one produces no patch (ADR 0016 §4).
  */
 
-import { axesOf, DEFAULT_STATE, STATE_AXIS } from '@uidx/format'
+import { axesOf } from '@uidx/format'
 /** The styles-table name for the component's own frame (ADR 0016 §2). */
 export const ROOT_PART = 'root'
 
