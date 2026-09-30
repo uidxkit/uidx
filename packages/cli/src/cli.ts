@@ -26,6 +26,7 @@ import { runComponent, runComponents } from './commands/components.js'
 import { runLint } from './commands/lint.js'
 import { runDiff } from './commands/diff.js'
 import { runExport } from './commands/export.js'
+import { runShare } from './commands/share.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -43,6 +44,7 @@ Usage:
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
+  uidx share [--out dir]  a static read-only site: page pictures, component docs, tokens
   uidx export fig [--out dir]
                           one Figma file per page, drawn as the canvas draws it
   uidx diff [--base ref] [--fail-on-breaking]
@@ -183,6 +185,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return await runDiff(rest, io)
       case 'export':
         return await runExport(rest, io)
+      case 'share':
+        return await runShare(rest, io)
       case 'component':
         return await runComponent(rest, io)
       case 'dev':

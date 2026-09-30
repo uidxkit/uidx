@@ -143,7 +143,8 @@ export const CI_WORKFLOW = `name: Design system
 
 # Written by \`uidx init --ci\`. On every pull request: the design files must
 # check clean, application code must stay on the design system, and the
-# design-system changes — breaking ones marked — are posted on the PR.
+# design-system changes — breaking ones marked — are posted on the PR, and
+# every page is drawn into a static review site uploaded as an artifact.
 
 on:
   pull_request:
@@ -169,6 +170,12 @@ jobs:
         run: npx --no-install uidx lint src
       - name: Design-system changes
         run: npx --no-install uidx diff --base origin/\${{ github.base_ref }} > uidx-diff.md
+      - name: Draw every page for review
+        run: npx --no-install uidx share --out uidx-site
+      - uses: actions/upload-artifact@v4
+        with:
+          name: uidx-site
+          path: uidx-site
       - name: Post the changes on the pull request
         uses: actions/github-script@v7
         with:

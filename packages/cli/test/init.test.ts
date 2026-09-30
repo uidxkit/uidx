@@ -277,3 +277,25 @@ describe('init --ci', () => {
     }
   })
 })
+
+describe('uidx share', () => {
+  it('writes a static site with every component and token', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-share-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'share', private: true }))
+      await initProject(dir, 'uidx', { designSystem: true })
+      const out: string[] = []
+      const code = await run(['share', '--out', 'site'], {
+        cwd: join(dir, '.uidx'),
+        out: (text: string) => out.push(text),
+        err: () => {},
+      } as never)
+      expect(code).toBe(0)
+      const html = await readFile(join(dir, '.uidx/site/index.html'), 'utf8')
+      expect(html).toContain('id="button"')
+      expect(html).toContain('var(--color-accent)')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
