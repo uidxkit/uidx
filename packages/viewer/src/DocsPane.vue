@@ -65,6 +65,22 @@ function spans(text: string): { code: boolean; text: string }[] {
     )
 }
 
+/** The code target's file stem for a component name, as `@uidx/codegen` spells it. */
+function stem(name: string): string {
+  return name
+    .replace(/[/\s]+/g, '-')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+}
+
+/** Bumped with the stamp so the preview reloads when the document moves. */
+const previewKey = ref(0)
+watch(
+  () => [props.docs, props.stamp],
+  () => (previewKey.value += 1),
+)
+
 function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
   const out: string[] = []
   if (prop.visual) out.push('visual')
@@ -142,6 +158,22 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
             </figcaption>
           </figure>
         </div>
+      </section>
+
+      <section v-if="docs.implements || docs.contract" aria-labelledby="docs-code">
+        <h2 id="docs-code" class="section-label">AS THE CODE RENDERS IT</h2>
+        <p class="dim">
+          The HTML/CSS target's markup and styles for this component, drawn by the browser. Compare
+          it with the examples above: a difference is a difference between what is designed and what
+          ships. Static — behaviour comes from the headless library.
+        </p>
+        <iframe
+          :key="previewKey"
+          class="code-preview"
+          :title="`${docs.name} as generated code`"
+          :src="`/__uidx/preview?component=${stem(docs.name)}`"
+          sandbox=""
+        ></iframe>
       </section>
 
       <template v-if="docs.contract">
@@ -436,6 +468,13 @@ dd {
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+.code-preview {
+  width: 100%;
+  height: 200px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #f5f5f5;
 }
 figcaption {
   display: flex;

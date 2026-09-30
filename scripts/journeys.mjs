@@ -137,6 +137,14 @@ try {
     },
   )
 
+  await journey('the Docs face shows the component as the generated code renders it', async () => {
+    const response = await page.request.get(`${url}/__uidx/preview?component=button`)
+    assert.equal(response.status(), 200)
+    assert.match(await response.text(), /<hwc-button/)
+    await open('?page=button.uidx&view=docs')
+    await page.locator('iframe.code-preview').waitFor()
+  })
+
   await journey('the Models face lists the Contact model and who receives it', async () => {
     await open('?page=contact-list.uidx&view=models')
     await page.getByText('Contact', { exact: true }).first().waitFor()

@@ -158,7 +158,12 @@ export function cssDeclarations(
         break
       case 'layoutMode':
         if (value === 'HORIZONTAL' || value === 'VERTICAL') {
-          out.display = 'flex'
+          // A frame that hugs its width sizes to its content, as the canvas
+          // draws it; a block-level flex box would stretch to its container.
+          const widthSizing =
+            value === 'HORIZONTAL' ? attrs.primaryAxisSizingMode : attrs.counterAxisSizingMode
+          const hugs = widthSizing === 'AUTO' && attrs.width === undefined
+          out.display = hugs ? 'inline-flex' : 'flex'
           out['flex-direction'] = value === 'HORIZONTAL' ? 'row' : 'column'
         }
         break

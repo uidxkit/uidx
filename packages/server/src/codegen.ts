@@ -12,6 +12,7 @@ import { documentMembers, type FoundManifest } from './document.js'
 import type { MiddlewareHost, ViewerPlugin } from './static-viewer.js'
 
 export const CODEGEN_ROUTE = '/__uidx/codegen'
+export const PREVIEW_ROUTE = '/__uidx/preview'
 
 export interface CodegenRun {
   /** Where the files went, as `uidx.json` spells it. */
@@ -32,6 +33,27 @@ export interface CodegenRun {
 export async function runCodegen(found: FoundManifest): Promise<CodegenRun> {
   const config = found.manifest.codegen
   if (!config) throw new Error('uidx.json names no "codegen": { "out": … } to write into')
+  const rendered = await renderDocument(found, config.targets as Target[] | undefined)
+  if (!rendered.ok) return { out: config.out, written: [], diagnostics: rendered.diagnostics }
+  const { result, diagnostics } = rendered
+  const written: string[] = []
+  for (const [path, text] of result.files) {
+    const target = resolve(found.dir, config.out, path)
+    await mkdir(dirname(target), { recursive: true })
+    await writeFile(target, text)
+    written.push(path)
+  }
+  return { out: config.out, written, diagnostics }
+}
+
+/** The document's pages rendered by the code targets, or the diagnostics that stopped them. */
+async function renderDocument(
+  found: FoundManifest,
+  targets: Target[] | undefined,
+): Promise<
+  | { ok: true; result: ReturnType<typeof generate>; diagnostics: CodegenRun['diagnostics'] }
+  | { ok: false; diagnostics: CodegenRun['diagnostics'] }
+> {
   const files = await documentMembers(found)
   const pages: { file: string; doc: UidxDocument }[] = []
   const tokens: UidxDocument[] = []
@@ -43,7 +65,7 @@ export async function runCodegen(found: FoundManifest): Promise<CodegenRun> {
     if (doc.tree.element === 'Tokens') tokens.push(doc)
     else pages.push({ file, doc })
   }
-  if (diagnostics.length) return { out: config.out, written: [], diagnostics }
+  if (diagnostics.length) return { ok: false, diagnostics }
 
   const headless = found.manifest.headless
   let manifest: ElementsManifest | undefined
@@ -57,25 +79,39 @@ export async function runCodegen(found: FoundManifest): Promise<CodegenRun> {
       components: headless.bindings as LibraryBindings['components'],
     }
   }
-  const result = generate({
-    pages,
-    tokens,
-    manifest,
-    library,
-    targets: config.targets as Target[] | undefined,
-  })
+  const result = generate({ pages, tokens, manifest, library, targets })
   diagnostics.push(...result.diagnostics)
-  if (result.diagnostics.some((d) => d.severity === 'error'))
-    return { out: config.out, written: [], diagnostics }
+  if (result.diagnostics.some((d) => d.severity === 'error')) return { ok: false, diagnostics }
+  return { ok: true, result, diagnostics }
+}
 
-  const written: string[] = []
-  for (const [path, text] of result.files) {
-    const target = resolve(found.dir, config.out, path)
-    await mkdir(dirname(target), { recursive: true })
-    await writeFile(target, text)
-    written.push(path)
-  }
-  return { out: config.out, written, diagnostics }
+/**
+ * One component as the HTML/CSS target renders it, as a page: the tokens,
+ * every generated stylesheet and the component's markup fragment. The Docs
+ * face shows it beside the canvas's drawing, so a difference between what
+ * is designed and what ships is visible where the component is read.
+ * Static: behaviour is the headless library's, and this page loads none.
+ */
+export async function previewPage(found: FoundManifest, stem: string): Promise<string | null> {
+  const rendered = await renderDocument(found, ['html'])
+  if (!rendered.ok) return null
+  const files = rendered.result.files
+  const fragment = files.get(`html/${stem}.html`)
+  if (fragment === undefined) return null
+  const styles = [...files]
+    .filter(([path]) => path.endsWith('.css'))
+    .map(([, text]) => text)
+    .join('\n')
+  return `<!doctype html>
+<html><head><meta charset="utf-8"><title>${stem}</title>
+<style>
+body { margin: 0; padding: 24px; font-family: Inter, system-ui, sans-serif; background: #f5f5f5; }
+${styles}
+</style></head>
+<body>
+${fragment}
+</body></html>
+`
 }
 
 /** `GET` says whether generation is configured and where; `POST` runs it. */
@@ -126,9 +162,27 @@ export function codegenRoutePlugin(manifest: { current: FoundManifest | null }):
       )
     }
   }
+  const preview = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    response.setHeader('cache-control', 'no-store')
+    const found = manifest.current
+    const stem = new URL(request.url ?? '/', 'http://local').searchParams.get('component') ?? ''
+    const page =
+      found && /^[\w-]+$/.test(stem) ? await previewPage(found, stem).catch(() => null) : null
+    if (page === null) {
+      response.statusCode = 404
+      response.setHeader('content-type', 'text/plain; charset=utf-8')
+      response.end('No generated markup for that component.')
+      return
+    }
+    response.setHeader('content-type', 'text/html; charset=utf-8')
+    response.end(page)
+  }
   const configure = (server: MiddlewareHost): void => {
     server.middlewares.use(CODEGEN_ROUTE, (req, res) => {
       void handle(req, res)
+    })
+    server.middlewares.use(PREVIEW_ROUTE, (req, res) => {
+      void preview(req, res)
     })
   }
   return { name: 'uidx:codegen', configureServer: configure, configurePreviewServer: configure }

@@ -606,3 +606,31 @@ describe('the stories target (ADR 0015 §3)', () => {
     expect([...only.keys()]).toEqual([])
   })
 })
+
+describe('sizing like the canvas', () => {
+  it('draws a frame that hugs its width as inline-flex, a fixed one as flex', () => {
+    const doc = parseOrThrow(`---
+id: chip
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Chip" status="draft" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO">
+    <Frame name="bar" layoutMode="HORIZONTAL" width={200} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Hi">Words.</Prop>
+</Props>
+`)
+    const css = generate({ pages: [{ file: 'chip.uidx', doc }], targets: ['html'] }).files.get(
+      'html/chip.css',
+    )!
+    expect(css).toMatch(/\.chip \{\n {2}display: inline-flex;/)
+    expect(css).toMatch(/\[data-node="bar"\] \{\n {2}display: flex;/)
+  })
+})
