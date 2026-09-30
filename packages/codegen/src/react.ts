@@ -1,4 +1,4 @@
-import type { FieldSpec, JsonValue, ModelSpec, PropSpec, UidxNode } from '@uidx/format'
+import type { FieldSpec, JsonValue, PropSpec, UidxNode } from '@uidx/format'
 import { modelOfType, slotModel, type ModelIndex } from '@uidx/schema/design-system'
 import { boundPath, boundProp, pascal, type ComponentModel } from './model.js'
 
