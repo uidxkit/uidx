@@ -62,6 +62,7 @@ describe('the skills this repo actually ships', () => {
     expect(skills.map((skill) => skill.name).sort()).toEqual([
       'uidx-authoring',
       'uidx-component-docs',
+      'uidx-design-system',
       'uidx-eval-api',
       'uidx-project',
     ])

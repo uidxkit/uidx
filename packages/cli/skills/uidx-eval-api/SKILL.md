@@ -1,6 +1,6 @@
 ---
 name: uidx-eval-api
-description: The eval tool's full contract — the five globals, the six op-builder methods, and the five semantics. Load this before writing your first script.
+description: The eval tool's full contract — the five globals, the op-builder methods, and the five semantics. Load this before writing your first script.
 ---
 
 # The eval API
@@ -23,9 +23,9 @@ through the same gates as edit. `return` a value and it comes back as JSON.
 3. **One synchronous function body.** 2-second limit; no imports, no
    `eval`/`new Function`, no filesystem, no network. The five globals below
    are the whole world.
-4. **Compose big structures in memory.** A `<Component>` inserted with ALL its
-   `<Variant>` children in ONE `insert` can never be refused for holding no
-   variants. Build the node tree in loops, insert once.
+4. **Compose big structures in memory.** Build a node tree in loops and insert
+   it once. A component's states are NOT trees: declare `visual` props and
+   write `<Styles>` cells with `style(...)` — the canvas derives the set.
 5. **Keep scripts SMALL — one section per script.** Build one thing, read the
    `applied` message (audits ride on it), fix what it names, then write the
    next script. The next call's snapshot includes everything the last one
@@ -55,29 +55,33 @@ ops(file: string): {                        // the op builder — queued, gated,
   remove(address): void                     // subtree and all
   move(address, newParent, index): void
   rename(address, name): void               // its address changes with it
+  // design-system regions (ADRs 0013–0016)
+  style(keys, target, prop, value?): void    // one <Styles> cell; keys {state:'hover'}, target 'root' or a part; omit value to clear
+  declare(kind, name, description, attrs?): void  // kind prop|event|slot|state|part; attrs {type, default, visual, ...}
+  undeclare(kind, name): void
+  model(name, description): void
+  field(model, name, description, attrs?): void    // attrs {type, key, optional, sample}
 }
 
 console.log(...): void                      // captured, returned in the outcome's logs
 ```
 
-## Worked example — a component with computed variants, one insert
+## Worked example — a component and its contract, one script
 
 ```js
-const SIZES = { sm: { track: [36, 20], thumb: 16 }, md: { track: [44, 24], thumb: 20 } }
-const variants = []
-for (const [size, geo] of Object.entries(SIZES)) {
-  for (const state of ['off', 'on']) {
-    const [tw, th] = geo.track
-    variants.push({ element: 'Variant', attrs: { state, size }, children: [{
-      element: 'Frame', attrs: { name: 'track', width: tw, height: th, cornerRadius: th / 2, layoutMode: 'NONE' },
-      children: [{ element: 'Ellipse', attrs: { name: 'thumb', width: geo.thumb, height: geo.thumb,
-        x: state === 'on' ? tw - geo.thumb - 2 : 2, y: (th - geo.thumb) / 2 } }] }] })
-  }
-}
-ops('page.uidx').insert('', { element: 'Component',
-  attrs: { name: 'Control/X', x: 1700, variants: { state: ['off', 'on'], size: Object.keys(SIZES) } },
-  children: variants })
-return { variants: variants.length }
+const page = 'toggle.uidx'
+const o = ops(page)
+o.insert('', { element: 'Component', attrs: { name: 'Toggle', status: 'draft', implements: 'hwc-switch',
+  width: 44, height: 24, cornerRadius: '{radius#full}', fills: '{surface#raised}', layoutMode: 'HORIZONTAL',
+  paddingLeft: 2, paddingRight: 2, counterAxisAlignItems: 'CENTER' },
+  children: [{ element: 'Ellipse', attrs: { name: 'thumb', part: 'thumb', width: 20, height: 20, fills: '{surface#control}' } }] })
+o.declare('prop', 'checked', 'Whether the switch is on.', { type: 'boolean', default: false, controllable: true, visual: true })
+o.declare('prop', 'disabled', 'Inert and dimmed.', { type: 'boolean', default: false, visual: true })
+o.declare('event', 'change', 'Fires once per user toggle.', { detail: '{ checked: boolean }' })
+o.style({ state: 'checked' }, 'root', 'fills', '{surface#accent}')
+o.style({ state: 'checked' }, 'root', 'primaryAxisAlignItems', 'MAX')
+o.style({ state: 'disabled' }, 'root', 'opacity', '{opacity#disabled}')
+return 'queued'
 ```
 
 Prop vocabulary is the uidx dialect (see the uidx-authoring skill). Bind

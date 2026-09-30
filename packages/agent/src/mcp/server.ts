@@ -185,7 +185,12 @@ export function createUidxMcpServer(options: UidxMcpOptions = {}): McpServer {
         page: z.string().describe('page path, e.g. home.uidx'),
         ops: z
           .array(z.record(z.string(), z.unknown()))
-          .describe('edit ops: {kind, address?, prop?, value?, parent?, node?, ...}'),
+          .describe(
+            'edit ops, {kind, ...}. Scene: set_prop, remove_prop, insert_node, remove_node, move_node, rename. ' +
+              'Design system (ADRs 0013–0016): set_style {keys, target, prop, value?} writes one <Styles> cell; ' +
+              'declare {contractKind, name, attrs?, description | remove} one ## Contract entry; ' +
+              'set_model {name, description | remove}; set_field {model, name, attrs?, description | remove}',
+          ),
       },
     },
     async ({ root, page, ops }) => {

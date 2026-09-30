@@ -323,6 +323,22 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
       }
     }
 
+    /* ------------------------------------------------ derivable variants */
+    // ADR 0016 §5: trees that share one anatomy and differ only in values are
+    // appearance variants written by hand. Suggested, never rewritten.
+    const variants = component.children.filter((node) => node.element === 'Variant')
+    if (variants.length >= 2) {
+      const shape = anatomy(variants[0]!)
+      if (variants.every((variant) => anatomy(variant) === shape)) {
+        warn(
+          CODES.DERIVABLE_VARIANTS,
+          `"${component.name}" writes ${variants.length} <Variant> trees with one anatomy that differ only in values; ` +
+            'declare the axes as visual props in ## Contract and give each value a <Style> row instead (ADR 0016)',
+          component.loc,
+        )
+      }
+    }
+
     /* ---------------------------------------------------- visual props */
     for (const prop of contract?.props ?? []) {
       if (prop.visual && prop.type && !enumValues(prop.type) && prop.type !== 'boolean') {
@@ -336,4 +352,10 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
   }
 
   return out
+}
+
+/** A subtree's anatomy: elements and names in order, values ignored. */
+function anatomy(node: UidxNode): string {
+  const children = node.children.map((child) => `${child.element}:${child.name}(${anatomy(child)})`)
+  return children.join(',')
 }

@@ -241,6 +241,11 @@ function unknownProp(ops: readonly EditOp[]): string | null {
       const refusal = check('', op.prop, op.value, at)
       if (refusal) return refusal
     }
+    if (op.kind === 'set_style' && op.value !== undefined) {
+      // A styles cell carries a scene prop of its target, so the same gate.
+      const refusal = check('', op.prop, op.value, at)
+      if (refusal) return refusal
+    }
     if (op.kind === 'insert_node') {
       const walk = (node: NodeInput, path: string): string | null => {
         for (const [prop, value] of Object.entries(node.attrs ?? {})) {

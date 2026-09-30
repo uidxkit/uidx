@@ -13,7 +13,19 @@ import { describe, expect, it } from 'vitest'
 const HERE = join(fileURLToPath(new URL('.', import.meta.url)), '..')
 
 const GLOBALS = ['doc', 'pages', 'visit', 'find', 'ops', 'console'] as const
-const BUILDER = ['set', 'removeProp', 'insert', 'remove', 'move', 'rename'] as const
+const BUILDER = [
+  'set',
+  'removeProp',
+  'insert',
+  'remove',
+  'move',
+  'rename',
+  'style',
+  'declare',
+  'undeclare',
+  'model',
+  'field',
+] as const
 
 describe('the eval API contract', () => {
   it('declares every sandbox global, and nothing else', async () => {

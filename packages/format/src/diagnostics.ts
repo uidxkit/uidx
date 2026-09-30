@@ -120,6 +120,8 @@ export const CODES = {
   BINDING: 'UIDX151',
   /** A contract that disagrees with the headless manifest it implements. */
   CONFORMANCE: 'UIDX152',
+  /** Variant trees that differ only in values: a styles table would derive them (ADR 0016 §5). */
+  DERIVABLE_VARIANTS: 'UIDX153',
   // attribute grammar
   BAD_VALUE: 'UIDX200',
   SHORTHAND_ATTR: 'UIDX201',

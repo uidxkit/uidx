@@ -594,3 +594,34 @@ describe('a whole-attribute paint alias', () => {
     expect(scene.warnings).toEqual([])
   })
 })
+
+describe('derivable variants (ADR 0016 §5)', () => {
+  const page = (variants: string) =>
+    parseOrThrow(`---
+id: toggle
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Toggle" status="draft" variants={{ state: ['off', 'on'] }}>
+${variants}
+  </Component>
+</Page>
+`)
+  const codes = (doc: ReturnType<typeof parseOrThrow>) => auditDesignSystem(doc).map((d) => d.code)
+
+  it('suggests a styles table when every variant shares one anatomy', () => {
+    const doc =
+      page(`    <Variant state="off"><Frame name="track" width={40} height={24} /></Variant>
+    <Variant state="on"><Frame name="track" width={40} height={24} opacity={0.5} /></Variant>`)
+    expect(codes(doc)).toContain('UIDX153')
+  })
+
+  it('leaves structural variants alone', () => {
+    const doc =
+      page(`    <Variant state="off"><Frame name="track" width={40} height={24} /></Variant>
+    <Variant state="on"><Frame name="track" width={40} height={24}><Frame name="knob" width={8} height={8} /></Frame></Variant>`)
+    expect(codes(doc)).not.toContain('UIDX153')
+  })
+})

@@ -94,6 +94,7 @@ describe('project setup', () => {
       expect(await readdir(join(dir, folder))).toEqual([
         'uidx-authoring',
         'uidx-component-docs',
+        'uidx-design-system',
         'uidx-eval-api',
         'uidx-project',
       ])

@@ -122,6 +122,30 @@ export type EditOp =
   | { kind: 'remove_node'; address: string }
   | { kind: 'move_node'; address: string; newParent: string; index: number }
   | { kind: 'rename'; address: string; name: string }
+  | {
+      kind: 'set_style'
+      keys: Record<string, string>
+      target: string
+      prop: string
+      value?: JsonInput
+    }
+  | {
+      kind: 'declare'
+      contractKind: ContractKind
+      name: string
+      attrs?: Record<string, JsonInput>
+      description?: string
+      remove?: boolean
+    }
+  | { kind: 'set_model'; name: string; description?: string; remove?: boolean }
+  | {
+      kind: 'set_field'
+      model: string
+      name: string
+      attrs?: Record<string, JsonInput>
+      description?: string
+      remove?: boolean
+    }
 
 export type JsonInput = z.infer<typeof jsonValue>
 
@@ -132,7 +156,14 @@ export const EDIT_OP_KINDS = [
   'remove_node',
   'move_node',
   'rename',
+  'set_style',
+  'declare',
+  'set_model',
+  'set_field',
 ] as const
+
+export const CONTRACT_KINDS = ['prop', 'event', 'slot', 'state', 'part'] as const
+type ContractKind = (typeof CONTRACT_KINDS)[number]
 
 /**
  * One flat object with every field on it, not the six-way union `EditOp`
@@ -169,7 +200,39 @@ const editOpInputSchema = z.object({
     .min(0)
     .optional()
     .describe('insert_node: omit to append. move_node: required, the position to move to'),
-  name: z.string().optional().describe('rename: the new name'),
+  name: z
+    .string()
+    .optional()
+    .describe('rename: the new name. declare/set_model/set_field: the declared name'),
+  keys: z
+    .record(z.string(), z.string())
+    .optional()
+    .describe(
+      'set_style: the styles-table row, axis → value, e.g. {"state":"hover","size":"sm"}; {} is the base row',
+    ),
+  target: z
+    .string()
+    .optional()
+    .describe('set_style: "root" (the component frame), a declared part, or a node name'),
+  contractKind: z
+    .enum(CONTRACT_KINDS)
+    .optional()
+    .describe('declare: which ## Contract list — prop, event, slot, state or part'),
+  model: z.string().optional().describe('set_field: the <Model> the field belongs to'),
+  attrs: z
+    .record(z.string(), jsonValue)
+    .optional()
+    .describe(
+      'declare/set_field: attributes besides name, e.g. {"type":"boolean","default":false,"visual":true}',
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe('declare/set_model/set_field: the words; required unless remove is true'),
+  remove: z
+    .boolean()
+    .optional()
+    .describe('declare/set_model/set_field: true removes the declaration'),
 })
 
 export const editOpsSchema = z.array(editOpInputSchema).min(1)
@@ -282,6 +345,66 @@ export function narrowOps(ops: readonly EditOpInput[]): NarrowResult<EditOp[]> {
           return { ok: false, message: missing(i, op, 'address and name') }
         }
         narrowed.push({ kind: op.kind, address: op.address, name: op.name })
+        break
+      }
+      case 'set_style': {
+        if (op.keys === undefined || op.target === undefined || op.prop === undefined) {
+          return { ok: false, message: missing(i, op, 'keys, target and prop') }
+        }
+        narrowed.push({
+          kind: op.kind,
+          keys: op.keys,
+          target: op.target,
+          prop: op.prop,
+          ...(op.value === undefined ? {} : { value: op.value }),
+        })
+        break
+      }
+      case 'declare': {
+        if (op.contractKind === undefined || op.name === undefined) {
+          return { ok: false, message: missing(i, op, 'contractKind and name') }
+        }
+        if (!op.remove && !op.description) {
+          return { ok: false, message: missing(i, op, 'a description (or remove: true)') }
+        }
+        narrowed.push({
+          kind: op.kind,
+          contractKind: op.contractKind,
+          name: op.name,
+          ...(op.attrs === undefined ? {} : { attrs: op.attrs }),
+          ...(op.description === undefined ? {} : { description: op.description }),
+          ...(op.remove ? { remove: true } : {}),
+        })
+        break
+      }
+      case 'set_model': {
+        if (op.name === undefined) return { ok: false, message: missing(i, op, 'name') }
+        if (!op.remove && !op.description) {
+          return { ok: false, message: missing(i, op, 'a description (or remove: true)') }
+        }
+        narrowed.push({
+          kind: op.kind,
+          name: op.name,
+          ...(op.description === undefined ? {} : { description: op.description }),
+          ...(op.remove ? { remove: true } : {}),
+        })
+        break
+      }
+      case 'set_field': {
+        if (op.model === undefined || op.name === undefined) {
+          return { ok: false, message: missing(i, op, 'model and name') }
+        }
+        if (!op.remove && !op.description) {
+          return { ok: false, message: missing(i, op, 'a description (or remove: true)') }
+        }
+        narrowed.push({
+          kind: op.kind,
+          model: op.model,
+          name: op.name,
+          ...(op.attrs === undefined ? {} : { attrs: op.attrs }),
+          ...(op.description === undefined ? {} : { description: op.description }),
+          ...(op.remove ? { remove: true } : {}),
+        })
         break
       }
     }
