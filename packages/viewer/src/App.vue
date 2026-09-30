@@ -22,6 +22,8 @@ import {
   TokenResolver,
   tupleAt,
   type Dependent,
+  modelIndex,
+  derivedTarget,
 } from '@uidx/schema'
 import {
   applyPatchesIncremental,
@@ -215,6 +217,8 @@ const panelTokens = computed(() => {
  * this is what lets the canvas and the rail agree about what it holds.
  */
 const components = computed(() => componentIndex(pages.value.values()))
+/** Model name -> declaration across every page (ADR 0015 §2): a list's model is written once. */
+const models = computed(() => modelIndex(pages.value.values()))
 
 /**
  * The document as a list of pages, for the rail (the page switcher).
@@ -322,6 +326,7 @@ function renderThumb(card: PageCard): Promise<string | null> {
     tokens: sceneTokens.value,
     literals: tokens.value,
     components: components.value,
+    models: models.value,
     revision: card.revision,
     // A page with no instances cannot be changed by a definition, so it is not
     // stamped and a component edit does not cost it a redraw.
@@ -702,6 +707,21 @@ const shown = computed<UidxDocument | null>(() => {
   }
 })
 const sceneDoc = computed(() => (renderable.value ? shown.value : null))
+
+/**
+ * What the rail highlights: a canvas selection in the default state of a
+ * derived component is the base layer it draws (ADR 0016 §4), and that is
+ * the row the rail has. Other states keep their own address; the rail shows
+ * nothing for them, since the file has no line for a derived node.
+ */
+const railSelection = computed(() => {
+  const doc_ = sceneDoc.value
+  if (!doc_) return selection.value
+  return selection.value.map((address) => {
+    const target = derivedTarget(doc_, address)
+    return target?.isDefault ? target.base.address : address
+  })
+})
 
 /**
  * A `<Tokens>` page's page view IS its tokens view (spec §1): the moment the
@@ -1419,16 +1439,16 @@ const slotTarget = computed(() =>
  * this is the gesture that makes one. The rail shows the row either way, but
  * the author should not have to go looking for what they just made.
  */
-/** Whether the selected instance can be wrapped in a `<Repeat>` (ADR 0017 §2). */
+/** Whether the selected layer can repeat over a list of its contract (ADR 0017 §2). */
 const repeatTarget = computed(() =>
-  sceneDoc.value ? repeatTargetFor(sceneDoc.value, selection.value) : null,
+  sceneDoc.value ? repeatTargetFor(sceneDoc.value, selection.value, models.value) : null,
 )
 
-/** Wrap the selected instance in a `<Repeat>` on the first open repeating slot, and select it. */
+/** Repeat the selected layer over the first list its contract can place; it stays selected. */
 function addRepeat(): void {
   const doc_ = sceneDoc.value
   if (!doc_) return
-  const made = newRepeatFor(doc_, selection.value)
+  const made = newRepeatFor(doc_, selection.value, models.value)
   if (!made) return
   commitPatches(made.patches)
   selection.value = [made.address]
@@ -1633,8 +1653,9 @@ onUnmounted(() => socket.close())
         <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
           <LayersPane
             :doc="sceneDoc"
-            :selection="selection"
+            :selection="railSelection"
             :components="components"
+            :models="models"
             :vector-editing="vertexEditing"
             :writable="connection === 'open'"
             @edit-vector="editVector"
@@ -1756,6 +1777,7 @@ onUnmounted(() => socket.close())
             :tokens="panelTokens"
             :token-index="tokenIndex"
             :components="components"
+            :models="models"
             :pages="pages"
             :file="entry ?? undefined"
             :writable="connection === 'open'"

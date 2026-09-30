@@ -43,7 +43,17 @@ import { resolvePins } from './pin-pass.js'
 import { composeStrokes, isIdentityProp, mappingFor, normalizeFills } from './prop-table.js'
 import { withStrokeEndpoints } from './stroke-endpoints.js'
 import { arrangeVariants, type VariantBox } from './variant-layout.js'
-import { deriveVariants, derivedDocument, specBindings } from './design-system.js'
+import {
+  deriveVariants,
+  derivedDocument,
+  modelSamples,
+  repeatModel,
+  repeatOf,
+  sampleCount,
+  specBindings,
+  type RepeatScope,
+  type ModelIndex,
+} from './design-system.js'
 
 export const NODE_TYPE: Record<SceneElement, NodeType> = {
   // The graph's own page node. `<Page>` is never constructed — it is mapped
@@ -57,10 +67,6 @@ export const NODE_TYPE: Record<SceneElement, NodeType> = {
   Rectangle: 'RECTANGLE',
   Ellipse: 'ELLIPSE',
   Vector: 'VECTOR',
-  // ADR 0017 §2. Never constructed: a `<Repeat>` is expanded into clones of
-  // its child, so the builder returns before this entry is read. Present so
-  // the table stays total over the scene elements.
-  Repeat: 'FRAME',
   // ADR 0007 §1. The SDK has no slot node — measured, not assumed: `NodeType`
   // is eighteen values and none is one — so a slot is unconditionally a frame.
   // Unlike `Component`, which `nodeTypeFor` makes conditional, there is no
@@ -190,15 +196,25 @@ export interface SceneOptions {
    */
   tokens?: { resolver: TokenResolver; index: TokenIndex }
   /**
-   * Which sample a model binding resolves to (ADR 0015 §2): the n-th clone
-   * of a `<Repeat>` draws the n-th sample of every bound field.
+   * Which sample a model binding resolves to (ADR 0015 §2): the n-th row of
+   * a repeat draws the n-th sample of every bound field.
    */
   sampleIndex?: number
   /**
-   * True inside a `<Repeat>` clone: the nodes are generated, so nothing they
+   * True inside a repeated row: the nodes are generated, so nothing they
    * hold links into the bimap — the same rule an instance's children follow.
    */
   generated?: boolean
+  /** The component whose contract the subtree reads: where a repeat's list prop lives. */
+  component?: UidxNode
+  /** The repeats this subtree sits inside, outermost first (ADR 0017 §2). */
+  repeats?: readonly RepeatScope[]
+  /**
+   * Model name -> declaration across every page, the way `resolveComponent`
+   * reaches definitions: a list prop names its model by type (ADR 0015 §2),
+   * and the model is written once, very often on another page.
+   */
+  models?: ModelIndex
 }
 
 export interface SceneResult {
@@ -281,31 +297,35 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     scope: SceneOptions,
     tuple: ModeTuple | null,
   ): void => {
-    // ADR 0017 §2: a repeat is its one instance, drawn `count` times, each
-    // clone resolving the slot's model at its own sample index. The clones
-    // are generated content and never link (the instance rule, D4).
-    if (node.element === 'Repeat') {
-      const child = node.children[0]
-      const count = node.attrs.count?.value
-      if (!child || typeof count !== 'number') return
-      if (child.element !== 'Instance') {
-        warnings.push(
-          `${node.address}: a <Repeat> multiplies an <Instance>; found <${child.element}>`,
-        )
-        return
-      }
+    // ADR 0017 §2: an element with `repeat` is drawn once per element of its
+    // list, each row resolving `{item.*}` at its own sample index. The first
+    // row is the layer itself — selected, edited and linked like any other,
+    // the way Plasmic edits the first of a repeated element — and the rows
+    // after it are its echoes: generated content that never links (the
+    // instance rule, D4), named `row-2`, `row-3` beside it.
+    const repeat = repeatOf(node)
+    if (repeat) {
+      const spec = scope.component?.spec
+      // A list whose model no page in the index declares still draws its
+      // rows (an instance row binds through its own definition); the audit
+      // is where an unplaceable list is reported.
+      const model = repeatModel(repeat, spec, scope.repeats ?? [], scope.models)
+      const count = repeat.count ?? sampleCount(model)
+      const row = unrepeated(node)
       for (let index = 0; index < count; index++) {
-        const id = addressOf(parentId, `${child.name}-${index + 1}`)
-        const indexed: SceneOptions = { ...scope, sampleIndex: index, generated: true }
-        const clone = { ...child, address: id, synthetic: true as const }
-        pins.link(id, pinFrom(clone.attrs, indexed.rootFontSize, indexed.resolveAlias))
-        graph.createNodeWithId(
-          id,
-          nodeTypeFor(clone),
-          parentId,
-          instanceProps(clone, warnings, indexed),
-        )
-        expandInstance(graph, addresses, pins, clone, warnings, indexed)
+        const first = index === 0
+        const id = addressOf(parentId, first ? node.name : `${node.name}-${index + 1}`)
+        const bindings = model
+          ? modelSamples(repeat.as, model, index, spec, scope.models)
+          : new Map()
+        const indexed: SceneOptions = {
+          ...scope,
+          sampleIndex: index,
+          ...(first ? {} : { generated: true }),
+          resolveAlias: layerProperties(scope.resolveAlias, bindings),
+          repeats: [...(scope.repeats ?? []), { as: repeat.as, model }],
+        }
+        build(first ? row : readdressed(row, id), parentId, indexed, tuple)
       }
       return
     }
@@ -337,6 +357,8 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     if (node.element === 'Component') {
       inner = {
         ...inner,
+        component: node,
+        repeats: [],
         resolveAlias: withProperties(aliasFor(next), declaredDefaults(node, scope.sampleIndex)),
       }
     }
@@ -684,6 +706,38 @@ function withProperties(
 }
 
 /**
+ * A resolver that adds bare names *without* shadowing the ones below it: a
+ * repeat's `{item.name}` sits beside the component's own `{label}`, so a row
+ * still reads its component's props (ADR 0017 §2).
+ */
+function layerProperties(
+  base: AliasResolver | undefined,
+  values: ReadonlyMap<string, JsonValue>,
+): AliasResolver {
+  return (address) =>
+    address.includes('#') ? base?.(address) : (values.get(address) ?? base?.(address))
+}
+
+/** The node without the attributes that made it repeat, so a row does not repeat again. */
+function unrepeated(node: UidxNode): UidxNode {
+  const attrs = { ...node.attrs }
+  delete attrs.repeat
+  delete attrs.as
+  delete attrs.count
+  return { ...node, attrs }
+}
+
+/** The subtree re-addressed under `address`, so each row's children have ids of their own. */
+function readdressed(node: UidxNode, address: string): UidxNode {
+  return {
+    ...node,
+    address,
+    synthetic: true,
+    children: node.children.map((child) => readdressed(child, addressOf(address, child.name))),
+  }
+}
+
+/**
  * A resolver bound to one mode tuple (story G8).
  *
  * The mirror of `withProperties`: that one claims bare names and delegates
@@ -951,6 +1005,8 @@ function expandInstance(
    */
   const scope: SceneOptions = {
     ...options,
+    component: definition,
+    repeats: [],
     resolveAlias: withProperties(
       options.resolveAlias,
       new Map([
@@ -1012,50 +1068,59 @@ function expandInstance(
     parentId: string,
     relative: string,
     inherited: Partial<SceneNode> = {},
+    local: SceneOptions = scope,
   ): void => {
-    // ADR 0017 §2 inside a definition being instanced: the same expansion the
-    // top-level build does, in the definition's scope at each sample index.
-    if (source.element === 'Repeat') {
-      const child = source.children[0]
-      const count = source.attrs.count?.value
-      if (!child || typeof count !== 'number' || child.element !== 'Instance') return
+    // ADR 0017 §2 inside a definition being instanced: the same expansion
+    // the top-level build does, in the definition's local at each sample
+    // index.
+    const repeat = repeatOf(source)
+    if (repeat) {
+      const model = repeatModel(repeat, definition.spec, local.repeats ?? [], local.models)
+      const count = repeat.count ?? sampleCount(model)
+      const row = unrepeated(source)
       for (let index = 0; index < count; index++) {
-        const id = addressOf(parentId, `${child.name}-${index + 1}`)
-        const indexed: SceneOptions = { ...scope, sampleIndex: index, generated: true }
-        const copy = { ...child, address: id, synthetic: true as const }
-        pins.link(id, pinFrom(copy.attrs, indexed.rootFontSize, indexed.resolveAlias))
-        graph.createNodeWithId(
-          id,
-          nodeTypeFor(copy),
+        const bindings = model
+          ? modelSamples(repeat.as, model, index, definition.spec, local.models)
+          : new Map()
+        const indexed: SceneOptions = {
+          ...local,
+          sampleIndex: index,
+          generated: true,
+          resolveAlias: layerProperties(local.resolveAlias, bindings),
+          repeats: [...(local.repeats ?? []), { as: repeat.as, model }],
+        }
+        clone(
+          { ...row, name: index === 0 ? source.name : `${source.name}-${index + 1}` },
           parentId,
-          instanceProps(copy, warnings, indexed),
+          relative,
+          inherited,
+          indexed,
         )
-        expandInstance(graph, addresses, pins, copy, warnings, indexed, chain)
       }
       return
     }
     const id = addressOf(parentId, source.name)
-    const props = instanceProps(source, warnings, scope)
+    const props = instanceProps(source, warnings, local)
     const changed = overrides.get(relative)
 
     // A generated child has no address to look the document up by, so its pin
     // is recorded here, against the id it was built with. This is what makes
     // ADR 0011's "instances get this for free" true rather than aspirational.
-    pins.link(id, pinFrom(source.attrs, scope.rootFontSize, scope.resolveAlias))
+    pins.link(id, pinFrom(source.attrs, local.rootFontSize, local.resolveAlias))
     graph.createNodeWithId(id, NODE_TYPE[source.element as SceneElement], parentId, {
       // Under the node's own props: what the frame says about itself wins over
       // what the instance passes down.
       ...inherited,
       ...props,
       // An override is written by the *consumer*, so it resolves in the
-      // consumer's scope rather than the definition's — a token in an override
+      // consumer's local rather than the definition's — a token in an override
       // is the consuming page's token, and `{label}` there is not the
       // component's property but a mistake `uidx check` reports.
       ...(changed ? overrideProps(changed, relative, warnings, options) : {}),
     })
 
     if (source.element === 'Instance') {
-      expandInstance(graph, addresses, pins, { ...source, address: id }, warnings, scope, chain)
+      expandInstance(graph, addresses, pins, { ...source, address: id }, warnings, local, chain)
       return
     }
 
@@ -1076,7 +1141,7 @@ function expandInstance(
     }
 
     for (const child of source.children)
-      clone(child, id, `${relative}${relative ? '/' : ''}${child.name}`)
+      clone(child, id, `${relative}${relative ? '/' : ''}${child.name}`, {}, local)
   }
 
   /*

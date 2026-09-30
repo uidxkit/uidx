@@ -1,12 +1,21 @@
 import {
   resolve,
+  toAlias,
   type ContractDeclaration,
   type ContractKind,
   type UidxDocument,
   type UidxNode,
   type UidxPatch,
 } from '@uidx/format'
-import { derivedTarget } from '@uidx/schema'
+import {
+  derivedTarget,
+  repeatListType,
+  repeatModel,
+  repeatOf,
+  sampleCount,
+  type ModelIndex,
+  type RepeatScope,
+} from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
 import type { HeadlessElement, HeadlessLibrary } from './headless'
 
@@ -14,10 +23,10 @@ import type { HeadlessElement, HeadlessLibrary } from './headless'
  * What the Contract tab shows and writes (ADR 0013 §3, ADR 0017 §2).
  *
  * The tab binds the visual tree to the code render: a `<Component>` names the
- * headless element it implements, a layer names the part it draws, a
- * `<Repeat>` names the slot it multiplies. Three attributes — `implements`,
- * `part`, `slot`/`count` — that the prop table deliberately does not know,
- * because they are bindings to the contract rather than scene fields.
+ * headless element it implements, a layer names the part it draws, and any
+ * layer names the list it repeats over. Three bindings — `implements`,
+ * `part`, `repeat`/`as`/`count` — that the prop table deliberately does not
+ * know, because they are bindings to the contract rather than scene fields.
  *
  * Pure, like `instance-prop-edits`: the view is computed from the document
  * and the library, and every gesture is a list of patches the shell applies.
@@ -38,9 +47,8 @@ export interface PartRow {
 
 export interface SlotRow {
   name: string
-  repeats: boolean
-  /** How the tree provides it: a `<Slot>`, a `<Repeat>` (with its count), or not yet. */
-  provided: { kind: 'slot' | 'repeat'; address: string; count?: number } | null
+  /** The `<Slot>` providing it, with what it repeats over when it does, or null while missing. */
+  provided: { address: string; repeat: { list: string; count: number | null } | null } | null
 }
 
 export interface Candidate {
@@ -65,7 +73,29 @@ export interface ComponentView {
   strayParts: { address: string; name: string; part: string }[]
 }
 
-export interface PartView {
+/** How a layer repeats (ADR 0017 §2): the list it walks, its item's name, the canvas's rows. */
+export interface RepeatBinding {
+  /** The alias target: `items`, or `person.tags` inside an outer repeat. */
+  list: string
+  as: string
+  /** Rows the canvas draws when the file says; null leaves it to the model's samples. */
+  count: number | null
+  /** The rows drawn while `count` is null: the model's longest sample list. */
+  defaultCount: number
+  /** The model of one item, when the contract can place the list; by type alone when unknown. */
+  model: string | null
+  /** True when the list is placed but its model is declared on no page in the index. */
+  unknownModel: boolean
+}
+
+/** The repeat rows every layer inside a component shows: part, slot, or instance alike. */
+export interface RepeatFacet {
+  repeat: RepeatBinding | null
+  /** Lists a repeat here may walk: the contract's list props, then list fields of enclosing items. */
+  lists: string[]
+}
+
+export interface PartView extends RepeatFacet {
   kind: 'part'
   node: UidxNode
   component: UidxNode
@@ -76,27 +106,21 @@ export interface PartView {
   undeclared: boolean
 }
 
-export interface RepeatView {
-  kind: 'repeat'
-  node: UidxNode
-  component: UidxNode | null
-  slotValue: string
-  count: number
-  /** The contract's repeating slots — the only legal values. */
-  slotOptions: string[]
-  /** The instance being multiplied, if the tree holds one. */
-  child: { name: string; component: string } | null
-}
-
-export interface SlotView {
+export interface SlotView extends RepeatFacet {
   kind: 'slot'
   node: UidxNode
   component: UidxNode | null
-  declared: { repeats: boolean; accepts?: string } | null
+  declared: { accepts?: string } | null
+}
+
+export interface InstanceView extends RepeatFacet {
+  kind: 'instance'
+  node: UidxNode
+  component: UidxNode | null
 }
 
 export interface OtherView {
-  kind: 'instance' | 'page' | 'other'
+  kind: 'page' | 'other'
   node: UidxNode | null
 }
 
@@ -110,7 +134,7 @@ export interface DerivedView {
 }
 
 export type ContractView =
-  ComponentView | PartView | RepeatView | SlotView | OtherView | DerivedView
+  ComponentView | PartView | SlotView | InstanceView | OtherView | DerivedView
 
 /** The parts a component may bind, from the library element and the contract. */
 export function declaredParts(component: UidxNode, element: HeadlessElement | null): PartRow[] {
@@ -188,27 +212,21 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
 
   const slots: SlotRow[] = (component.spec?.contract?.slots ?? []).map((slot) => ({
     name: slot.name,
-    repeats: slot.repeats,
     provided: null,
   }))
   for (const name of element?.slots ?? []) {
     if (name !== '' && !slots.some((slot) => slot.name === name))
-      slots.push({ name, repeats: false, provided: null })
+      slots.push({ name, provided: null })
   }
   const provide = (node: UidxNode): void => {
     for (const child of node.children) {
       if (child.element === 'Slot') {
         const row = slots.find((slot) => slot.name === child.name)
-        if (row && !row.provided) row.provided = { kind: 'slot', address: child.address }
-      } else if (child.element === 'Repeat') {
-        const name = child.attrs.slot?.value
-        const count = child.attrs.count?.value
-        const row = slots.find((slot) => slot.name === name)
+        const repeat = repeatOf(child)
         if (row && !row.provided)
           row.provided = {
-            kind: 'repeat',
             address: child.address,
-            ...(typeof count === 'number' ? { count } : {}),
+            repeat: repeat ? { list: repeat.list, count: repeat.count ?? null } : null,
           }
       }
       if (child.element !== 'Instance') provide(child)
@@ -229,7 +247,12 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
   }
 }
 
-function partView(node: UidxNode, component: UidxNode, library: HeadlessLibrary | null): PartView {
+function partView(
+  node: UidxNode,
+  component: UidxNode,
+  library: HeadlessLibrary | null,
+  models?: ModelIndex,
+): PartView {
   const element = implementedElement(component, library)
   const value = node.attrs.part?.value
   const partValue = typeof value === 'string' ? value : null
@@ -245,26 +268,82 @@ function partView(node: UidxNode, component: UidxNode, library: HeadlessLibrary 
   // A value nothing declares still shows, so the row never lies about the file.
   if (partValue !== null && !options.some((option) => option.name === partValue))
     options.unshift({ name: partValue, takenBy: null })
-  return { kind: 'part', node, component, partValue, options, undeclared: options.length === 0 }
-}
-
-function repeatView(node: UidxNode, component: UidxNode | null): RepeatView {
-  const slot = node.attrs.slot?.value
-  const count = node.attrs.count?.value
-  const instance = node.children.find((child) => child.element === 'Instance')
-  const named = instance?.attrs.component?.value
   return {
-    kind: 'repeat',
+    kind: 'part',
     node,
     component,
-    slotValue: typeof slot === 'string' ? slot : '',
-    count: typeof count === 'number' ? count : 0,
-    slotOptions: (component?.spec?.contract?.slots ?? [])
-      .filter((entry) => entry.repeats)
-      .map((entry) => entry.name),
-    child: instance
-      ? { name: instance.name, component: typeof named === 'string' ? named : '' }
-      : null,
+    partValue,
+    options,
+    undeclared: options.length === 0,
+    ...repeatFacet(component, node, models),
+  }
+}
+
+/* ------------------------------------------------------------ repeats */
+
+/** The layers from the component down to, excluding, the node — the repeats among them scope it. */
+function ancestorsWithin(component: UidxNode, node: UidxNode): UidxNode[] {
+  const path: UidxNode[] = []
+  const walk = (current: UidxNode): boolean => {
+    if (current === node) return true
+    for (const child of current.children) {
+      path.push(current)
+      if (walk(child)) return true
+      path.pop()
+    }
+    return false
+  }
+  return walk(component) ? path : []
+}
+
+/** The repeats enclosing a node, outermost first, each with the model its item carries. */
+function enclosingRepeats(component: UidxNode, node: UidxNode, models?: ModelIndex): RepeatScope[] {
+  const scopes: RepeatScope[] = []
+  for (const ancestor of ancestorsWithin(component, node)) {
+    const repeat = repeatOf(ancestor)
+    if (repeat)
+      scopes.push({ as: repeat.as, model: repeatModel(repeat, component.spec, scopes, models) })
+  }
+  return scopes
+}
+
+/**
+ * The lists a repeat on this layer may walk (ADR 0017 §2): the contract's
+ * list props as `items`, and the list fields of every enclosing item as
+ * `person.tags` — what a tree or a grouped list nests on.
+ */
+export function placeableLists(
+  component: UidxNode | null,
+  node: UidxNode,
+  models?: ModelIndex,
+): string[] {
+  if (!component) return []
+  const out: string[] = []
+  for (const prop of component.spec?.contract?.props ?? [])
+    if (prop.type.trim().endsWith('[]')) out.push(prop.name)
+  for (const scope of enclosingRepeats(component, node, models))
+    for (const field of scope.model?.fields ?? [])
+      if (field.type.trim().endsWith('[]')) out.push(`${scope.as}.${field.name}`)
+  return out
+}
+
+function repeatFacet(component: UidxNode | null, node: UidxNode, models?: ModelIndex): RepeatFacet {
+  const lists = placeableLists(component, node, models)
+  const attrs = repeatOf(node)
+  if (!attrs || !component) return { repeat: null, lists }
+  const enclosing = enclosingRepeats(component, node, models)
+  const model = repeatModel(attrs, component.spec, enclosing, models)
+  const placed = model ? undefined : repeatListType(attrs, component.spec, enclosing, models)
+  return {
+    repeat: {
+      list: attrs.list,
+      as: attrs.as,
+      count: attrs.count ?? null,
+      defaultCount: sampleCount(model),
+      model: model?.name ?? (placed ? placed.slice(0, -2) : null),
+      unknownModel: !model && typeof placed === 'string',
+    },
+    lists,
   }
 }
 
@@ -278,31 +357,34 @@ export function contractView(
   doc: UidxDocument | null,
   node: UidxNode | null,
   library: HeadlessLibrary | null,
+  models?: ModelIndex,
 ): ContractView {
   if (!doc || !node) return { kind: 'page', node: null }
   if (node.element === 'Component') return componentView(node, library)
   const from = derivedTarget(doc, node.address)
   if (from) {
+    // The default state draws the base tree (ADR 0016 §4): selected there, a
+    // layer is the authored one, and the component's root is the component.
+    if (from.isDefault) return contractView(doc, from.base, library, models)
     const state = Object.entries(from.keys)
       .map(([axis, value]) => `${axis}=${value}`)
       .join(', ')
     return { kind: 'derived', node, base: from.base, component: from.component, state }
   }
   const component = enclosingComponent(doc, node.address)
-  if (node.element === 'Repeat') return repeatView(node, component)
   if (node.element === 'Slot') {
     const declared = component?.spec?.contract?.slots.find((slot) => slot.name === node.name)
     return {
       kind: 'slot',
       node,
       component,
-      declared: declared
-        ? { repeats: declared.repeats, ...(declared.accepts ? { accepts: declared.accepts } : {}) }
-        : null,
+      declared: declared ? (declared.accepts ? { accepts: declared.accepts } : {}) : null,
+      ...repeatFacet(component, node, models),
     }
   }
-  if (node.element === 'Instance') return { kind: 'instance', node }
-  if (component && BINDABLE.has(node.element)) return partView(node, component, library)
+  if (node.element === 'Instance')
+    return { kind: 'instance', node, component, ...repeatFacet(component, node, models) }
+  if (component && BINDABLE.has(node.element)) return partView(node, component, library, models)
   return { kind: 'other', node }
 }
 
@@ -356,17 +438,29 @@ export function bindPart(
 }
 
 /**
- * The slot a `<Repeat>` multiplies. Its name is `repeat(<slot>)` (ADR 0017
- * §2), so this also moves the node's address: the caller reselects it at
- * `nextAddress`.
+ * `repeat="{list}"` on a layer (ADR 0017 §2). Clearing it takes `as` and
+ * `count` with it — those first, since the parser refuses either without a
+ * repeat to ride on and every patch must leave a valid file.
  */
-export function setRepeatSlot(
-  node: UidxNode,
-  slot: string,
-): { patches: UidxPatch[]; nextAddress: string } {
-  const cut = Math.max(node.address.lastIndexOf('#'), node.address.lastIndexOf('/'))
-  const nextAddress = `${node.address.slice(0, cut + 1)}repeat(${slot})`
-  return { patches: slot ? setAttr(node, 'slot', slot) : [], nextAddress }
+export function setRepeat(node: UidxNode, list: string | null): UidxPatch[] {
+  const target = list?.trim().replace(/^\{|\}$/g, '') ?? ''
+  if (target === '') return ['as', 'count', 'repeat'].flatMap((prop) => setAttr(node, prop, null))
+  return setAttr(node, 'repeat', toAlias(target))
+}
+
+/** The item's name for the bindings below a repeat; `item` is the default and is not written. */
+export function setRepeatAs(node: UidxNode, as: string | null): UidxPatch[] {
+  const name = as?.trim() ?? ''
+  if (name === '' || name === 'item') return setAttr(node, 'as', null)
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return []
+  return setAttr(node, 'as', name)
+}
+
+/** How many rows the canvas draws; a non-negative integer, or null to let the model's samples say. */
+export function setRepeatCount(node: UidxNode, count: number | null): UidxPatch[] {
+  if (count === null || Number.isNaN(count)) return setAttr(node, 'count', null)
+  if (!Number.isInteger(count) || count < 0) return []
+  return setAttr(node, 'count', count)
 }
 
 /* ------------------------------------------------- the contract itself */
@@ -465,10 +559,4 @@ export function scaffoldFromLibrary(component: UidxNode, element: HeadlessElemen
     )
   }
   return out
-}
-
-/** How many rows a `<Repeat>` draws; a non-negative integer, as the parser demands. */
-export function setRepeatCount(node: UidxNode, count: number): UidxPatch[] {
-  if (!Number.isInteger(count) || count < 0) return []
-  return setAttr(node, 'count', count)
 }

@@ -53,7 +53,7 @@ function Demo() {
         <ContactList
           items={people}
           name="assignee"
-          renderItem={(person) => (
+          renderOption={(person) => (
             <ContactOptionRow
               person={person}
               chosen={chosen === person.id}

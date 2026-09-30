@@ -1,4 +1,4 @@
-import { derivedDocument } from './design-system.js'
+import { derivedDocument, repeatOf } from './design-system.js'
 import { rootFontSizeOf, DEFAULT_ROOT_FONT_SIZE } from '@uidx/format'
 import { SceneGraph, type NodeType, type SceneNode } from '@open-pencil/scene-graph'
 import {
@@ -101,10 +101,41 @@ function defaultsFor(type: NodeType): Readonly<Record<string, unknown>> {
   return cached
 }
 
-function indexNodes(
-  doc: UidxDocument,
-): Map<string, { node: UidxNode; parent: string | null; index: number }> {
-  const out = new Map<string, { node: UidxNode; parent: string | null; index: number }>()
+type IndexedNode = { node: UidxNode; parent: string | null; index: number }
+
+/** What a repeat rides on (ADR 0017 §2); a change to one re-expands the rows. */
+const REPEATS = ['repeat', 'as', 'count']
+
+/** True when a repeat, or a node a repeat draws, was added, removed or changed. */
+function repeatChanged(before: Map<string, IndexedNode>, after: Map<string, IndexedNode>): boolean {
+  const underRepeat = (index: Map<string, IndexedNode>, address: string): boolean => {
+    for (let at: string | null = address; at !== null; at = index.get(at)?.parent ?? null) {
+      const node = index.get(at)?.node
+      if (node && repeatOf(node)) return true
+    }
+    return false
+  }
+  for (const [address] of before)
+    if (!after.has(address) && underRepeat(before, address)) return true
+  for (const [address, entry] of after) {
+    const previous = before.get(address)
+    if (!previous) {
+      if (underRepeat(after, address)) return true
+      continue
+    }
+    if (REPEATS.some((p) => !deepEqual(previous.node.attrs[p]?.value, entry.node.attrs[p]?.value)))
+      return true
+    if (
+      !deepEqual(attrValues(previous.node), attrValues(entry.node)) &&
+      (underRepeat(after, address) || underRepeat(before, address))
+    )
+      return true
+  }
+  return false
+}
+
+function indexNodes(doc: UidxDocument): Map<string, IndexedNode> {
+  const out = new Map<string, IndexedNode>()
   const walk = (node: UidxNode, parent: string | null, index: number): void => {
     out.set(node.address, { node, parent, index })
     node.children.forEach((child, i) => walk(child, node.address, i))
@@ -154,6 +185,13 @@ export function diffDocuments(
       return null
     }
   }
+
+  // ADR 0017 §2: a repeat's echoes (`row-2`, `row-3`) are generated at ids
+  // this diff does not enumerate, so what a repeat rides on — the list, the
+  // item's name, the count — and anything a repeat draws, its layer and the
+  // subtree below, rebuild when they change; the same honesty an instance's
+  // copies get. Beside a repeat, the incremental path still serves.
+  if (repeatChanged(before, after)) return null
 
   // Story F3. An instance's subtree is generated from a `<Component>` that may
   // live on another page entirely, so a page-shaped diff cannot see what
@@ -355,7 +393,6 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
   const changedRoots = new Set<string>()
   /** Attributes an instance's expansion reads; a change to one is a rebuild. */
   const EXPANDS = ['component', 'props', 'overrides', 'layoutGrow']
-
   for (const [address, entry] of after) {
     const previous = before.get(address)
     if (!previous) {

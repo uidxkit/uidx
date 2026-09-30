@@ -57,14 +57,14 @@ parser recognised there before is unchanged; the new regions are parsed into
 - `Parts`: optional descriptions of the headless root's parts, as `<Part
   name>`. The tree's `part="…"` bindings are the declaration; a part described
   here must be bound.
-- `Slot`: consumer-filled positions; `repeats`, `of` and `accepts` are
-  ADR 0017 §1. A slot named here must be a `<Slot name="…">` in the visual
-  contract.
+- `Slot`: consumer-filled positions; `accepts` is ADR 0017 §1. A slot named
+  here must be a `<Slot name="…">` in the visual contract; whether it repeats
+  is the tree's to say (`repeat="{items}"`, ADR 0017 §2).
 - `Form`, `Accessibility`, `Composes`: declarations copied into `SPEC.md` and
   read by the audit.
 
 Boolean attributes (`controllable`, `visual`, `key`, `optional`,
-`participates`, `repeats`) may be written bare in these regions; the
+`participates`) may be written bare in these regions; the
 shorthand rule of the visual contract does not apply here.
 
 ### 3. Binding the visual contract to the contract
@@ -82,7 +82,8 @@ shorthand rule of the visual contract does not apply here.
   `part`. A part is bound from the component's list or from the layer's row,
   the way Figma declares a property on the component and applies it from the
   layer; binding it from a new layer unbinds the old one, since one node per
-  part is the rule. A `<Repeat>` chooses among the contract's repeating slots.
+  part is the rule. Any layer inside a component chooses the list it repeats
+  over from the contract's list props and the list fields of enclosing items.
   The tab never edits the contract's prose; it shows it beside the bindings.
   When `uidx.json` names no library, the tab offers those the project's
   dependencies ship — the Custom Elements Manifest convention of a

@@ -7,6 +7,9 @@ import type { UidxElement } from '@uidx/format'
  * forbids network calls — the same rule that made the canvas vendor CanvasKit's
  * wasm. Every path is drawn in a 12x12 box to match `--icon`.
  */
+/** The toolbar's repeat glyph: rows and a rule (ADR 0017 §2). */
+export const REPEAT_ICON = 'M2 2h6v2H2zM2 5h6v2H2zM2 8h6v2H2zM10 2v8'
+
 export const LAYER_ICONS: Record<UidxElement, string> = {
   Page: 'M2 1h5l3 3v7H2z',
   Component: 'M6 1l2.5 2.5L6 6 3.5 3.5zM6 6l2.5 2.5L6 11 3.5 8.5z',
@@ -28,7 +31,6 @@ export const LAYER_ICONS: Record<UidxElement, string> = {
   Slot: 'M2 2h3M7 2h3M10 2v3M10 7v3M10 10H7M5 10H2M2 10V7M2 5V2',
   // One filling drawn many times (ADR 0017): three stacked outlines, the
   // shape of a list of clones rather than of any one of them.
-  Repeat: 'M2 2h6v2H2zM2 5h6v2H2zM2 8h6v2H2zM10 2v8',
   Tokens: 'M2 3h8M2 6h8M2 9h5',
   Collection: 'M2 2h8v3H2zM2 7h8v3H2z',
   Variable: 'M4 2v8M8 2v8M2 5h8',
@@ -44,7 +46,6 @@ export const STROKE_ICONS: ReadonlySet<UidxElement> = new Set([
   'Instance',
   'Slot',
   'Variant',
-  'Repeat',
   'Text',
   'Rectangle',
   'Ellipse',

@@ -344,14 +344,71 @@ describe('the React target', () => {
     )
   })
 
-  it('turns a repeating slot into items plus renderItem, generic over the model', () => {
+  it('maps a repeating slot over its list, with a render prop named after the slot', () => {
     const tsx = file('react/ContactList.tsx')
     expect(tsx).toContain(`items: Contact[]`)
     expect(tsx).toContain(`renderItem?: (item: Contact, index: number) => ReactNode`)
-    expect(tsx).toContain(`ItemComponent?: ComponentType<{ item: Contact }>`)
+    expect(tsx).not.toContain('ItemComponent')
+    expect(tsx).toContain(`{items.map((item, index) => (`)
     expect(tsx).toContain(`<Fragment key={String(item.id)}>`)
+    expect(tsx).toContain(`{renderItem ? renderItem(item, index) : (`)
     expect(tsx).toContain(`<ContactItem item={item} />`)
     expect(tsx).toContain(`import { ContactItem } from './ContactItem'`)
+  })
+
+  it('repeats a plain frame inline, nesting and binding the item, with no render prop', () => {
+    const page = parseOrThrow(`---
+id: team
+---
+
+A team.
+
+## Visual Contract
+
+<Page>
+  <Component name="Team" status="stable" layoutMode="VERTICAL">
+    <Frame name="row" repeat="{people}" as="person" layoutMode="HORIZONTAL">
+      <Text name="name" characters="{person.name}" fontSize={14} />
+      <Frame name="tags" repeat="{person.tags}" as="tag" layoutMode="HORIZONTAL">
+        <Text name="tag-name" characters="{tag.label}" fontSize={12} />
+      </Frame>
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="people" type="Person[]">Rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Tag">
+  A label.
+  <Field name="label" type="string" key sample={['lead', 'new']}>Words.</Field>
+</Model>
+<Model name="Person">
+  One person.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>Display name.</Field>
+  <Field name="tags" type="Tag[]">Their tags.</Field>
+</Model>
+`)
+    const out = generate({ pages: [{ file: 'team.uidx', doc: page }], tokens: [TOKENS] })
+    const tsx = out.files.get('react/Team.tsx')!
+    expect(tsx).toContain(`people: Person[]`)
+    expect(tsx).not.toContain('renderRow')
+    expect(tsx).toContain(`{people.map((person, index) => (`)
+    expect(tsx).toContain(`<Fragment key={String(person.id)}>`)
+    expect(tsx).toContain(`{person?.name}`)
+    expect(tsx).toContain(`{person.tags.map((tag, index) => (`)
+    expect(tsx).toContain(`{tag?.label}`)
+    const html = out.files.get('html/team.html')!
+    expect(html).toContain('<span data-node="name">Ada</span>')
+    expect(html).toContain('<span data-node="name">Grace</span>')
+    expect(html).toContain('<span data-node="tag-name">lead</span>')
+    expect(out.diagnostics).toEqual([])
   })
 
   it("binds a model prop's fields into the parts", () => {

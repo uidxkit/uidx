@@ -658,9 +658,8 @@ function moveNode(
 
 function withName(spec: UidxNodeSpec, siblings: readonly UidxNode[]): UidxNodeSpec {
   // A `<Variant>` has no name of its own — its coordinates spell one (ADR 0005
-  // §3) — so inventing one here would write an attribute UIDX118 rejects. A
-  // `<Repeat>` is named by its slot the same way (ADR 0017 §2).
-  if (spec.element === 'Variant' || spec.element === 'Repeat') return spec
+  // §3) — so inventing one here would write an attribute UIDX118 rejects.
+  if (spec.element === 'Variant') return spec
   const name = spec.attrs.name
   if (typeof name === 'string' && name !== '') {
     if (siblings.some((c) => c.name === name)) {
@@ -683,13 +682,13 @@ export const CONTRACT_LISTS: Record<ContractKind, [list: string, item: string]> 
 }
 
 /** The bare boolean attributes of the contract (ADR 0013 §2). */
-const CONTRACT_FLAGS: ReadonlySet<string> = new Set(['controllable', 'visual', 'repeats'])
+const CONTRACT_FLAGS: ReadonlySet<string> = new Set(['controllable', 'visual'])
 
 /** Attribute order in canonical form, per item; flags print bare when true. */
 const CONTRACT_ATTR_ORDER: Record<ContractKind, readonly string[]> = {
   prop: ['type', 'default', 'sample', 'controllable', 'visual'],
   event: ['detail'],
-  slot: ['repeats', 'of', 'accepts'],
+  slot: ['accepts'],
   state: [],
   part: [],
 }

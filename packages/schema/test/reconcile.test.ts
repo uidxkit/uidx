@@ -21,7 +21,82 @@ const BASE = `<Component name="demo" status="draft">
   </Frame>
 </Component>`
 
+const REPEATED = (body: string) =>
+  parseOrThrow(`---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft">
+${body}
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Item[]">Rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Item">
+  A row.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>Name.</Field>
+</Model>
+`)
+
+const ROWS = `    <Frame name="row" repeat="{items}" width={10} height={10}>
+      <Text name="name" characters="{item.name}" />
+    </Frame>
+    <Text name="footer" characters="end" />`
+
 describe('diffDocuments', () => {
+  it('rebuilds for a repeat that changes, and for anything a repeat draws (ADR 0017 §2)', () => {
+    const before = REPEATED(ROWS)
+    // The echoes are generated at ids the diff cannot address, so the row
+    // count, the item's name, the list, and the rows' own look all rebuild.
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(ROWS.replace('repeat="{items}"', 'repeat="{items}" count={1}')),
+      ),
+    ).toBeNull()
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(ROWS.replace('repeat="{items}"', 'repeat="{items}" as="person"')),
+      ),
+    ).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('repeat="{items}"', '')))).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('width={10}', 'width={20}')))).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('{item.name}', '{item.id}')))).toBeNull()
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(
+          ROWS.replace(
+            '    <Text name="name"',
+            '    <Text name="extra" characters="x" />\n    <Text name="name"',
+          ),
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(ROWS.replace('      <Text name="name" characters="{item.name}" />\n', '')),
+      ),
+    ).toBeNull()
+    // Beside the repeat, the incremental path still serves.
+    expect(
+      diffDocuments(before, REPEATED(ROWS.replace('characters="end"', 'characters="fin"'))),
+    ).toEqual([{ kind: 'update', address: 'List#footer', props: { text: 'fin' } }])
+  })
+
   it('sees nothing when the document is unchanged', () => {
     expect(diffDocuments(doc(BASE), doc(BASE))).toEqual([])
   })

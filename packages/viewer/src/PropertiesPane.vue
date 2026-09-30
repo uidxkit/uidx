@@ -48,6 +48,7 @@ import {
   type PinAxis,
   type PropGroup,
   type TokenIndex,
+  type ModelIndex,
 } from '@uidx/schema'
 import { pinWrites, type PinFrame, type PinWrites } from './pin-writes'
 import {
@@ -150,6 +151,8 @@ const props = defineProps<{
    * reason the canvas and the rail do.
    */
   components?: ReadonlyMap<string, UidxNode>
+  /** Model name -> declaration across every page, for the Contract tab's repeat rows. */
+  models?: ModelIndex
   /**
    * Every page, and the name of the one that is open (F9).
    *
@@ -260,7 +263,7 @@ const face = ref<'design' | 'contract'>('design')
 
 /** Unbound or stray parts on the selected component, for the tab's badge. */
 const contractIssueCount = computed(() =>
-  contractIssues(contractView(props.doc, active.value, props.headless ?? null)),
+  contractIssues(contractView(props.doc, active.value, props.headless ?? null, props.models)),
 )
 
 function onHover(prop: string | null): void {
@@ -293,7 +296,9 @@ const active = computed(() => {
   // A derived `<Variant>` carries only its coordinates; what it draws — and
   // what an edit to the state changes — is the root frame below it.
   if (found?.element === 'Variant' && found.derived && found.children[0]) return found.children[0]
-  return found
+  // The rail names a base layer of a derived component; the default state
+  // draws it (ADR 0016 §4), so an edit here is an edit to the authored node.
+  return found ?? selectedNode(doc.tree, props.selection ?? [])
 })
 
 /** The derived state the selection is in, or null for an authored node. */
@@ -1362,6 +1367,7 @@ function onDetach(prop: string, value: JsonValue): void {
           :library-error="headlessError"
           :candidates="headlessCandidates"
           :codegen="codegen"
+          :models="models"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"

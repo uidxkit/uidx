@@ -179,10 +179,7 @@ export function declarationOf(
     case 'slot': {
       const slot = contract.slots.find((entry) => entry.name === name)
       return slot
-        ? {
-            attrs: keep({ repeats: slot.repeats || undefined, of: slot.of, accepts: slot.accepts }),
-            description: slot.description,
-          }
+        ? { attrs: keep({ accepts: slot.accepts }), description: slot.description }
         : undefined
     }
     case 'state': {

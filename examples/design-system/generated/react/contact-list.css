@@ -7,6 +7,10 @@ hwc-radio-group {
   width: 280px;
 }
 
+hwc-radio-group [data-slot="option"] {
+  display: contents;
+}
+
 hwc-radio-group [data-slot="empty"] {
   display: contents;
 }

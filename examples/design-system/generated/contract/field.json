@@ -62,7 +62,6 @@
     "slots": [
       {
         "name": "control",
-        "repeats": false,
         "description": "The wrapped control: a checkbox, a radio, a text input."
       }
     ],

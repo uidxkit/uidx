@@ -39,7 +39,7 @@ import type { Point, Rect } from './gesture-model'
 import { importSvg, type SvgProblem } from './svg-import'
 import { reorderFor } from './layer-moves'
 import { positioningWrites } from './position-writes'
-import { resolvePins, withStrokeEndpoints } from '@uidx/schema'
+import { resolvePins, withStrokeEndpoints, type ModelIndex } from '@uidx/schema'
 import { strokeEdit } from './stroke-edits'
 import { declaredComponents, definitionsMoved, instancedComponents } from './definitions-moved'
 import { authoredSizing, resizeWrites, sizingFlipFor } from './resize-writes'
@@ -58,6 +58,7 @@ import {
   type SceneResult,
   type TokenIndex,
   type TokenResolver,
+  defaultVariantAddress,
   derivedDocument,
 } from '@uidx/schema'
 import type { Diagnostic, JsonValue, UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
@@ -115,6 +116,8 @@ const props = defineProps<{
    * so this arrives the same way `tokens` does, and for the same reason.
    */
   components?: ReadonlyMap<string, UidxNode>
+  /** Model name -> declaration across every page, for the same reason as `components`. */
+  models?: ModelIndex
   /**
    * Mode-aware token resolution (G8).
    *
@@ -1075,6 +1078,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
           resolveAsset,
           resolveComponent,
           tokens: props.sceneTokens,
+          models: props.models,
         })
         // The renderer re-records only the chunks holding these (viewer-at-scale
         // spec §4); an unexplained version bump re-records the whole page.
@@ -1116,6 +1120,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
       resolveAsset,
       resolveComponent,
       tokens: props.sceneTokens,
+      models: props.models,
     })
     // Text the fonts could not measure yet is a build that will be wrong until
     // it is done again, once the demand this build just raised settles.
@@ -1195,8 +1200,14 @@ function applySelection(addresses: readonly string[]): void {
   const graph = scene.value
   if (!graph || !ready.value) return
 
+  // A base layer of a derived component has no node of its own: the default
+  // state draws it (ADR 0016 §4), so the rail's address lands on that twin.
+  const twin = (address: string): string | undefined => {
+    const drawn = props.doc ? defaultVariantAddress(props.doc, address) : null
+    return drawn === null ? undefined : graph.addresses.sceneIdOf(drawn)
+  }
   const ids = addresses
-    .map((address) => graph.addresses.sceneIdOf(address))
+    .map((address) => graph.addresses.sceneIdOf(address) ?? twin(address))
     .filter((id): id is string => id !== undefined && id !== graph.rootId)
 
   const selected = editor.state.selectedIds

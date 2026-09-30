@@ -1,7 +1,21 @@
 import type { ContractSpec, JsonValue, UidxNode } from '@uidx/format'
-import { specBindings, STATE_AXIS, stateKind, styleTarget } from '@uidx/schema/design-system'
+import {
+  modelSamples,
+  sampleCount,
+  specBindings,
+  STATE_AXIS,
+  stateKind,
+  styleTarget,
+} from '@uidx/schema/design-system'
 import { cssDeclarations, cssRule, type CssKind } from './css.js'
-import { attributeName, boundPath, boundProp, type ComponentModel, type PartInfo } from './model.js'
+import {
+  attributeName,
+  boundPath,
+  boundProp,
+  repeatFor,
+  type ComponentModel,
+  type PartInfo,
+} from './model.js'
 
 /**
  * The HTML/CSS target (ADR 0017 §3): one stylesheet per component, keyed by
@@ -139,10 +153,6 @@ export function emitCss(model: ComponentModel): string {
   const declared = new Set<string>()
 
   const walk = (node: UidxNode): void => {
-    if (node.element === 'Repeat') {
-      for (const child of node.children) walk(child)
-      return
-    }
     if (node.element === 'Instance') return
     // A composition has no element of its own to style; its instance's
     // stylesheet is the one that applies.
@@ -202,13 +212,22 @@ function sampleText(
     // No sample and no default: the prop's name, as a person would write it.
     return prop.name.replace(/([a-z])([A-Z])/g, '$1 $2').replace(/^./, (c) => c.toUpperCase())
   }
-  const path = boundPath(model, characters)
+  // A repeat's item binds too: the samples map carries `{as.field}` for the
+  // row being rendered, so the path is answered from it either way.
+  const path = boundPath(
+    model,
+    characters,
+    model.repeats.map((r) => ({ as: r.as, model: r.model })),
+  )
   if (path) {
     const value = samples.get(path.join('.'))
     return value === undefined || value === null ? '' : String(value)
   }
   return characters.startsWith('{') ? '' : characters
 }
+
+/** Elements mid-expansion, so a row renders its own markup rather than repeating again. */
+const repeating = new WeakSet<UidxNode>()
 
 function markup(
   model: ComponentModel,
@@ -228,20 +247,44 @@ function markup(
   // `::part()`, never filled. Nothing to emit here; conformance reports what
   // the design put under it.
   if (info?.kind === 'shadow') return []
+  // ADR 0017 §2: an element with `repeat` is rendered once per sample of its
+  // list's model, the n-th row with `{as.field}` bound to the n-th samples.
+  // A repeating slot renders its content per row with no wrapper, so a
+  // headless list holds its items directly.
+  const repeat = repeatFor(model, node)
+  if (repeat && !repeating.has(node)) {
+    const count =
+      typeof node.attrs.count?.value === 'number'
+        ? node.attrs.count.value
+        : sampleCount(repeat.model)
+    const lines: string[] = []
+    repeating.add(node)
+    try {
+      for (let n = 0; n < count; n++) {
+        const rowSamples = new Map(samples)
+        if (repeat.model)
+          for (const [key, value] of modelSamples(
+            repeat.as,
+            repeat.model,
+            n,
+            model.spec,
+            model.models,
+          ))
+            rowSamples.set(key, value)
+        if (node.element === 'Slot') {
+          for (const child of node.children)
+            lines.push(...markup(model, child, ctx, rowSamples, depth, n, fills))
+        } else lines.push(...markup(model, node, ctx, rowSamples, depth, n, fills))
+      }
+    } finally {
+      repeating.delete(node)
+    }
+    return lines
+  }
   const children = (): string[] =>
     node.children.flatMap((child) => markup(model, child, ctx, samples, depth + 1, index, fills))
 
   switch (node.element) {
-    case 'Repeat': {
-      const count = typeof node.attrs.count?.value === 'number' ? node.attrs.count.value : 0
-      const child = node.children[0]
-      if (!child) return []
-      const lines: string[] = []
-      for (let n = 0; n < count; n++) {
-        lines.push(...markup(model, child, ctx, specBindings(model.spec, n), depth, n))
-      }
-      return lines
-    }
     case 'Instance': {
       const name = node.attrs.component?.value
       const target = typeof name === 'string' ? ctx.components.get(name) : undefined

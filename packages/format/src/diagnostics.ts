@@ -104,7 +104,7 @@ export const CODES = {
   BAD_SPEC: 'UIDX143',
   /** A behaviour bullet with no `id:` prefix. */
   BAD_BEHAVIOR_RULE: 'UIDX144',
-  /** A `<Repeat>` without a slot, without a positive count, or not holding one child. */
+  /** A `repeat` that is not a list alias, or `as`/`count` without one (ADR 0017 §2). */
   BAD_REPEAT: 'UIDX145',
   /** A declared part with no `part="…"` node, or a `part` naming none. */
   PART_BINDING: 'UIDX146',

@@ -27,7 +27,8 @@ generated/contract/  the contract of each page as JSON, for agents and other gen
 `.uidx/uidx.json` names the library (`"headless"`), so the viewer offers its
 elements and parts and `uidx codegen` needs no `--manifest`. The `Contact`
 model is declared once, on `contact-option.uidx`, and `contact-list.uidx`
-names it by type (`Contact[]`) and iterates it (`<Slot … repeats of="items">`).
+names it by type (`Contact[]`) and repeats its option slot over it
+(`<Slot name="option" repeat="{items}">`).
 
 To refresh the vendored headless build from a local checkout:
 `HWC_DIR=/path/to/headless-web-components/packages/components node scripts/sync-hwc.mjs`.

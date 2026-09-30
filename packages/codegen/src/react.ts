@@ -1,12 +1,14 @@
 import type { FieldSpec, JsonValue, PropSpec, UidxNode } from '@uidx/format'
-import { modelOfType, slotModel, type ModelIndex } from '@uidx/schema/design-system'
+import { modelOfType, type ModelIndex, type RepeatScope } from '@uidx/schema/design-system'
 import {
   attributeName,
   boundPath,
   boundProp,
   eventName,
   pascal,
+  repeatFor,
   type ComponentModel,
+  type RepeatInfo,
 } from './model.js'
 
 /**
@@ -147,13 +149,20 @@ function svgFor(node: UidxNode): string {
   return `<svg viewBox="0 0 ${width} ${height}" width={${width}} height={${height}} aria-hidden="true">${d.map((data) => `<path d="${data}" fill="currentColor" />`).join('')}</svg>`
 }
 
+/** `renderOption` for a repeating slot named `option` (ADR 0017 §2). */
+const renderPropName = (repeat: RepeatInfo): string => `render${pascal(repeat.node.name)}`
+
 /** The JSX expression a bound `characters` renders: a prop, a model path, or text. */
-function textExpression(model: ComponentModel, node: UidxNode): string {
+function textExpression(
+  model: ComponentModel,
+  node: UidxNode,
+  scopes: readonly RepeatScope[] = [],
+): string {
   const characters = node.attrs.characters?.value
   if (typeof characters !== 'string') return ''
   const prop = boundProp(model, characters)
   if (prop) return `{${prop.name}}`
-  const path = boundPath(model, characters)
+  const path = boundPath(model, characters, scopes)
   if (path) {
     const [head, ...rest] = path
     return `{${head}${rest.map((segment) => `?.${segment}`).join('')}}`
@@ -191,12 +200,13 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       })
       continue
     }
-    // The list a repeating slot iterates is rendered as `items` below.
-    if (contract?.slots.some((slot) => slot.repeats && slot.of === prop.name)) continue
     const type = textBound.has(prop.name) ? 'ReactNode' : tsType(model, prop.type)
     if (found?.list) usesModels.add(pascal(found.model.name))
-    props.push({ name: prop.name, type, optional: true, doc: prop.description })
-    if (!textBound.has(prop.name)) attributeProps.push(prop)
+    // A list an element repeats over is what the component draws: required,
+    // and not an attribute of the element (ADR 0017 §2).
+    const repeated = model.repeats.some((repeat) => repeat.list === prop.name)
+    props.push({ name: prop.name, type, optional: !repeated, doc: prop.description })
+    if (!textBound.has(prop.name) && !repeated) attributeProps.push(prop)
   }
   for (const event of contract?.events ?? []) {
     const handler = `on${pascal(event.name)}`
@@ -208,7 +218,8 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     })
   }
   for (const slot of model.slots) {
-    if (slot.spec?.repeats) continue
+    // A repeating slot is a render prop, declared with its repeat below.
+    if (model.repeats.some((repeat) => repeat.node === slot.node)) continue
     props.push({
       name: slot.name === 'default' ? 'children' : slot.name,
       type: 'ReactNode',
@@ -216,31 +227,19 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       doc: slot.spec?.description ?? `Content of the "${slot.name}" slot.`,
     })
   }
+  // A repeating slot (ADR 0017 §2) is a render prop named after the slot:
+  // `renderOption(item, index)`; the slot's content is the default.
   for (const repeat of model.repeats) {
-    const modelSpec = slotModel(repeat.slot, model.spec, model.models)
-    const item = modelSpec ? pascal(modelSpec.name) : 'unknown'
-    if (modelSpec) usesModels.add(item)
+    if (repeat.model) usesModels.add(pascal(repeat.model.name))
+    if (!repeat.fillable) continue
+    const item = repeat.model ? pascal(repeat.model.name) : 'unknown'
     props.push({
-      name: 'items',
-      type: `${item}[]`,
-      optional: false,
-      doc: repeat.slot?.description ?? 'The rows to show.',
-    })
-    props.push({
-      name: 'renderItem',
-      type: `(item: ${item}, index: number) => ReactNode`,
+      name: renderPropName(repeat),
+      type: `(${repeat.as}: ${item}, index: number) => ReactNode`,
       optional: true,
-      doc: 'Draws one row; the default is the component the design repeats.',
+      doc:
+        repeat.slot?.description ?? `Draws one "${repeat.node.name}"; the design's is the default.`,
     })
-    props.push({
-      name: 'ItemComponent',
-      type: `ComponentType<{ item: ${item} }>`,
-      optional: true,
-      doc: 'A component taking `item`, used when `renderItem` is not given.',
-    })
-    if (repeat.itemComponent && ctx.components.has(repeat.itemComponent)) {
-      imports.add(ctx.components.get(repeat.itemComponent)!.identifier)
-    }
   }
   props.push({
     name: 'className',
@@ -263,30 +262,47 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       compound.push({ name: pascal(part.name), tag: part.tag, part: part.name })
   }
 
-  const render = (node: UidxNode, depth: number): string[] => {
+  const rendering = new Set<UidxNode>()
+  const render = (node: UidxNode, depth: number, scopes: RepeatScope[] = []): string[] => {
     const pad = '  '.repeat(depth)
     const part = model.partOf.get(node)
     const info = part === undefined ? undefined : model.parts.find((entry) => entry.name === part)
     // As in the HTML target: a shadow part is drawn by the library.
     if (info?.kind === 'shadow') return []
-    const children = () => node.children.flatMap((child) => render(child, depth + 1))
+    // ADR 0017 §2: an element with `repeat` maps over its list; the n-th row
+    // binds `{as.field}` to the item. A repeating slot lets the consumer draw
+    // the row instead, through its render prop.
+    const repeat = repeatFor(model, node)
+    if (repeat && !rendering.has(node)) {
+      rendering.add(node)
+      const key = repeat.model?.fields.find((field) => field.key)?.name
+      const inner = [...scopes, { as: repeat.as, model: repeat.model }]
+      const row =
+        node.element === 'Slot'
+          ? node.children.flatMap((child) => render(child, depth + 2, inner))
+          : render(node, depth + 2, inner)
+      rendering.delete(node)
+      const body = row.length ? row : [`${pad}    null`]
+      // One child is one element and needs no fragment around it; several do.
+      const single = node.element === 'Slot' && node.children.length === 1 && row.length > 0
+      return [
+        `${pad}{${repeat.list}.map((${repeat.as}, index) => (`,
+        `${pad}  <Fragment key={${key ? `String(${repeat.as}.${key})` : 'index'}}>`,
+        ...(repeat.fillable
+          ? [
+              `${pad}    {${renderPropName(repeat)} ? ${renderPropName(repeat)}(${repeat.as}, index) : (`,
+              ...(single
+                ? body.map((line) => `  ${line}`)
+                : [`${pad}      <>`, ...body.map((line) => `    ${line}`), `${pad}      </>`]),
+              `${pad}    )}`,
+            ]
+          : body),
+        `${pad}  </Fragment>`,
+        `${pad}))}`,
+      ]
+    }
+    const children = () => node.children.flatMap((child) => render(child, depth + 1, scopes))
     switch (node.element) {
-      case 'Repeat': {
-        const repeat = model.repeats.find((entry) => entry.node === node)
-        const modelSpec = slotModel(repeat?.slot, model.spec, model.models)
-        const key = modelSpec?.fields.find((field) => field.key)?.name
-        const fallback =
-          repeat?.itemComponent && ctx.components.has(repeat.itemComponent)
-            ? `<${ctx.components.get(repeat.itemComponent)!.identifier} item={item} />`
-            : 'null'
-        return [
-          `${pad}{items.map((item, index) => (`,
-          `${pad}  <Fragment key={${key ? `String(item.${key})` : 'index'}}>`,
-          `${pad}    {renderItem ? renderItem(item, index) : ItemComponent ? <ItemComponent item={item} /> : ${fallback}}`,
-          `${pad}  </Fragment>`,
-          `${pad}))}`,
-        ]
-      }
       case 'Instance': {
         const name = node.attrs.component?.value
         const target = typeof name === 'string' ? ctx.components.get(name) : undefined
@@ -306,13 +322,23 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
             else if (typeof value !== 'string') passed.push(`${key}={${JSON.stringify(value)}}`)
           }
         }
+        // Inside a repeat, the row's item is what the instance is of: it lands
+        // on the target's model prop unless the use passed one (ADR 0017 §2).
+        const scope = scopes[scopes.length - 1]
+        if (scope) {
+          const modelProp = target.contract?.props.find(
+            (entry) => modelOfType(entry.type, target.spec, target.models)?.list === false,
+          )
+          if (modelProp && !passed.some((entry) => entry.startsWith(`${modelProp.name}=`)))
+            passed.push(`${modelProp.name}={${scope.as}}`)
+        }
         const fills = node.children.filter((child) => child.element === 'Slot')
         if (fills.length === 0)
           return [`${pad}<${target.identifier}${passed.length ? ` ${passed.join(' ')}` : ''} />`]
         const lines = [`${pad}<${target.identifier}${passed.length ? ` ${passed.join(' ')}` : ''}`]
         for (const fill of fills) {
           const prop = fill.name === 'default' ? 'children' : fill.name
-          const inner = fill.children.flatMap((child) => render(child, depth + 2))
+          const inner = fill.children.flatMap((child) => render(child, depth + 2, scopes))
           lines.push(`${pad}  ${prop}={`, `${pad}    <>`, ...inner, `${pad}    </>`, `${pad}  }`)
         }
         lines.push(`${pad}/>`)
@@ -335,7 +361,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
         ]
       }
       case 'Text': {
-        const text = textExpression(model, node)
+        const text = textExpression(model, node, scopes)
         if (info) return [`${pad}<${info.tag}>${text}</${info.tag}>`]
         return [`${pad}<span data-node="${node.name}">${text}</span>`]
       }
@@ -398,7 +424,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
   const reactImports = [...(model.composes ? [] : ['useRef']), 'type CSSProperties']
   if (props.some((prop) => prop.type.includes('ReactNode')) || compound.length)
     reactImports.push('type ReactNode')
-  if (model.repeats.length) reactImports.push('Fragment', 'type ComponentType')
+  if (model.repeats.length) reactImports.push('Fragment')
   const lines: string[] = [
     HEADER(model.name),
     `import { ${reactImports.sort().join(', ')} } from 'react'`,

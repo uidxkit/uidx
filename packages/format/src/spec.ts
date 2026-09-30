@@ -343,27 +343,17 @@ export class SpecLowerer {
           for (const child of node.children) {
             const name = this.str(child, 'name')
             if (!name) continue
-            const slot: SlotSpec = {
-              name,
-              repeats: this.flag(child, 'repeats'),
-              description: this.described(child),
-              loc: child.loc,
-            }
-            const of = this.str(child, 'of', false)
+            const slot: SlotSpec = { name, description: this.described(child), loc: child.loc }
             const accepts = this.str(child, 'accepts', false)
-            if (of) slot.of = of
             if (accepts) slot.accepts = accepts
-            if (child.attrs.model !== undefined) {
+            if (
+              child.attrs.model !== undefined ||
+              child.attrs.repeats !== undefined ||
+              child.attrs.of !== undefined
+            ) {
               this.error(
                 CODES.BAD_SPEC,
-                `<Slot name="${name}">: a repeating slot names the list prop it iterates — write of="items" (ADR 0017 §1)`,
-                child.loc,
-              )
-            }
-            if (slot.repeats && (!of || !accepts)) {
-              this.error(
-                CODES.BAD_SPEC,
-                `<Slot name="${name}"> repeats, so it needs an "of" naming the list prop and an "accepts" (ADR 0017 §1)`,
+                `<Slot name="${name}">: whether a slot repeats is the tree's to say — write repeat="{items}" on the <Slot> in the visual contract (ADR 0017 §2)`,
                 child.loc,
               )
             }

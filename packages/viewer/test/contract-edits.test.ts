@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow, resolve } from '@uidx/format'
+import { defaultVariantAddress, derivedDocument } from '@uidx/schema'
 import ContractSection from '../src/ContractSection.vue'
 import PropertiesPane from '../src/PropertiesPane.vue'
 import {
@@ -11,8 +12,9 @@ import {
   scaffoldFromLibrary,
   setImplements,
   setPart,
+  setRepeat,
+  setRepeatAs,
   setRepeatCount,
-  setRepeatSlot,
 } from '../src/contract-edits'
 import { parseHeadless, type HeadlessLibrary } from '../src/headless'
 
@@ -22,7 +24,7 @@ import { parseHeadless, type HeadlessLibrary } from '../src/headless'
  *
  * The claims: a component picks its element from the library's roots, a part
  * is bound from either end and lands as one `part` attribute, a bound part
- * moves rather than doubles, a repeat picks a declared repeating slot, and
+ * moves rather than doubles, a repeat picks a list the contract can place, and
  * every write is a patch the shell applies unchanged.
  */
 const LIBRARY = parseHeadless('vendor/custom-elements.json', {
@@ -59,6 +61,10 @@ const CHECKBOX = page(
     <Frame name="ring" width={20} height={20} />
   </Component>`,
   `
+<Styles>
+  <Style state="checked" checked-indicator:visible={true} />
+</Styles>
+
 ## Contract
 
 <Props>
@@ -77,9 +83,9 @@ const CHECKBOX = page(
 const LIST = page(
   'list',
   `  <Component name="List" status="draft" implements="hwc-field" layoutMode="VERTICAL">
-    <Repeat slot="option" count={3}>
+    <Slot name="option" repeat="{items}" count={3}>
       <Instance name="row" component="Row" />
-    </Repeat>
+    </Slot>
     <Slot name="empty" />
   </Component>`,
   `
@@ -89,7 +95,7 @@ const LIST = page(
   <Prop name="items" type="Item[]">Rows.</Prop>
 </Props>
 <Slots>
-  <Slot name="option" repeats of="items" accepts="hwc-row">One per item.</Slot>
+  <Slot name="option" accepts="hwc-row">One per item.</Slot>
   <Slot name="empty">While empty.</Slot>
 </Slots>
 
@@ -165,27 +171,42 @@ describe('what the tab shows', () => {
     ])
   })
 
-  it('for a repeat: the declared repeating slots, and what it multiplies', () => {
+  it('for a repeating slot: what it walks, its item and rows; and the component lists it', () => {
     const doc = parseOrThrow(LIST)
-    const view = contractView(doc, resolve(doc.tree, 'List#repeat(option)'), LIBRARY)
-    if (view.kind !== 'repeat') throw new Error(view.kind)
+    const view = contractView(doc, resolve(doc.tree, 'List#option'), LIBRARY)
+    if (view.kind !== 'slot') throw new Error(view.kind)
     expect(view).toMatchObject({
-      slotValue: 'option',
-      count: 3,
-      slotOptions: ['option'],
-      child: { name: 'row', component: 'Row' },
+      declared: { accepts: 'hwc-row' },
+      repeat: { list: 'items', as: 'item', count: 3, defaultCount: 3, model: 'Item' },
+      lists: ['items'],
     })
+    const row = contractView(doc, resolve(doc.tree, 'List#option/row'), LIBRARY)
+    if (row.kind !== 'instance') throw new Error(row.kind)
+    expect(row).toMatchObject({ repeat: null, lists: ['items'] })
     const component = contractView(doc, resolve(doc.tree, 'List'), LIBRARY)
     if (component.kind !== 'component') throw new Error(component.kind)
     expect(component.slots).toEqual([
       {
         name: 'option',
-        repeats: true,
-        provided: { kind: 'repeat', address: 'List#repeat(option)', count: 3 },
+        provided: { address: 'List#option', repeat: { list: 'items', count: 3 } },
       },
-      { name: 'empty', repeats: false, provided: { kind: 'slot', address: 'List#empty' } },
-      { name: 'control', repeats: false, provided: null },
+      { name: 'empty', provided: { address: 'List#empty', repeat: null } },
+      { name: 'control', provided: null },
     ])
+  })
+
+  it('for the default state on the canvas: the base layer it draws', () => {
+    // The canvas selects the twin; the tab shows and writes the authored node.
+    const doc = parseOrThrow(CHECKBOX)
+    const drawn = derivedDocument(doc).tree
+    const check = resolve(drawn, defaultVariantAddress(doc, 'Checkbox#check')!)!
+    expect(contractView(doc, check, LIBRARY)).toMatchObject({
+      kind: 'part',
+      node: { address: 'Checkbox#check' },
+      partValue: 'checked-indicator',
+    })
+    const root = resolve(drawn, defaultVariantAddress(doc, 'Checkbox')!)!
+    expect(contractView(doc, root, LIBRARY).kind).toBe('component')
   })
 
   it('for a layer outside any component, and for a page: nothing to bind', () => {
@@ -264,20 +285,38 @@ describe('the writes', () => {
     ])
   })
 
-  it('moves a repeat to another slot and says where it will be, and counts whole rows only', () => {
+  it('repeats any layer over a list, names its item, and counts whole rows only', () => {
     const list = parseOrThrow(LIST)
-    const repeat = resolve(list.tree, 'List#repeat(option)')!
-    expect(setRepeatSlot(repeat, 'items')).toEqual({
-      patches: [{ op: 'set', address: 'List#repeat(option)', prop: 'slot', value: 'items' }],
-      nextAddress: 'List#repeat(items)',
-    })
-    expect(setRepeatCount(repeat, 5)).toEqual([
-      { op: 'set', address: 'List#repeat(option)', prop: 'count', value: 5 },
+    const slot = resolve(list.tree, 'List#option')!
+    const row = resolve(list.tree, 'List#option/row')!
+    expect(setRepeat(row, 'items')).toEqual([
+      { op: 'add', address: 'List#option/row', prop: 'repeat', value: '{items}' },
     ])
-    expect(setRepeatCount(repeat, -1)).toEqual([])
-    expect(setRepeatCount(repeat, 2.5)).toEqual([])
-    const after = applyPatches(LIST, setRepeatCount(repeat, 5)).source
-    expect(after).toContain('<Repeat slot="option" count={5}>')
+    expect(setRepeat(slot, '{people}')).toEqual([
+      { op: 'set', address: 'List#option', prop: 'repeat', value: '{people}' },
+    ])
+    expect(setRepeatAs(slot, 'person')).toEqual([
+      { op: 'add', address: 'List#option', prop: 'as', value: 'person' },
+    ])
+    expect(setRepeatAs(slot, 'item')).toEqual([])
+    expect(setRepeatAs(slot, 'not a name')).toEqual([])
+    expect(setRepeatCount(slot, 5)).toEqual([
+      { op: 'set', address: 'List#option', prop: 'count', value: 5 },
+    ])
+    expect(setRepeatCount(slot, -1)).toEqual([])
+    expect(setRepeatCount(slot, 2.5)).toEqual([])
+    expect(setRepeatCount(slot, null)).toEqual([
+      { op: 'remove', address: 'List#option', prop: 'count' },
+    ])
+    expect(applyPatches(LIST, setRepeatCount(slot, 5)).source).toContain(
+      '<Slot name="option" repeat="{items}" count={5}>',
+    )
+    // Clearing the repeat takes the count with it: the parser refuses one alone.
+    expect(setRepeat(slot, null)).toEqual([
+      { op: 'remove', address: 'List#option', prop: 'count' },
+      { op: 'remove', address: 'List#option', prop: 'repeat' },
+    ])
+    expect(applyPatches(LIST, setRepeat(slot, null)).source).toContain('<Slot name="option">')
   })
 })
 
@@ -362,14 +401,24 @@ describe('the Contract section', () => {
     ])
   })
 
-  it('edits a repeat and reselects it at its new address', async () => {
-    const section = mountFor(LIST, 'List#repeat(option)')
+  it('edits a repeat from the layer it rides on', async () => {
+    const section = mountFor(LIST, 'List#option')
     await section.find('[data-field="count"] input').setValue('4')
     expect(section.emitted('patches')).toEqual([
-      [[{ op: 'set', address: 'List#repeat(option)', prop: 'count', value: 4 }]],
+      [[{ op: 'set', address: 'List#option', prop: 'count', value: 4 }]],
     ])
-    const slot = section.find('[data-field="slot"] select')
-    expect(slot.findAll('option').map((o) => o.text().trim())).toEqual(['option'])
+    const over = section.find('[data-field="repeat"] select')
+    expect(over.findAll('option').map((o) => o.text().trim())).toEqual(['Once', '{items}'])
+    await over.setValue('')
+    expect(section.emitted('patches')!.at(-1)).toEqual([
+      [
+        { op: 'remove', address: 'List#option', prop: 'count' },
+        { op: 'remove', address: 'List#option', prop: 'repeat' },
+      ],
+    ])
+    // An instance below shows the same rows, unset.
+    const instance = mountFor(LIST, 'List#option/row')
+    expect(instance.find('[data-field="repeat"]').attributes('data-set')).toBe('false')
   })
 
   it('goes read-only with the socket', () => {
@@ -382,7 +431,7 @@ describe('the Contract section', () => {
 
   it('explains a layer outside a component and an instance', () => {
     expect(mountFor(bare, 'loose').text()).toContain('Only layers inside a component')
-    expect(mountFor(LIST, 'List#repeat(option)/row').text()).toContain('An instance renders')
+    expect(mountFor(LIST, 'List#option/row').text()).toContain('An instance renders')
   })
 })
 

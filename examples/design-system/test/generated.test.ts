@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { parse } from '@uidx/format'
+import { modelIndex } from '@uidx/schema/design-system'
 import { auditDesignSystem } from '@uidx/schema/design-system-audit'
 import { generate } from '@uidx/codegen'
 
@@ -33,8 +34,11 @@ async function load() {
 describe('the example design system', () => {
   it('passes the design-system audit for every page', async () => {
     const { pages } = await load()
+    // As `uidx check` audits: with every page's models in one index, since a
+    // list names its model by type and the model is written once (ADR 0015 §2).
+    const models = modelIndex(pages.map((page) => page.doc))
     for (const { file, doc } of pages) {
-      expect(auditDesignSystem(doc).map((d) => `${file}: ${d.message}`)).toEqual([])
+      expect(auditDesignSystem(doc, models).map((d) => `${file}: ${d.message}`)).toEqual([])
     }
   })
 

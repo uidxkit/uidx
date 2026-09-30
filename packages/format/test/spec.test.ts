@@ -94,7 +94,7 @@ describe('spec regions', () => {
     expect(spec.contract!.parts.map((part) => [part.name, part.description])).toEqual([
       ['checked-indicator', 'The mark shown while checked.'],
     ])
-    expect(spec.contract!.slots).toMatchObject([{ name: 'label', repeats: false }])
+    expect(spec.contract!.slots).toMatchObject([{ name: 'label' }])
     expect(spec.contract!.form).toEqual({
       participates: true,
       submits: 'value while checked, nothing otherwise',
@@ -197,15 +197,6 @@ describe('spec regions', () => {
     expect(noSample.diagnostics).toEqual([])
   })
 
-  it('refuses a repeating slot without the list prop it iterates and an accepted root', () => {
-    const base = '---\nid: r\n---\n\n## Visual Contract\n\n<Page><Frame name="a" /></Page>\n'
-    const { diagnostics } = parse(
-      `${base}\n## Contract\n\n<Slots><Slot name="item" repeats>Rows.</Slot></Slots>\n`,
-    )
-    expect(diagnostics.map((d) => d.code)).toEqual([CODES.BAD_SPEC])
-    expect(diagnostics[0]!.message).toContain('"of"')
-  })
-
   it('names the old spellings and says what replaced them', () => {
     const base = '---\nid: r\n---\n\n## Visual Contract\n\n<Page><Frame name="a" /></Page>\n'
     const messages = (region: string) =>
@@ -219,9 +210,9 @@ describe('spec regions', () => {
     ).toContain('type="Contact"')
     expect(
       messages(
-        '<Slots><Slot name="item" repeats model="{models#Contact}" accepts="x-row">Rows.</Slot></Slots>',
+        '<Slots><Slot name="item" repeats of="items" accepts="x-row">Rows.</Slot></Slots>',
       )[0],
-    ).toContain('of="items"')
+    ).toContain('repeat="{items}"')
   })
 
   it('reports an element a region does not know, with what it allows', () => {
@@ -232,31 +223,36 @@ describe('spec regions', () => {
   })
 })
 
-describe('<Repeat> (ADR 0017 §2)', () => {
+describe('repeat (ADR 0017 §2)', () => {
   const page = (body: string) =>
-    `---\nid: r\n---\n\n## Visual Contract\n\n<Page>\n  <Component name="Row" status="draft"><Frame name="f" /></Component>\n  <Component name="List" status="draft">\n    <Frame name="root" layoutMode="VERTICAL">\n${body}\n    </Frame>\n  </Component>\n</Page>\n`
+    `---\nid: r\n---\n\n## Visual Contract\n\n<Page>\n  <Component name="List" status="draft">\n    <Frame name="root" layoutMode="VERTICAL">\n${body}\n    </Frame>\n  </Component>\n</Page>\n`
 
-  it('is named by its slot and holds the one instance it multiplies', () => {
+  it('is an attribute of the element that repeats, with its item name and canvas count', () => {
     const doc = parseOrThrow(
-      page('      <Repeat slot="item" count={3}><Instance name="row" component="Row" /></Repeat>'),
+      page(
+        '      <Frame name="row" repeat="{items}" as="contact" count={3}><Text name="t" characters="{contact.name}" /></Frame>',
+      ),
     )
-    const repeat = doc.tree.children[1]!.children[0]!.children[0]!
-    expect(repeat.element).toBe('Repeat')
-    expect(repeat.name).toBe('repeat(item)')
-    expect(repeat.address).toBe('List#root/repeat(item)')
-    expect(repeat.children).toHaveLength(1)
+    const row = doc.tree.children[0]!.children[0]!.children[0]!
+    expect(row.element).toBe('Frame')
+    expect(row.address).toBe('List#root/row')
+    expect(row.attrs.repeat?.value).toBe('{items}')
+    expect(row.attrs.as?.value).toBe('contact')
+    expect(row.attrs.count?.value).toBe(3)
   })
 
-  it('needs a slot, a count and exactly one child', () => {
+  it('checks the shape of repeat, as and count', () => {
     const codes = (body: string) => parse(page(body)).diagnostics.map((d) => d.code)
-    expect(
-      codes('      <Repeat count={3}><Instance name="row" component="Row" /></Repeat>'),
-    ).toEqual([CODES.BAD_REPEAT])
-    expect(
-      codes(
-        '      <Repeat slot="item" count={-1}><Instance name="row" component="Row" /></Repeat>',
-      ),
-    ).toEqual([CODES.BAD_REPEAT])
-    expect(codes('      <Repeat slot="item" count={2} />')).toEqual([CODES.BAD_REPEAT])
+    expect(codes('      <Frame name="row" repeat="items" />')).toEqual([CODES.BAD_REPEAT])
+    expect(codes('      <Frame name="row" repeat="{space#md}" />')).toEqual([CODES.BAD_REPEAT])
+    expect(codes('      <Frame name="row" as="x" />')).toEqual([CODES.BAD_REPEAT])
+    expect(codes('      <Frame name="row" repeat="{items}" as="not a word" />')).toEqual([
+      CODES.BAD_REPEAT,
+    ])
+    expect(codes('      <Frame name="row" repeat="{items}" count={-1} />')).toEqual([
+      CODES.BAD_REPEAT,
+    ])
+    expect(codes('      <Frame name="row" count={2} />')).toEqual([CODES.BAD_REPEAT])
+    expect(codes('      <Frame name="row" repeat="{items}" />')).toEqual([])
   })
 })

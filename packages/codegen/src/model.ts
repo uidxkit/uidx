@@ -7,14 +7,18 @@ import {
   type SlotSpec,
   type UidxDocument,
   type UidxNode,
+  type ModelSpec,
 } from '@uidx/format'
 import {
   axesOf,
   modelByRef,
   modelIndex,
   modelOfType,
+  repeatModel,
+  repeatOf,
   specBindings,
   type ModelIndex,
+  type RepeatScope,
 } from '@uidx/schema/design-system'
 
 /**
@@ -187,12 +191,20 @@ export interface SlotInfo {
   spec: SlotSpec | undefined
 }
 
+/** An element drawn once per item of a list (ADR 0017 §2). */
 export interface RepeatInfo {
   node: UidxNode
+  /** The alias target: `items`, or `item.children` for a nested repeat. */
+  list: string
+  /** The item's name for the bindings below. */
+  as: string
+  /** The model each item is, when the list can be placed. */
+  model: ModelSpec | undefined
+  /** The repeats this one sits inside, outermost first. */
+  enclosing: RepeatScope[]
+  /** A repeating `<Slot>`: consumers may replace the item, its content is the default. */
+  fillable: boolean
   slot: SlotSpec | undefined
-  /** The instance the repeat multiplies, and the component it names. */
-  instance: UidxNode | undefined
-  itemComponent: string | undefined
 }
 
 export interface ComponentModel {
@@ -240,16 +252,27 @@ export function boundProp(model: ComponentModel, value: JsonValue): PropSpec | u
 }
 
 /** `{item.name}` → `['item', 'name']` when `item` is a model prop; else null. */
-export function boundPath(model: ComponentModel, value: JsonValue): string[] | null {
+export function boundPath(
+  model: ComponentModel,
+  value: JsonValue,
+  /** The repeats the node sits inside: their items bind too (ADR 0017 §2). */
+  enclosing: readonly RepeatScope[] = [],
+): string[] | null {
   if (typeof value !== 'string') return null
   const target = aliasTarget(value)
   if (target === null || target.includes('#') || !target.includes('.')) return null
   const path = target.split('.')
+  if (enclosing.some((scope) => scope.as === path[0])) return path
   const prop = model.contract?.props.find(
     (entry) =>
       entry.name === path[0] && modelOfType(entry.type, model.spec, model.models)?.list === false,
   )
   return prop ? path : null
+}
+
+/** The repeat an element carries, as the model recorded it. */
+export function repeatFor(model: ComponentModel, node: UidxNode): RepeatInfo | undefined {
+  return model.repeats.find((entry) => entry.node === node)
 }
 
 /** The declared model a name refers to, on this page or any other. */
@@ -280,7 +303,7 @@ export function componentModel(
   const slots: SlotInfo[] = []
   const repeats: RepeatInfo[] = []
   const partOf = new Map<UidxNode, string>()
-  const walk = (node: UidxNode): void => {
+  const walk = (node: UidxNode, enclosing: RepeatScope[]): void => {
     const part = node.attrs.part?.value
     if (typeof part === 'string') {
       const libraryName = binding.parts?.[part] ?? part
@@ -305,24 +328,30 @@ export function componentModel(
         spec: contract?.slots.find((slot) => slot.name === node.name),
       })
     }
+    let inner = enclosing
+    const repeat = repeatOf(node)
+    if (repeat) {
+      const modelSpec = repeatModel(repeat, spec, enclosing, models ?? modelIndex([doc]))
+      repeats.push({
+        node,
+        list: repeat.list,
+        as: repeat.as,
+        model: modelSpec,
+        enclosing,
+        fillable: node.element === 'Slot',
+        slot:
+          node.element === 'Slot'
+            ? contract?.slots.find((slot) => slot.name === node.name)
+            : undefined,
+      })
+      inner = [...enclosing, { as: repeat.as, model: modelSpec }]
+    }
     // An instance's children are the fills it puts in *another* component's
     // slots (ADR 0007 §2), not this component's parts or slots.
     if (node.element === 'Instance') return
-    if (node.element === 'Repeat') {
-      const slotName = node.attrs.slot?.value
-      const instance = node.children[0]
-      const itemComponent = instance?.attrs.component?.value
-      repeats.push({
-        node,
-        slot: contract?.slots.find((slot) => slot.name === slotName),
-        instance: instance?.element === 'Instance' ? instance : undefined,
-        itemComponent: typeof itemComponent === 'string' ? itemComponent : undefined,
-      })
-      return
-    }
-    for (const child of node.children) walk(child)
+    for (const child of node.children) walk(child, inner)
   }
-  for (const child of component.children) walk(child)
+  for (const child of component.children) walk(child, [])
   return {
     name: component.name,
     identifier: pascal(component.name),

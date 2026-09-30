@@ -17,12 +17,14 @@ import {
   scaffoldFromLibrary,
   setImplements,
   setPart,
+  setRepeat,
+  setRepeatAs,
   setRepeatCount,
-  setRepeatSlot,
   undeclare,
 } from './contract-edits'
+import type { ModelIndex } from '@uidx/schema'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
-import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
+import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
 
 /**
  * The Contract tab: where the visual tree is bound to its code render
@@ -30,14 +32,14 @@ import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
  *
  * The Design tab says what a thing looks like; this one says what it *is* to
  * the headless library — which element a component implements, which part a
- * layer draws, which slot a repeat multiplies. Figma keeps the same split
+ * layer draws, which list a layer repeats over. Figma keeps the same split
  * between its Design panel and the properties it links to code, and it binds
  * from both ends: a property is declared on the component and applied from
  * the layer. So does this. A part is bound from the component's list or from
  * the layer's own row, and both write the same attribute.
  *
  * Choices come from a list wherever one exists — the library's roots, the
- * root's parts, the contract's repeating slots — and from a text field only
+ * root's parts, the contract's list props — and from a text field only
  * when the document has no library to ask. Nothing here edits the contract's
  * prose; that is the file's, and the tab shows it so the binding can be read
  * against what it binds to.
@@ -51,6 +53,8 @@ const props = defineProps<{
   candidates?: HeadlessCandidate[]
   /** Where generated code goes, when uidx.json says (`codegen.out`), and how the last run went. */
   codegen?: { out: string | null; running: boolean; notice: string }
+  /** Model name -> declaration across every page, so a list's model resolves wherever it is written. */
+  models?: ModelIndex
   writable: boolean
 }>()
 
@@ -75,7 +79,7 @@ function chooseCandidate(path: string): void {
   if (path) emit('chooseLibrary', path)
 }
 
-const view = computed(() => contractView(props.doc, props.node, props.library))
+const view = computed(() => contractView(props.doc, props.node, props.library, props.models))
 
 const boundCount = computed(() =>
   view.value.kind === 'component' ? view.value.parts.filter((row) => row.boundTo).length : 0,
@@ -110,16 +114,31 @@ function choosePart(part: string): void {
   send(setPart(view.value.node, part || null))
 }
 
-function chooseSlot(slot: string): void {
-  if (view.value.kind !== 'repeat' || !slot) return
-  const { patches, nextAddress } = setRepeatSlot(view.value.node, slot)
-  send(patches)
-  if (patches.length) emit('select', nextAddress)
+/**
+ * The repeat rows (ADR 0017 §2) belong to any layer inside a component: a
+ * part, a slot, or an instance repeats the same way, so one block serves the
+ * three views rather than each carrying its own.
+ */
+const repeatable = computed(() => {
+  const current = view.value
+  return current.kind === 'part' || current.kind === 'slot' || current.kind === 'instance'
+    ? current
+    : null
+})
+
+function chooseRepeat(list: string): void {
+  if (!repeatable.value) return
+  send(setRepeat(repeatable.value.node, list || null))
+}
+
+function chooseAs(raw: string): void {
+  if (!repeatable.value) return
+  send(setRepeatAs(repeatable.value.node, raw))
 }
 
 function chooseCount(raw: string): void {
-  if (view.value.kind !== 'repeat') return
-  send(setRepeatCount(view.value.node, Number(raw)))
+  if (!repeatable.value) return
+  send(setRepeatCount(repeatable.value.node, raw.trim() === '' ? null : Number(raw)))
 }
 
 function findNode(root: UidxNode, address: string): UidxNode | null {
@@ -144,11 +163,6 @@ function toggle(key: string): void {
 
 const addKind = ref<ContractKind>('prop')
 const addName = ref('')
-
-/** The list props a repeating slot may iterate (ADR 0017 §1). */
-const listProps = computed(() =>
-  (contract.value?.props ?? []).filter((p) => p.type.endsWith('[]')).map((p) => p.name),
-)
 
 /** `{ checked: boolean }` as typed; a JSON value where it parses, the text otherwise. */
 function parsed(text: string): JsonValue | undefined {
@@ -385,7 +399,10 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         >
           <span class="name">
             {{ slot.name }}
-            <span v-if="slot.repeats" class="pill" title="A repeating slot: one per item"
+            <span
+              v-if="slot.provided?.repeat"
+              class="pill"
+              :title="`Repeats over {${slot.provided.repeat.list}}: consumers fill one per item`"
               >repeats</span
             >
           </span>
@@ -393,12 +410,12 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             v-if="slot.provided"
             type="button"
             class="layer"
-            :title="`Select the ${slot.provided.kind}`"
+            title="Select the slot"
             @click="emit('select', slot.provided.address)"
           >
             <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
               <path
-                :d="LAYER_ICONS[slot.provided.kind === 'repeat' ? 'Repeat' : 'Slot']"
+                :d="slot.provided.repeat ? REPEAT_ICON : LAYER_ICONS.Slot"
                 fill="none"
                 stroke="currentColor"
                 stroke-width="1"
@@ -406,15 +423,13 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             </svg>
             <span class="layer-name">
               {{
-                slot.provided.kind === 'repeat'
-                  ? `Repeat × ${slot.provided.count ?? '?'}`
+                slot.provided.repeat
+                  ? `Slot × ${slot.provided.repeat.count ?? 'samples'}`
                   : 'Slot in tree'
               }}
             </span>
           </button>
-          <span v-else class="status">
-            {{ slot.repeats ? 'No repeat in the tree yet' : 'No slot in the tree yet' }}
-          </span>
+          <span v-else class="status">No slot in the tree yet</span>
           <span class="reset-spacer" />
         </div>
       </template>
@@ -635,12 +650,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             @click="toggle(`slot:${slot.name}`)"
           >
             <span class="name-text">slot {{ slot.name }}</span>
-            <span v-if="slot.repeats" class="pill">repeats</span>
             <span v-if="isPlaceholder(slot.description)" class="flag" title="Needs a description"
               >?</span
             >
           </button>
-          <span class="type">{{ slot.repeats ? `of ${slot.of}` : 'slot' }}</span>
+          <span class="type">{{ slot.accepts ? `accepts ${slot.accepts}` : 'slot' }}</span>
           <button
             type="button"
             class="reset"
@@ -666,38 +680,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               "
             />
           </label>
-          <div class="flags">
-            <label
-              ><input
-                type="checkbox"
-                :checked="slot.repeats"
-                :disabled="!writable"
-                @change="
-                  redeclare('slot', slot.name, {
-                    attrs: { repeats: ($event.target as HTMLInputElement).checked },
-                  })
-                "
-              />
-              Repeats</label
-            >
-          </div>
-          <div v-if="slot.repeats" class="pair">
-            <label class="field">
-              <span>Of (list prop)</span>
-              <select
-                class="pick"
-                :value="slot.of ?? ''"
-                :disabled="!writable"
-                @change="
-                  redeclare('slot', slot.name, {
-                    attrs: { of: ($event.target as HTMLSelectElement).value || undefined },
-                  })
-                "
-              >
-                <option value="">Choose…</option>
-                <option v-for="name in listProps" :key="name" :value="name">{{ name }}</option>
-              </select>
-            </label>
+          <div class="pair">
             <label class="field">
               <span>Accepts (element)</span>
               <input
@@ -894,73 +877,17 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       </div>
     </template>
 
-    <template v-else-if="view.kind === 'repeat'">
-      <header class="head">
-        <span class="title">Repeat</span>
-        <span v-if="view.child" class="of">{{ view.child.component || view.child.name }}</span>
-      </header>
-      <div class="row" data-field="slot" data-set="true">
-        <span class="name" title="The repeating slot of the contract this multiplies">Slot</span>
-        <select
-          v-if="view.slotOptions.length"
-          class="pick"
-          :value="view.slotValue"
-          :disabled="!writable"
-          aria-label="Slot"
-          @change="chooseSlot(($event.target as HTMLSelectElement).value)"
-        >
-          <option v-if="!view.slotOptions.includes(view.slotValue)" :value="view.slotValue">
-            {{ view.slotValue }} · not declared
-          </option>
-          <option v-for="name in view.slotOptions" :key="name" :value="name">{{ name }}</option>
-        </select>
-        <input
-          v-else
-          class="text"
-          :value="view.slotValue"
-          :disabled="!writable"
-          aria-label="Slot"
-          @change="chooseSlot(($event.target as HTMLInputElement).value.trim())"
-        />
-        <span class="reset-spacer" />
-      </div>
-      <div class="row" data-field="count" data-set="true">
-        <span class="name" title="How many sample rows the canvas draws">Count</span>
-        <input
-          class="text"
-          type="number"
-          min="0"
-          step="1"
-          :value="view.count"
-          :disabled="!writable"
-          aria-label="Count"
-          @change="chooseCount(($event.target as HTMLInputElement).value)"
-        />
-        <span class="reset-spacer" />
-      </div>
-      <p v-if="!view.slotOptions.length" class="hint">
-        {{
-          view.component
-            ? `${view.component.name}'s contract declares no repeating slot; add one under ## Contract.`
-            : 'A repeat belongs inside a component.'
-        }}
-      </p>
-      <p v-if="!view.child" class="stale" role="status">
-        A repeat multiplies one instance; this one holds none.
-      </p>
-    </template>
-
     <template v-else-if="view.kind === 'slot'">
       <header class="head">
         <span class="title">Slot</span>
         <span v-if="view.component" class="of">of {{ view.component.name }}</span>
       </header>
       <p v-if="view.declared" class="hint">
-        “{{ view.node.name }}” is declared by the contract<template v-if="view.declared.repeats">
-          as repeating<template v-if="view.declared.accepts">
-            ; each item is an {{ view.declared.accepts }}</template
-          ></template
-        >. Consumers fill it; what is inside is the placeholder.
+        “{{ view.node.name }}” is declared by the contract<template v-if="view.declared.accepts">
+          ; each filling is an {{ view.declared.accepts }}</template
+        >. Consumers fill it; what is inside is the placeholder<template v-if="view.repeat">
+          , drawn once per item</template
+        >.
       </p>
       <p v-else class="stale" role="status">
         The contract does not declare a slot called “{{ view.node.name }}”. Add it under
@@ -993,6 +920,127 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       <p class="empty">
         Only layers inside a component draw a part. Move this layer into a component, or make one
         from it.
+      </p>
+    </template>
+
+    <!--
+      Repeating is per layer (ADR 0017 §2), the way Vue's v-for and Plasmic's
+      "repeat this element" are: any layer inside a component may draw itself
+      once per item of a list, and its parent is the outer structure. So the
+      rows sit below whichever view the layer has, not in a view of their own.
+    -->
+    <template v-if="repeatable && repeatable.component">
+      <header class="head">
+        <span class="title">Repeat</span>
+        <span v-if="repeatable.repeat" class="of"
+          >× {{ repeatable.repeat.count ?? repeatable.repeat.defaultCount }}</span
+        >
+      </header>
+      <div class="row" data-field="repeat" :data-set="repeatable.repeat !== null">
+        <span class="name" title="The list this layer draws one of itself per item of">Over</span>
+        <select
+          v-if="repeatable.lists.length"
+          class="pick"
+          :value="repeatable.repeat?.list ?? ''"
+          :disabled="!writable"
+          aria-label="Repeat over"
+          @change="chooseRepeat(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">Once</option>
+          <option
+            v-if="repeatable.repeat && !repeatable.lists.includes(repeatable.repeat.list)"
+            :value="repeatable.repeat.list"
+          >
+            {{ '{' + repeatable.repeat.list + '}' }} · not a list here
+          </option>
+          <option v-for="list in repeatable.lists" :key="list" :value="list">
+            {{ '{' + list + '}' }}
+          </option>
+        </select>
+        <input
+          v-else
+          class="text"
+          :value="repeatable.repeat?.list ?? ''"
+          :disabled="!writable"
+          aria-label="Repeat over"
+          placeholder="once"
+          @change="chooseRepeat(($event.target as HTMLInputElement).value.trim())"
+        />
+        <button
+          v-if="repeatable.repeat"
+          type="button"
+          class="reset"
+          :disabled="!writable"
+          aria-label="Clear repeat"
+          title="Draw it once"
+          @click="chooseRepeat('')"
+        >
+          ↺
+        </button>
+        <span v-else class="reset-spacer" />
+      </div>
+      <template v-if="repeatable.repeat">
+        <div class="row" data-field="as" :data-set="repeatable.repeat.as !== 'item'">
+          <span class="name" title="The item's name in the bindings below, like {item.name}"
+            >As</span
+          >
+          <input
+            class="text"
+            :value="repeatable.repeat.as"
+            :disabled="!writable"
+            aria-label="Item name"
+            placeholder="item"
+            @change="chooseAs(($event.target as HTMLInputElement).value)"
+          />
+          <span class="reset-spacer" />
+        </div>
+        <div class="row" data-field="count" :data-set="repeatable.repeat.count !== null">
+          <span
+            class="name"
+            title="How many rows the canvas draws; empty follows the model's samples"
+            >Count</span
+          >
+          <input
+            class="text"
+            type="number"
+            min="0"
+            step="1"
+            :value="repeatable.repeat.count ?? ''"
+            :disabled="!writable"
+            aria-label="Count"
+            :placeholder="`${repeatable.repeat.defaultCount} · samples`"
+            @change="chooseCount(($event.target as HTMLInputElement).value)"
+          />
+          <button
+            v-if="repeatable.repeat.count !== null"
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            aria-label="Clear count"
+            title="Follow the model's samples"
+            @click="chooseCount('')"
+          >
+            ↺
+          </button>
+          <span v-else class="reset-spacer" />
+        </div>
+        <p v-if="repeatable.repeat.model && !repeatable.repeat.unknownModel" class="hint">
+          Each item is a {{ repeatable.repeat.model }}; bind text below to
+          <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
+          >.
+        </p>
+        <p v-else-if="repeatable.repeat.model" class="stale" role="status">
+          Each item is a {{ repeatable.repeat.model }}, which no page declares under
+          <code>## Models</code>.
+        </p>
+        <p v-else class="stale" role="status">
+          The contract cannot place <code>{{ '{' + repeatable.repeat.list + '}' }}</code
+          >: declare it as a list prop, or as a list field of the outer item.
+        </p>
+      </template>
+      <p v-else-if="!repeatable.lists.length" class="hint">
+        To repeat this layer, declare a list prop under <code>## Contract</code> — say
+        <code>items</code> of type <code>Contact[]</code>.
       </p>
     </template>
 

@@ -3,7 +3,7 @@ import { CREATABLE_ELEMENTS, type CreatableElement } from '@uidx/schema'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { GRAPHICS_TOOLS, type DrawingTool } from './graphics-tools'
 
-import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
+import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
 
 /**
  * The creation tools and delete (stories D1 and D2).
@@ -47,10 +47,10 @@ const props = defineProps<{
    */
   canAddSlot: boolean
   /**
-   * Whether the selection is an instance a `<Repeat>` could wrap (ADR 0017
-   * §2): one instance, inside a component whose contract has a repeating
-   * slot nothing provides yet. Optional, unlike the slot's: an older shell
-   * that never offers the tool simply does not show it enabled.
+   * Whether the selection is a layer that could repeat (ADR 0017 §2): one
+   * layer inside a component, not repeating yet, with a list the contract
+   * can place. Optional, unlike the slot's: an older shell that never offers
+   * the tool simply does not show it enabled.
    */
   canAddRepeat?: boolean
   /** False while the socket is down: nothing here can reach the file. */
@@ -294,20 +294,20 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
     </button>
 
     <!--
-      A repeat wraps the selected instance (ADR 0017 §2): the canvas then draws
-      one row per sample of the slot's model. Beside the slot tool because it
+      A repeat rides on the selected layer (ADR 0017 §2): the canvas then draws
+      it once per sample of the list's model. Beside the slot tool because it
       is the other half of the same idea — a hole, and what fills it many times.
     -->
     <button
       type="button"
       class="tool"
       :disabled="!writable || !canAddRepeat"
-      title="Repeat the instance on a repeating slot"
-      aria-label="Repeat instance"
+      title="Repeat the layer over a list of the contract"
+      aria-label="Repeat"
       @click="emit('addRepeat')"
     >
       <svg viewBox="0 0 12 12" aria-hidden="true">
-        <path :d="LAYER_ICONS.Repeat" fill="none" stroke="currentColor" />
+        <path :d="REPEAT_ICON" fill="none" stroke="currentColor" />
       </svg>
     </button>
 

@@ -12,37 +12,58 @@ thing.
 
 ## Decision
 
-### 1. Repeating slots
+### 1. Lists in the contract
 
-A slot may repeat, carry a model, and constrain what fills it:
+A list is a prop whose type is a model's name with `[]`; the model is written
+once, on the prop's type, and its element type is what each row receives:
 
 ```mdx
+<Props>
+  <Prop name="items" type="Contact[]">The people to choose from, in order.</Prop>
+</Props>
 <Slots>
-  <Slot name="item" repeats of="items" accepts="hwc-list-item">One filling per element of `items`.</Slot>
+  <Slot name="item" accepts="hwc-list-item">One filling per element of `items`.</Slot>
 </Slots>
 ```
 
-- `repeats` means one filling per element of a list prop.
-- `of` names that prop; its element type is the model each filling receives,
-  so the model is written once, on the prop.
-- `accepts` names the headless root an item component must implement; the
-  audit refuses a filling that does not.
+`accepts` on a slot names the headless root an item component must
+implement; the audit refuses a filling that does not. Whether a slot repeats
+is not the contract's to say: the tree says it, below.
 
-### 2. `<Repeat>` in the visual contract
+### 2. `repeat` on any layer
 
 ```mdx
-<Repeat slot="item" count={3}>
-  <Instance component="ContactItem" />
-</Repeat>
+<Frame name="row" repeat="{items}" as="person">
+  <Text name="name" characters="{person.name}" />
+  <Frame name="tags" repeat="{person.tags}" as="tag">
+    <Text name="tag-name" characters="{tag.label}" />
+  </Frame>
+</Frame>
 ```
 
-A visual-only instruction, legal only on a slot declared `repeats`, whose one
-child is an instance of an accepted component. The toolbar's Repeat tool
-wraps a selected instance this way, on the first repeating slot no repeat
-provides yet. The canvas expands it to
-`count` clones, the n-th resolving `{item.*}` from the n-th samples. Figma
-export renders instances with an instance-swap property. Code ignores
-`count` and uses the contract.
+Repeating is per layer, the way Vue's `v-for`, Angular's `@for` and Plasmic's
+"repeat this element" are: `repeat="{list}"` on any layer of a component —
+frame, text, vector, instance or slot — draws that layer once per item of the
+list, and the layer's parent is the outer structure (the column of a list,
+the row of a tree). The list is a list prop of the contract (`{items}`) or a
+list field of an enclosing item (`{person.tags}`), so nesting a repeat inside
+a repeat is a tree. `as` names the item for the bindings below (`item` unless
+said), and `{as.field}` bindings resolve against the list's model, whose
+`key` field keys the rows. `count` is the canvas's row count; absent, the
+model's longest sample list decides.
+
+A repeat on a `<Slot>` is the one consumers fill: code renders it as a render
+prop named after the slot (`renderItem(item, index)`), with the slot's
+placeholder as the default content, and `accepts` on the declared slot
+constrains what a consumer passes. A repeat on any other layer is the
+component's own, rendered in place. The toolbar's Repeat tool writes
+`repeat="{…}"` on the selected layer with the first list its contract can
+place; the Contract tab edits the list, `as` and `count` from the layer. The
+canvas expands a repeat to `count` rows, the n-th resolving `{as.*}` from the
+n-th samples: the first row is the layer itself, selected and edited like any
+other, and the rows after it (`row-2`, `row-3`) are generated echoes that
+follow it. Figma export renders instances with an instance-swap property.
+Code ignores `count` and uses the contract.
 
 ### 3. Code targets
 
@@ -60,10 +81,11 @@ same bytes.
   contract's answer to render props:
   - a plain slot becomes a `ReactNode` prop of the slot's name (`label`,
     `description`), and a slot named `default` becomes `children`;
-  - a `repeats` slot becomes `items: T[]` plus `renderItem: (item: T, index)
-    => ReactNode`, generic over the model's generated type, with `ItemComponent`
-    accepted as sugar for a component whose `item` prop is that model; the key
-    comes from the model's `key` field;
+  - a slot that repeats becomes its list prop, required, plus a render prop
+    named after the slot — `renderItem: (item: T, index) => ReactNode` —
+    typed by the model, with the slot's placeholder as the default; a repeat
+    on any other layer becomes a `map` in place; the key comes from the
+    model's `key` field;
   - a part the library exposes as a shadow part (`cssParts` in its
     manifest, rather than a `<root>-<part>` element) is styled through
     `::part(name)` and never filled: the library draws it, and the design's

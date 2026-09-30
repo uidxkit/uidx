@@ -1,7 +1,13 @@
 import { SkiaRenderer } from '@open-pencil/core'
 import { getCanvasKit } from '@open-pencil/core/canvaskit'
 import { renderThumbnail } from '@open-pencil/core/io'
-import { toSceneGraph, type SceneResult, type TokenIndex, type TokenResolver } from '@uidx/schema'
+import {
+  toSceneGraph,
+  type SceneResult,
+  type TokenIndex,
+  type TokenResolver,
+  type ModelIndex,
+} from '@uidx/schema'
 import type { JsonValue, UidxDocument, UidxNode } from '@uidx/format'
 
 import { createAssetStore, type AssetFetch, type AssetStore } from './asset-store'
@@ -66,6 +72,8 @@ export interface ThumbnailRequest {
    * nearly empty.
    */
   components: ReadonlyMap<string, UidxNode> | undefined
+  /** Model name -> declaration across every page, so a repeat's rows draw their samples. */
+  models?: ModelIndex
   /**
    * The page's revision.
    *
@@ -149,6 +157,7 @@ export function sceneForThumbnail(request: ThumbnailRequest, assets?: SceneAsset
     resolveComponent: (name) => request.components?.get(name),
     resolveAsset: (src) => assets?.hashOf(src),
     tokens: request.tokens,
+    models: request.models,
   })
   // The graph owns the byte store the renderer reads and a fresh graph starts
   // empty, so it is refilled here — the same two steps `CanvasPane` takes, and

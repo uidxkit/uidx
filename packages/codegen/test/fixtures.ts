@@ -140,9 +140,9 @@ id: contact-list
 
 <Page>
   <Component name="ContactList" status="draft" implements="hwc-radio-group" layoutMode="VERTICAL">
-    <Repeat slot="item" count={2}>
+    <Slot name="item" repeat="{items}" count={2}>
       <Instance name="row" component="ContactItem" />
-    </Repeat>
+    </Slot>
     <Slot name="empty" />
   </Component>
 </Page>
@@ -155,7 +155,7 @@ id: contact-list
   <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
 </Props>
 <Slots>
-  <Slot name="item" repeats of="items" accepts="hwc-radio">One per row.</Slot>
+  <Slot name="item" accepts="hwc-radio">One per row.</Slot>
   <Slot name="empty">Shown while empty.</Slot>
 </Slots>
 `)

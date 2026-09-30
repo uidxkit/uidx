@@ -13,31 +13,38 @@ describe migrations when an existing document or integration is affected.
   optional, the tree's `part=` bindings being the declaration),
   `## Behavior` guidelines, `## Models` and `## Examples` after its visual
   contract, and a `<Styles>` table beside the root. Models are shared across
-  pages and named by a prop's type (`Contact`, `Contact[]`); a repeating slot
-  names the list prop it iterates (`of="items"`). Declarations only: nothing
+  pages and named by a prop's type (`Contact`, `Contact[]`). Any layer of a
+  component repeats over a list with `repeat="{items}"` — or `{person.tags}`
+  inside an outer repeat, which makes a tree — naming its item with `as` and
+  the canvas's rows with `count` (the model's samples decide otherwise); a
+  repeat on a `<Slot>` is the one consumers fill. Declarations only: nothing
   in the file computes. The viewer draws a styles table as the variant set it
   derives, resolves `{item.field}` bindings to a model's samples and `{prop}`
-  to the prop's `sample` or default, expands `<Repeat>` into sample rows, and
-  resolves an instance's `props={{ label: '{label}' }}` in the consuming
-  component's scope. A `<Slot>` that states no size hugs its placeholder. `uidx check` audits the regions against each
+  to the prop's `sample` or default, expands a repeat into sample rows (a
+  model declared on another page included), and resolves an instance's
+  `props={{ label: '{label}' }}` in the consuming component's scope. A `<Slot>` that states no size hugs its placeholder. `uidx check` audits the regions against each
   other and the tree; `uidx contract` prints them as JSON.
 - `@uidx/codegen` and `uidx codegen`: HTML/CSS and React rendered from the
   identities over headless custom elements, with props, events and slots from
-  the contract — a plain slot as a `ReactNode` prop, a repeating slot as
-  `items` plus `renderItem` generic over the model — and each contract checked
-  against the headless library's `custom-elements.json`.
+  the contract — a plain slot as a `ReactNode` prop, a repeating slot as its
+  list prop plus a render prop named after it, a repeat elsewhere as a `map`
+  in place — and each contract checked against the headless library's
+  `custom-elements.json`.
 - `examples/design-system`: Checkbox, Field, CheckboxField, Button and a
   contact list rendered end to end over `@hwc/components`, with the generated
   output committed and checked for drift.
 - A state is designed on the canvas: the derived variants a styles table draws
   are selectable, and a change to one writes the matching cell of its style
   row (the new `style` patch op), while a change to the default combination
-  edits the base tree. The inspector names the state it is editing. The
-  toolbar gains a Repeat tool that wraps the selected instance in a `<Repeat>`
-  on the first open repeating slot of its component's contract.
+  edits the base tree. The inspector names the state it is editing. A base
+  layer chosen in the rail is drawn by the default state, so that is what the
+  canvas highlights, and the default state chosen on the canvas is the base
+  layer in the inspector. The toolbar gains a Repeat tool that repeats the
+  selected layer over the first list its component's contract can place; the
+  first row of a repeat is the layer itself, the rows after it its echoes.
 - The Contract tab edits the contract: each prop, event, slot, state and
   part opens into a small form (description, type, default, sample, flags;
-  a slot's `of` and `accepts`), a row adds one, and "Fill from library"
+  a slot's `accepts`), a row adds one, and "Fill from library"
   declares what the implemented element exposes and the contract lacks. The
   new `contract` patch op writes one declaration in canonical form.
 - `uidx.json` gains an optional `codegen` (`out`, `targets`): `uidx codegen`
@@ -45,8 +52,8 @@ describe migrations when an existing document or integration is affected.
   targets from the server into that folder, reporting what it wrote.
 - The inspector gains a **Contract** tab beside Design. A component chooses
   the headless element it implements from the library; its parts are bound to
-  layers from the component's list or from the layer's own row, and a
-  `<Repeat>` picks a declared repeating slot and its count. The tab shows the
+  layers from the component's list or from the layer's own row, and any layer
+  picks the list it repeats over, its item's name and its count. The tab shows the
   file's contract beside the bindings and counts the parts still to bind.
   `uidx.json` gains an optional `"headless"` path to the library's
   `custom-elements.json`, served to the viewer and used by `uidx codegen` when

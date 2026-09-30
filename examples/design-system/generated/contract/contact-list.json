@@ -7,6 +7,7 @@
       "status": "stable",
       "boundParts": [],
       "treeSlots": [
+        "option",
         "empty"
       ],
       "axes": {
@@ -48,14 +49,11 @@
     "slots": [
       {
         "name": "option",
-        "repeats": true,
         "description": "One option per element of items .",
-        "of": "items",
         "accepts": "hwc-radio"
       },
       {
         "name": "empty",
-        "repeats": false,
         "description": "Shown instead of the options while items is empty."
       }
     ],

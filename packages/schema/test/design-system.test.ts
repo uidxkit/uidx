@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CODES, parseOrThrow, type JsonValue, type UidxNode } from '@uidx/format'
+import { CODES, parseOrThrow, resolve, type JsonValue, type UidxNode } from '@uidx/format'
 import {
   auditDesignSystem,
   contractJson,
+  defaultVariantAddress,
+  defaultVariantName,
   derivedTarget,
   modelIndex,
+  repeatListType,
   toSceneGraph,
 } from '../src/index.js'
 
@@ -64,6 +67,21 @@ describe('a styles table derives the variant set (ADR 0016)', () => {
   const doc = parseOrThrow(CHECKBOX_SOURCE)
   const scene = toSceneGraph(doc, { resolveAlias })
   const set = scene.graph.getNode('Checkbox')!
+
+  it('names where a base layer is drawn: its twin under the default combination', () => {
+    const name = defaultVariantName(resolve(doc.tree, 'Checkbox')!)!
+    const twin = defaultVariantAddress(doc, 'Checkbox#check')
+    expect(twin).toBe(`Checkbox#${name}/root/check`)
+    expect(scene.graph.getNode(twin!)).toBeDefined()
+    expect(derivedTarget(doc, twin!)).toMatchObject({
+      isDefault: true,
+      target: 'checked-indicator',
+    })
+    expect(defaultVariantAddress(doc, 'Checkbox')).toBe(`Checkbox#${name}/root`)
+    // Already into the set, or outside any derived component: nothing to map.
+    expect(defaultVariantAddress(doc, twin!)).toBeNull()
+    expect(defaultVariantAddress(parseOrThrow(ROW_SOURCE), 'ContactOption#who')).toBeNull()
+  })
 
   it('draws the component as a set with one tree per combination, default first', () => {
     expect(set.type).toBe('COMPONENT_SET')
@@ -176,9 +194,9 @@ const ROW_SOURCE = page(
 const LIST_SOURCE = page(
   'contact-list',
   `  <Component name="ContactList" status="draft" implements="hwc-list" layoutMode="VERTICAL">
-    <Repeat slot="item" count={3}>
+    <Slot name="item" repeat="{items}" count={3}>
       <Instance name="row" component="ContactItem" />
-    </Repeat>
+    </Slot>
     <Slot name="empty" />
   </Component>`,
   `
@@ -188,9 +206,45 @@ const LIST_SOURCE = page(
   <Prop name="items" type="Contact[]">Rows to show.</Prop>
 </Props>
 <Slots>
-  <Slot name="item" repeats of="items" accepts="hwc-list-item">One per row.</Slot>
+  <Slot name="item" accepts="hwc-list-item">One per row.</Slot>
   <Slot name="empty">Shown while there are no rows.</Slot>
 </Slots>
+`,
+)
+
+/** An inline repeat: the frame is the row, drawn once per item, with a nested repeat below it. */
+const INLINE_SOURCE = page(
+  'inline-list',
+  `  <Component name="Team" status="draft" layoutMode="VERTICAL">
+    <Text name="title" characters="{title}" />
+    <Frame name="row" repeat="{people}" as="person" layoutMode="HORIZONTAL">
+      <Text name="name" characters="{person.name}" />
+      <Text name="also" characters="{title}" />
+      <Frame name="tags" repeat="{person.tags}" as="tag">
+        <Text name="tag-name" characters="{tag.label}" />
+      </Frame>
+    </Frame>
+  </Component>`,
+  `
+## Contract
+
+<Props>
+  <Prop name="title" type="string" sample="Team">Heading.</Prop>
+  <Prop name="people" type="Person[]">Rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Tag">
+  A label.
+  <Field name="label" type="string" key sample={['lead', 'new']}>Words.</Field>
+</Model>
+<Model name="Person">
+  One person.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>Display name.</Field>
+  <Field name="tags" type="Tag[]">Their tags.</Field>
+</Model>
 `,
 )
 
@@ -300,34 +354,47 @@ describe('a slot that says nothing about its size', () => {
   })
 })
 
-describe('<Repeat> multiplies one instance (ADR 0017 §2)', () => {
+describe('repeat draws an element once per item (ADR 0017 §2)', () => {
   const row = parseOrThrow(ROW_SOURCE)
   const list = parseOrThrow(LIST_SOURCE)
   const index = componentIndex(row, list)
   const scene = toSceneGraph(list, { resolveComponent: (name) => index.get(name) })
 
-  it('draws count clones, the n-th filled from the n-th sample, wrapping and blanking', () => {
-    const text = (n: number, part: string) =>
-      scene.graph.getNode(`ContactList#row-${n}/${part}`)!.text
-    expect(scene.graph.getNode('ContactList#row-1')!.type).toBe('INSTANCE')
+  it('draws count rows of a repeating slot, the n-th filled from the n-th sample, wrapping and blanking', () => {
+    const at = (n: number) => (n === 1 ? 'ContactList#item' : `ContactList#item-${n}`)
+    const text = (n: number, part: string) => scene.graph.getNode(`${at(n)}/row/${part}`)!.text
+    expect(scene.graph.getNode('ContactList#item')!.type).toBe('FRAME')
+    expect(scene.graph.getNode('ContactList#item/row')!.type).toBe('INSTANCE')
+    expect(scene.graph.getNode('ContactList#item-3')!.type).toBe('FRAME')
+    expect(scene.graph.getNode('ContactList#item-4')).toBeUndefined()
     expect([text(1, 'name'), text(2, 'name'), text(3, 'name')]).toEqual(['Ada', 'Grace', 'Ada'])
-    expect(text(2, 'email')).toBe('')
-    expect(scene.graph.getNode('ContactList#row-4')).toBeUndefined()
+    expect([text(1, 'email'), text(2, 'email')]).toEqual(['ada@example.com', ''])
     expect(scene.warnings).toEqual([])
   })
 
-  it('links neither the repeat nor its clones', () => {
-    expect(scene.addresses.sceneIdOf('ContactList#repeat(item)')).toBeUndefined()
-    expect(scene.addresses.sceneIdOf('ContactList#row')).toBeUndefined()
+  it('links the first row as the layer itself, and nothing after it', () => {
+    expect(scene.addresses.sceneIdOf('ContactList')).toBe('ContactList')
     expect(scene.addresses.sceneIdOf('ContactList#empty')).toBe('ContactList#empty')
+    // The layer is its first row: selectable, and an edit lands on the source.
+    expect(scene.addresses.sceneIdOf('ContactList#item')).toBe('ContactList#item')
+    expect(scene.addresses.addressOf('ContactList#item/row')).toBe('ContactList#item/row')
+    // The echoes are generated content with no source to patch.
+    expect(scene.addresses.addressOf('ContactList#item-2')).toBeUndefined()
+    expect(scene.addresses.addressOf('ContactList#item-2/row/name')).toBeUndefined()
   })
 
-  it('expands inside an instance of the list as well', () => {
-    const home = parseOrThrow(page('home', `  <Instance name="people" component="ContactList" />`))
-    const built = toSceneGraph(home, { resolveComponent: (name) => index.get(name) })
-    expect(built.graph.getNode('people#row-1/name')!.text).toBe('Ada')
-    expect(built.graph.getNode('people#row-2/name')!.text).toBe('Grace')
-    expect(built.warnings).toEqual([])
+  it('repeats a plain frame inline, binding {as.field} and nesting, beside the component props', () => {
+    const inline = toSceneGraph(parseOrThrow(INLINE_SOURCE))
+    expect(inline.graph.getNode('Team#row/name')!.text).toBe('Ada')
+    expect(inline.graph.getNode('Team#row-2/name')!.text).toBe('Grace')
+    expect(inline.graph.getNode('Team#row-3')).toBeUndefined()
+    // A row still reads its component's own props.
+    expect(inline.graph.getNode('Team#row/also')!.text).toBe('Team')
+    // The nested repeat draws the nested model's samples.
+    expect(inline.graph.getNode('Team#row/tags/tag-name')!.text).toBe('lead')
+    expect(inline.graph.getNode('Team#row/tags-2/tag-name')!.text).toBe('new')
+    expect(inline.graph.getNode('Team#row-2/tags/tag-name')).toBeDefined()
+    expect(inline.warnings).toEqual([])
   })
 })
 
@@ -387,11 +454,39 @@ describe('auditDesignSystem', () => {
     expect(codes(ROW_SOURCE.replace('{item.email}', '{row.email}'))).toContain(CODES.BINDING)
   })
 
-  it('accepts a repeat only on a repeating slot with an accepted instance', () => {
-    expect(codes(LIST_SOURCE.replace('slot="item" count', 'slot="empty" count'))).toContain(
+  it('checks what a repeat names, what it calls the item, and what an accepting slot holds', () => {
+    expect(codes(LIST_SOURCE.replace('repeat="{items}"', 'repeat="{rows}"'))).toContain(
       CODES.BAD_REPEAT,
     )
+    expect(codes(INLINE_SOURCE.replace('as="tag"', 'as="person"'))).toContain(CODES.BAD_REPEAT)
+    expect(codes(INLINE_SOURCE.replace('{person.tags}', '{person.name}'))).toContain(
+      CODES.BAD_REPEAT,
+    )
+    expect(codes(INLINE_SOURCE.replace('{tag.label}', '{tag.colour}'))).toContain(CODES.BINDING)
+    expect(codes(INLINE_SOURCE)).toEqual([])
+    expect(
+      auditDesignSystem(parseOrThrow(LIST_SOURCE), modelIndex([parseOrThrow(ROW_SOURCE)])),
+    ).toEqual([])
+  })
+
+  it('tells a list of a shared model from no list at all', () => {
+    // The list page alone: `items` is a `Contact[]` prop, its model on the
+    // row's page. Placed by type, so a page audited by itself says nothing.
     expect(codes(LIST_SOURCE)).toEqual([])
+    // With every page indexed and still no such model, the type names nothing.
+    const found = auditDesignSystem(parseOrThrow(LIST_SOURCE), modelIndex([]))
+    expect(found.map((d) => d.code)).toEqual([CODES.BAD_REPEAT])
+    expect(found[0]!.message).toContain('which no page declares')
+    const list = parseOrThrow(LIST_SOURCE)
+    const repeat = { list: 'items', as: 'item' }
+    expect(repeatListType(repeat, list.spec, [])).toBe('Contact[]')
+    expect(repeatListType({ ...repeat, list: 'rows' }, list.spec, [])).toBeUndefined()
+    // Under an item whose model is unknown here, nothing can be said either way.
+    expect(
+      repeatListType({ list: 'item.tags', as: 'tag' }, list.spec, [
+        { as: 'item', model: undefined },
+      ]),
+    ).toBeNull()
   })
 })
 

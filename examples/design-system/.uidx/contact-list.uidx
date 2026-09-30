@@ -11,9 +11,9 @@ Contact.
 <Page>
   <Component name="ContactList" status="stable" implements="hwc-radio-group"
     layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" itemSpacing="{space#xs}" width={280}>
-    <Repeat slot="option" count={3}>
+    <Slot name="option" repeat="{items}" count={3}>
       <Instance name="row" component="ContactOption" layoutAlign="STRETCH" />
-    </Repeat>
+    </Slot>
     <Slot name="empty">
       <Text name="nobody" characters="No contacts yet" fontSize={13} fills="{text#muted}" />
     </Slot>
@@ -32,7 +32,7 @@ Contact.
   <Prop name="disabled" type="boolean" default={false} visual>Every option inert.</Prop>
 </Props>
 <Slots>
-  <Slot name="option" repeats of="items" accepts="hwc-radio">One option per element of `items`.</Slot>
+  <Slot name="option" accepts="hwc-radio">One option per element of `items`.</Slot>
   <Slot name="empty">Shown instead of the options while `items` is empty.</Slot>
 </Slots>
 <Accessibility role="radiogroup" keyboard="Arrow keys move the choice" />

@@ -81,18 +81,6 @@ export function modelOfType(
   return model ? { model, list } : undefined
 }
 
-/** The model each filling of a repeating slot receives: the element type of the prop it iterates. */
-export function slotModel(
-  slot: { of?: string } | undefined,
-  spec: DocumentSpec | undefined,
-  models?: ModelIndex,
-): ModelSpec | undefined {
-  if (!slot?.of) return undefined
-  const prop = spec?.contract?.props.find((entry) => entry.name === slot.of)
-  const found = modelOfType(prop?.type, spec, models)
-  return found?.list ? found.model : undefined
-}
-
 /**
  * The n-th sample of a field: a list gives varied rows (wrapping, so a repeat
  * longer than the list still draws), a single value repeats, and an absent
@@ -108,6 +96,139 @@ export function sampleAt(field: FieldSpec, index: number): JsonValue | undefined
     return value === null ? '' : (value as JsonValue)
   }
   return sample
+}
+
+/** The n-th sample of every field of `model`, bound under `as` (ADR 0015 §2, ADR 0017 §2). */
+export function modelSamples(
+  as: string,
+  model: ModelSpec,
+  index: number,
+  spec?: DocumentSpec,
+  models?: ModelIndex,
+): Map<string, JsonValue> {
+  const out = new Map<string, JsonValue>()
+  const bind = (prefix: string, current: ModelSpec, depth: number): void => {
+    for (const field of current.fields) {
+      const nested = modelByRef(spec, field.type, models)
+      if (nested && depth < 2) {
+        bind(`${prefix}.${field.name}`, nested, depth + 1)
+        continue
+      }
+      const value = sampleAt(field, index)
+      if (value !== undefined) out.set(`${prefix}.${field.name}`, value)
+    }
+  }
+  bind(as, model, 0)
+  return out
+}
+
+/**
+ * How many rows the canvas draws for a repeat that says no `count`: the
+ * longest sample list among the model's fields, else three — enough to read
+ * as a list, few enough to fit.
+ */
+export function sampleCount(model: ModelSpec | undefined): number {
+  let longest = 0
+  for (const field of model?.fields ?? [])
+    if (Array.isArray(field.sample)) longest = Math.max(longest, field.sample.length)
+  return longest || 3
+}
+
+/** What an element repeats over (ADR 0017 §2), read off its attributes; null when it does not. */
+export interface RepeatAttrs {
+  /** The alias target: `items`, or `item.children` for a nested repeat. */
+  list: string
+  /** The item's name for the bindings below; `item` unless `as` says. */
+  as: string
+  /** The canvas's row count, when the file says. */
+  count?: number
+}
+
+export function repeatOf(node: UidxNode): RepeatAttrs | null {
+  const value = node.attrs.repeat?.value
+  const list = typeof value === 'string' ? aliasTarget(value) : null
+  if (list === null || list.includes('#')) return null
+  const as = node.attrs.as?.value
+  const count = node.attrs.count?.value
+  return {
+    list,
+    as: typeof as === 'string' && as !== '' ? as : 'item',
+    ...(typeof count === 'number' ? { count } : {}),
+  }
+}
+
+/** One enclosing repeat, for resolving `{item.children}` and `{item.name}` below it. */
+export interface RepeatScope {
+  as: string
+  model: ModelSpec | undefined
+}
+
+/**
+ * The model a repeat's list holds: a list prop of the contract (`{items}`),
+ * or a list field of an enclosing repeat's item (`{item.children}`), one
+ * model deep. Undefined when the list cannot be placed, which the audit says.
+ */
+export function repeatModel(
+  repeat: RepeatAttrs,
+  spec: DocumentSpec | undefined,
+  enclosing: readonly RepeatScope[],
+  models?: ModelIndex,
+): ModelSpec | undefined {
+  const [head, ...path] = repeat.list.split('.')
+  const outer = [...enclosing].reverse().find((scope) => scope.as === head)
+  if (outer) {
+    let model: ModelSpec | undefined = outer.model
+    for (const segment of path) {
+      const field = model?.fields.find((entry) => entry.name === segment)
+      if (!field) return undefined
+      const found = modelOfType(field.type, spec, models)
+      // Only the last step may be the list; anything before it is one item.
+      model = found?.model
+      if (found?.list && segment !== path[path.length - 1]) return undefined
+      if (segment === path[path.length - 1]) return found?.list ? found.model : undefined
+    }
+    return undefined
+  }
+  if (path.length) return undefined
+  const prop = spec?.contract?.props.find((entry) => entry.name === head)
+  const found = modelOfType(prop?.type, spec, models)
+  return found?.list ? found.model : undefined
+}
+
+/**
+ * The declared type of a repeat's list — `Contact[]` — when the contract
+ * places it, whether or not the model behind it is known here: a string when
+ * placed, null when it sits under an item whose model is unknown (so nothing
+ * can be said), undefined when no list prop or list field is named. The
+ * audit tells "no such list" from "a model declared on a page not indexed"
+ * by it, since a page audited alone still carries lists of shared models.
+ */
+export function repeatListType(
+  repeat: RepeatAttrs,
+  spec: DocumentSpec | undefined,
+  enclosing: readonly RepeatScope[],
+  models?: ModelIndex,
+): string | null | undefined {
+  const [head, ...path] = repeat.list.split('.')
+  const outer = [...enclosing].reverse().find((scope) => scope.as === head)
+  if (outer) {
+    let model: ModelSpec | undefined = outer.model
+    if (!model) return null
+    for (const [index, segment] of path.entries()) {
+      const field: FieldSpec | undefined = model?.fields.find((entry) => entry.name === segment)
+      if (!field) return undefined
+      const type: string = field.type.trim()
+      if (index === path.length - 1) return type.endsWith('[]') ? type : undefined
+      if (type.endsWith('[]')) return undefined
+      model = modelOfType(type, spec, models)?.model
+      if (!model) return null
+    }
+    return undefined
+  }
+  if (path.length) return undefined
+  const prop = spec?.contract?.props.find((entry) => entry.name === head)
+  const type = prop?.type.trim()
+  return type?.endsWith('[]') ? type : undefined
 }
 
 /**
@@ -416,6 +537,25 @@ export function derivedTarget(doc: UidxDocument, address: string): DerivedTarget
 export function defaultVariantName(component: UidxNode): string | undefined {
   if (!derivesVariants(component)) return undefined
   return variantName(defaultCombination(axesOf(component.spec)))
+}
+
+/**
+ * Where a base layer of a derived component is drawn: its twin under the
+ * default combination — `Checkbox#check` is drawn as
+ * `Checkbox#state=default/root/check`, and the component itself as that
+ * variant's root. The rail names the base layer, the canvas holds the twin,
+ * and selecting one is selecting the other (ADR 0016 §4: the default draws
+ * the base tree). Null outside a derived component, or for an address that
+ * is already into one.
+ */
+export function defaultVariantAddress(doc: UidxDocument, address: string): string | null {
+  const cut = address.indexOf('#')
+  const component = resolve(doc.tree, cut === -1 ? address : address.slice(0, cut))
+  if (!component || component.element !== 'Component') return null
+  const name = defaultVariantName(component)
+  if (!name || derivedTarget(doc, address)) return null
+  const root = addressOf(addressOf(component.address, name), ROOT_PART)
+  return cut === -1 ? root : `${root}/${address.slice(cut + 1)}`
 }
 
 /** A prop of the contract by name. */

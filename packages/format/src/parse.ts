@@ -12,7 +12,7 @@ import { parse as parseYaml } from 'yaml'
 import { CODES, diagnostic, UidxError } from './diagnostics.js'
 import { buildSpec, REGION_NAMES, type MdastLike, type Region } from './spec.js'
 import { parseExpression, ValueError } from './values.js'
-import { fitsVariableType, isAlias, variableTypeOf } from './alias.js'
+import { aliasTarget, fitsVariableType, isAlias, variableTypeOf } from './alias.js'
 import { componentProps, instanceProps } from './component-props.js'
 import {
   componentVariants,
@@ -308,24 +308,6 @@ export class Lowerer {
         )
       }
       name = rootName
-    } else if (element === 'Repeat') {
-      // ADR 0017 §2: a repeat is named by the slot it multiplies, the way a
-      // variant is named by its coordinates — nothing an author could misspell.
-      const slot = attrs.slot?.value
-      const count = attrs.count?.value
-      if (typeof slot !== 'string' || slot === '') {
-        this.error(
-          CODES.BAD_REPEAT,
-          '<Repeat> needs a "slot" naming a repeating slot of the contract',
-          loc,
-        )
-        return null
-      }
-      if (typeof count !== 'number' || !Number.isInteger(count) || count < 0) {
-        this.error(CODES.BAD_REPEAT, '<Repeat> needs a non-negative integer "count"', loc)
-        return null
-      }
-      name = `repeat(${slot})`
     } else if (element === 'Variant') {
       // ADR 0005 §3: a variant has no name of its own. Deriving it here rather
       // than reading one means the microformat this ADR exists to delete —
@@ -504,15 +486,11 @@ export class Lowerer {
         loc,
       )
     }
-    // ADR 0017 §2: one filling, multiplied. Two children would leave the
-    // question of which one repeats.
-    if (element === 'Repeat' && node.children.length !== 1) {
-      this.error(
-        CODES.BAD_REPEAT,
-        `<Repeat> holds exactly one child, the instance it multiplies; found ${node.children.length}`,
-        loc,
-      )
-    }
+    // ADR 0017 §2: `repeat="{items}"` draws this element once per element
+    // of a list; `as` names the item for the bindings below, `count` is the
+    // canvas's number of rows. Checked here for shape only — whether the
+    // list exists is the audit's question, which needs the contract.
+    if (!isRoot && element !== 'Variant') this.checkRepeat(node, loc)
     // ADR 0008 §1: a `<Component>` *is* a frame, so it holds what a frame holds
     // — any number of children, and none. The one-child rule it used to share
     // with `<Variant>` was never the same rule: a variant is one state's tree
@@ -555,6 +533,44 @@ export class Lowerer {
    * reason spec §3.2 required it of a file: a design contract that does not
    * declare its maturity is a contract nobody can rely on.
    */
+  /** The shape of a `repeat` and its companions (ADR 0017 §2), on any element. */
+  private checkRepeat(node: UidxNode, loc: Range): void {
+    void loc
+    const repeat = node.attrs.repeat
+    const as = node.attrs.as
+    const count = node.attrs.count
+    if (repeat !== undefined) {
+      const target = typeof repeat.value === 'string' ? aliasTarget(repeat.value) : null
+      if (target === null || target.includes('#')) {
+        this.error(
+          CODES.BAD_REPEAT,
+          `repeat names the list to draw one of these per element, as {items} or {item.children}; found ${repeat.raw}`,
+          repeat.loc,
+        )
+      }
+    }
+    if (as !== undefined) {
+      if (repeat === undefined)
+        this.error(CODES.BAD_REPEAT, '"as" names the item of a repeat; add repeat="{…}"', as.loc)
+      else if (typeof as.value !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(as.value))
+        this.error(
+          CODES.BAD_REPEAT,
+          '"as" is a bare word the bindings below use, like item',
+          as.loc,
+        )
+    }
+    if (count !== undefined) {
+      if (repeat === undefined)
+        this.error(
+          CODES.BAD_REPEAT,
+          '"count" says how many rows a repeat draws; add repeat="{…}"',
+          count.loc,
+        )
+      else if (typeof count.value !== 'number' || !Number.isInteger(count.value) || count.value < 0)
+        this.error(CODES.BAD_REPEAT, '"count" is a non-negative integer', count.loc)
+    }
+  }
+
   private checkMetadata(element: UidxElement, attrs: Record<string, UidxAttr>): void {
     if (element !== 'Component') {
       for (const meta of METADATA_ATTRS) {

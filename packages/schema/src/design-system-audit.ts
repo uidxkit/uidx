@@ -15,9 +15,12 @@ import {
   enumValues,
   modelByRef,
   modelOfType,
+  repeatListType,
+  repeatModel,
+  repeatOf,
   ROOT_PART,
-  slotModel,
   stateKind,
+  type RepeatScope,
   styleTarget,
   STATE_AXIS,
   DEFAULT_STATE,
@@ -46,49 +49,11 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
   // A model is named by a prop's type (ADR 0015 §2) and may live on another
   // page. Without an index only this page can answer, so a name nobody here
   // declares is left alone; `uidx check` passes the whole document's.
-  const known = (name: string | undefined) => modelByRef(spec, name, models)
-  for (const slot of spec?.contract?.slots ?? []) {
-    if (!slot.repeats) continue
-    const prop = spec?.contract?.props.find((entry) => entry.name === slot.of)
-    if (!prop) {
-      error(
-        CODES.MODEL_FIELD,
-        `slot "${slot.name}" iterates "${slot.of}", which is not a prop of the contract`,
-        slot.loc,
-      )
-      continue
-    }
-    if (!prop.type.endsWith('[]')) {
-      error(
-        CODES.MODEL_FIELD,
-        `slot "${slot.name}" iterates "${slot.of}", whose type ${prop.type} is not a list`,
-        slot.loc,
-      )
-      continue
-    }
-    const model = slotModel(slot, spec, models)
-    if (model) {
-      // Checked here, where the repeat is, rather than at the model: the
-      // model may live on another page and not know it fills a repeat.
-      const keys = model.fields.filter((field) => field.key)
-      if (keys.length !== 1) {
-        error(
-          CODES.MODEL_FIELD,
-          `slot "${slot.name}" repeats ${model.name}, so exactly one of its fields must be the key; found ${keys.length}`,
-          slot.loc,
-        )
-      }
-    } else if (models) {
-      error(
-        CODES.MODEL_FIELD,
-        `slot "${slot.name}" iterates "${slot.of}" of type ${prop.type}, but no page declares a model named ${prop.type.slice(0, -2)}`,
-        slot.loc,
-      )
-    }
-  }
+  // A field that is a model, or a list of one, draws through that model's
+  // samples and needs none of its own.
   for (const model of spec?.models ?? []) {
     for (const field of model.fields) {
-      if (!field.optional && field.sample === undefined && !known(field.type)) {
+      if (!field.optional && field.sample === undefined && !modelOfType(field.type, spec, models)) {
         error(
           CODES.MODEL_FIELD,
           `field "${model.name}.${field.name}" is required, so it needs a sample the design tools can draw`,
@@ -162,7 +127,6 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
     if (contract) {
       const inTree = slotsOf(component).declared
       for (const slot of contract.slots) {
-        if (slot.repeats) continue
         if (!inTree.has(slot.name)) {
           error(
             CODES.SLOT_BINDING,
@@ -179,49 +143,69 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
     }
 
     /* ----------------------------------------------------------- repeats */
-    const repeats: UidxNode[] = []
-    const findRepeats = (node: UidxNode): void => {
-      if (node.element === 'Repeat') repeats.push(node)
-      for (const child of node.children) findRepeats(child)
-    }
-    for (const child of component.children) findRepeats(child)
-    for (const repeat of repeats) {
-      const slotName = repeat.attrs.slot!.value as string
-      const slot = contract?.slots.find((entry) => entry.name === slotName)
-      if (!slot) {
-        error(
-          CODES.BAD_REPEAT,
-          `<Repeat slot="${slotName}"> names no slot of the contract`,
-          repeat.attrs.slot!.loc,
-        )
-      } else if (!slot.repeats) {
-        error(
-          CODES.BAD_REPEAT,
-          `<Repeat slot="${slotName}"> multiplies a slot the contract does not declare as repeating`,
-          repeat.attrs.slot!.loc,
-        )
-      }
-      const child = repeat.children[0]
-      if (child && child.element !== 'Instance') {
-        error(
-          CODES.BAD_REPEAT,
-          `<Repeat> holds an <Instance> of an accepted component; found <${child.element}>`,
-          child.loc,
-        )
-      }
-      if (child?.element === 'Instance' && slot?.accepts) {
-        const name = child.attrs.component?.value
-        const definition = components.find((entry) => entry.name === name)
-        const implemented = definition?.attrs.implements?.value
-        if (definition && implemented !== slot.accepts) {
+    // A repeat names a list of the contract or of an enclosing repeat's item
+    // (ADR 0017 §2); its `as` must not hide a prop or an outer item; a slot
+    // that repeats may constrain what fills it with `accepts`.
+    const propNames = new Set((contract?.props ?? []).map((prop) => prop.name))
+    const checkRepeats = (node: UidxNode, enclosing: RepeatScope[]): void => {
+      const repeat = repeatOf(node)
+      let inner = enclosing
+      if (repeat) {
+        const model = repeatModel(repeat, spec, enclosing, models)
+        const placed = model ? undefined : repeatListType(repeat, spec, enclosing, models)
+        if (!model && placed === undefined) {
           error(
             CODES.BAD_REPEAT,
-            `slot "${slotName}" accepts ${slot.accepts}, but "${name}" implements ${typeof implemented === 'string' ? implemented : 'nothing'}`,
-            child.loc,
+            `repeat="{${repeat.list}}" is not a list prop of the contract or a list field of an enclosing repeat's item`,
+            node.attrs.repeat!.loc,
+          )
+        } else if (!model && placed && models) {
+          // Placed by type, and every page is in the index, yet no model: the
+          // type names nothing. A page audited alone says nothing here, since
+          // the model may well be on a page it was not handed.
+          error(
+            CODES.BAD_REPEAT,
+            `repeat="{${repeat.list}}" draws ${placed.slice(0, -2)}, which no page declares`,
+            node.attrs.repeat!.loc,
+          )
+        } else if (!model) {
+          // Unknown here; nothing to check.
+        } else if (model.fields.filter((field) => field.key).length !== 1) {
+          // Rows need an identity the code render can key on (ADR 0015 §1).
+          error(
+            CODES.MODEL_FIELD,
+            `repeat="{${repeat.list}}" draws ${model.name}, so exactly one of its fields must be the key; found ${model.fields.filter((field) => field.key).length}`,
+            node.attrs.repeat!.loc,
           )
         }
+        if (propNames.has(repeat.as) || enclosing.some((scope) => scope.as === repeat.as)) {
+          error(
+            CODES.BAD_REPEAT,
+            `as="${repeat.as}" hides a prop or an enclosing repeat's item; choose another name`,
+            (node.attrs.as ?? node.attrs.repeat!).loc,
+          )
+        }
+        if (node.element === 'Slot') {
+          const slot = contract?.slots.find((entry) => entry.name === node.name)
+          const child = node.children[0]
+          if (slot?.accepts && child?.element === 'Instance') {
+            const name = child.attrs.component?.value
+            const definition = components.find((entry) => entry.name === name)
+            const implemented = definition?.attrs.implements?.value
+            if (definition && implemented !== slot.accepts) {
+              error(
+                CODES.BAD_REPEAT,
+                `slot "${node.name}" accepts ${slot.accepts}, but "${name}" implements ${typeof implemented === 'string' ? implemented : 'nothing'}`,
+                child.loc,
+              )
+            }
+          }
+        }
+        inner = [...enclosing, { as: repeat.as, model }]
       }
+      if (node.element !== 'Instance') for (const child of node.children) checkRepeats(child, inner)
     }
+    for (const child of component.children) checkRepeats(child, [])
 
     /* ---------------------------------------------------------- bindings */
     const modelProps = new Map(
@@ -229,21 +213,26 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
         .filter((prop) => modelOfType(prop.type, spec, models)?.list === false)
         .map((prop) => [prop.name, prop]),
     )
-    const checkBindings = (node: UidxNode): void => {
-      for (const attr of Object.values(node.attrs)) {
+    const checkBindings = (node: UidxNode, enclosing: RepeatScope[]): void => {
+      for (const [attrName, attr] of Object.entries(node.attrs)) {
+        if (attrName === 'repeat') continue
         const target = typeof attr.value === 'string' ? aliasTarget(attr.value) : null
         if (target === null || target.includes('#') || !target.includes('.')) continue
         const [head, ...path] = target.split('.')
+        const scope = [...enclosing].reverse().find((entry) => entry.as === head)
         const prop = modelProps.get(head!)
-        if (!prop) {
+        if (!scope && !prop) {
           error(
             CODES.BINDING,
-            `"{${target}}" binds a field of "${head}", which is not a prop with a model`,
+            `"{${target}}" binds a field of "${head}", which is neither a prop with a model nor the item of an enclosing repeat`,
             attr.loc,
           )
           continue
         }
-        let model: ModelSpec | undefined = modelOfType(prop.type, spec, models)?.model
+        let model: ModelSpec | undefined = scope
+          ? scope.model
+          : modelOfType(prop!.type, spec, models)?.model
+        if (scope && !model) continue // the repeat itself was reported
         for (const segment of path) {
           const field = model?.fields.find((entry) => entry.name === segment)
           if (!field) {
@@ -258,9 +247,13 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
           model = modelByRef(spec, field.type, models)
         }
       }
-      for (const child of node.children) checkBindings(child)
+      const repeat = repeatOf(node)
+      const inner = repeat
+        ? [...enclosing, { as: repeat.as, model: repeatModel(repeat, spec, enclosing, models) }]
+        : enclosing
+      for (const child of node.children) checkBindings(child, inner)
     }
-    for (const child of component.children) checkBindings(child)
+    for (const child of component.children) checkBindings(child, [])
 
     /* ------------------------------------------------------------ styles */
     if (rows.length && hasVariants(component)) {

@@ -28,13 +28,6 @@ export const ELEMENTS = [
   // which is what makes "a slot's layout belongs to the definition" a grammar
   // rule rather than a convention.
   'Slot',
-  // ADR 0017 §2. A `<Repeat>` is a visual-only instruction: its one child, an
-  // instance of a component the slot accepts, is drawn `count` times with the
-  // n-th sample of the slot's model. It carries no `name`; its address segment
-  // is derived from the slot it fills, exactly as a `<Variant>`'s is from its
-  // coordinates. Code targets never see it — the contract's `repeats` slot is
-  // what they read.
-  'Repeat',
   // Token files (story G5). A `.uidx` with `<Tokens>` at the root is a set of
   // Figma variable collections rather than a scene — same extension, same
   // parser, same frontmatter, same `uidx check`.
@@ -66,8 +59,6 @@ export const CONTAINER_ELEMENTS: ReadonlySet<string> = new Set([
   // this is a container at all: a `<Slot>` fill. `INSTANCE_CHILD_ELEMENTS` is
   // what keeps the exception to that one element.
   'Instance',
-  // ADR 0017 §2: a repeat holds the one instance it multiplies.
-  'Repeat',
   'Tokens',
   'Collection',
   // A moded variable holds one `<Mode>` per column (G8).
@@ -204,8 +195,6 @@ export const NODE_CHILD_ELEMENTS: ReadonlySet<string> = new Set([
   // `checkSlotPosition` refuses those with the reason, since a table of element
   // names can say *that* but not *why*.
   'Slot',
-  // ADR 0017 §2 — a repeat sits wherever its slot's content would.
-  'Repeat',
 ])
 
 /**
@@ -237,7 +226,6 @@ export const COMPONENT_CHILD_ELEMENTS: ReadonlySet<string> = new Set([
   ...SCENE_CHILD_ELEMENTS,
   'Variant',
   'Slot',
-  'Repeat',
 ])
 
 /**
@@ -567,10 +555,11 @@ export interface PartSpec {
 /** A consumer-filled position (ADR 0013 §2, ADR 0017 §1). */
 export interface SlotSpec {
   name: string
-  repeats: boolean
-  /** The list prop a repeating slot iterates; its element type is the model each filling receives. */
-  of?: string
-  /** The headless root a filling must implement, for a repeating slot. */
+  /**
+   * The headless root a filling must implement, for a slot the tree repeats
+   * (`<Slot repeat="{items}">`, ADR 0017 §2). Whether a slot repeats is the
+   * tree's to say, not the contract's.
+   */
   accepts?: string
   description: string
   loc: Range

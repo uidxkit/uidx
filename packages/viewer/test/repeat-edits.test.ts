@@ -3,9 +3,9 @@ import { applyPatches, parseOrThrow, resolve } from '@uidx/format'
 import { newRepeatFor, repeatTargetFor } from '../src/repeat-edits'
 
 /**
- * Wrapping an instance in a `<Repeat>` from the toolbar (ADR 0017 §2). The
- * tool is offered on exactly one shape of selection, the gesture leaves a
- * valid file after each op, and the repeat is selected by its derived name.
+ * Repeating a layer from the toolbar (ADR 0017 §2). The tool is offered on
+ * exactly one shape of selection, and the gesture is one attribute: the
+ * layer stays where it is and keeps its address.
  */
 const page = (body: string, regions = '') =>
   `---\nid: list\n---\n\n## Visual Contract\n\n<Page>\n${body}\n</Page>\n${regions}`
@@ -17,67 +17,81 @@ const CONTRACT = `
   <Prop name="items" type="Item[]">Rows.</Prop>
 </Props>
 <Slots>
-  <Slot name="option" repeats of="items" accepts="x-row">One per item.</Slot>
+  <Slot name="option" accepts="x-row">One per item.</Slot>
   <Slot name="empty">While empty.</Slot>
 </Slots>
+
+## Models
+
+<Model name="Item">
+  A row.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="tags" type="Tag[]">Labels.</Field>
+</Model>
+
+<Model name="Tag">
+  A label.
+  <Field name="id" type="string" key sample="t">Identity.</Field>
+</Model>
 `
 const LIST = page(
   `  <Component name="List" status="draft" implements="x-list" layoutMode="VERTICAL">
     <Instance name="row" component="Row" />
     <Slot name="empty" />
+    <Frame name="group" width={10} height={10} />
   </Component>`,
   CONTRACT,
 )
 
 describe('where a repeat may go', () => {
-  it('offers the first open repeating slot for an instance inside a component', () => {
+  it('offers the first list prop for any layer inside a component', () => {
     const doc = parseOrThrow(LIST)
-    expect(repeatTargetFor(doc, ['List#row'])).toMatchObject({ slot: 'option' })
-    expect(repeatTargetFor(doc, ['List#empty'])).toBeNull()
+    expect(repeatTargetFor(doc, ['List#row'])).toMatchObject({ list: 'items' })
+    expect(repeatTargetFor(doc, ['List#empty'])).toMatchObject({ list: 'items' })
+    expect(repeatTargetFor(doc, ['List#group'])).toMatchObject({ list: 'items' })
     expect(repeatTargetFor(doc, ['List'])).toBeNull()
     expect(repeatTargetFor(doc, ['List#row', 'List#empty'])).toBeNull()
   })
 
-  it('declines when every repeating slot is provided, or the instance is already repeated', () => {
-    const provided = parseOrThrow(
+  it('declines a layer already repeating, and one whose contract has no list', () => {
+    const repeated = parseOrThrow(
       page(
         `  <Component name="List" status="draft" implements="x-list" layoutMode="VERTICAL">
-    <Repeat slot="option" count={2}><Instance name="row" component="Row" /></Repeat>
-    <Instance name="other" component="Row" />
-    <Slot name="empty" />
+    <Frame name="group" repeat="{items}" width={10} height={10}>
+      <Frame name="tag" width={4} height={4} />
+    </Frame>
   </Component>`,
         CONTRACT,
       ),
     )
-    expect(repeatTargetFor(provided, ['List#other'])).toBeNull()
-    expect(repeatTargetFor(provided, ['List#repeat(option)/row'])).toBeNull()
-    const noSlot = parseOrThrow(
+    expect(repeatTargetFor(repeated, ['List#group'])).toBeNull()
+    // Inside a repeat the item's own lists are on offer, after the contract's.
+    expect(repeatTargetFor(repeated, ['List#group/tag'])).toMatchObject({ list: 'items' })
+    const noList = parseOrThrow(
       page(
         `  <Component name="List" status="draft"><Instance name="row" component="Row" /></Component>`,
       ),
     )
-    expect(repeatTargetFor(noSlot, ['List#row'])).toBeNull()
+    expect(repeatTargetFor(noList, ['List#row'])).toBeNull()
+    expect(repeatTargetFor(parseOrThrow(page(`  <Frame name="loose" />`)), ['loose'])).toBeNull()
   })
 })
 
 describe('the gesture', () => {
-  it('wraps the instance in place and names the repeat by its slot', () => {
+  it('writes repeat="{items}" on the layer and leaves it where it was', () => {
     const doc = parseOrThrow(LIST)
     const made = newRepeatFor(doc, ['List#row'])!
-    expect(made.address).toBe('List#repeat(option)')
-    expect(made.patches.map((p) => p.op)).toEqual(['remove-node', 'insert-node'])
-    const next = parseOrThrow(applyPatches(LIST, made.patches).source)
-    const repeat = resolve(next.tree, 'List#repeat(option)')!
-    expect(repeat.element).toBe('Repeat')
-    expect(repeat.attrs.count?.value).toBe(3)
-    expect(repeat.children.map((c) => [c.element, c.name])).toEqual([['Instance', 'row']])
-    // Still first: the wrapper took the instance's place, the slot stays after it.
+    expect(made).toEqual({
+      patches: [{ op: 'add', address: 'List#row', prop: 'repeat', value: '{items}' }],
+      address: 'List#row',
+    })
+    const after = applyPatches(LIST, made.patches).source
+    expect(after).toContain('<Instance name="row" component="Row" repeat="{items}" />')
+    const next = parseOrThrow(after)
     expect(resolve(next.tree, 'List')!.children.map((c) => c.name)).toEqual([
-      'repeat(option)',
+      'row',
       'empty',
+      'group',
     ])
-    expect(applyPatches(LIST, made.patches).source).toContain(
-      '<Repeat\n      slot="option"\n      count={3}\n    >',
-    )
   })
 })
