@@ -34,6 +34,16 @@
       "development": "./src/token-index.ts",
       "types": "./dist/token-index.d.ts",
       "default": "./dist/token-index.js"
+    },
+    "./headless": {
+      "development": "./src/headless.ts",
+      "types": "./dist/headless.d.ts",
+      "default": "./dist/headless.js"
+    },
+    "./adopt": {
+      "development": "./src/adopt.ts",
+      "types": "./dist/adopt.d.ts",
+      "default": "./dist/adopt.js"
     }
   },
   "files": [

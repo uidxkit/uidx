@@ -20,7 +20,8 @@ import {
   type RepeatScope,
 } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
-import type { HeadlessElement, HeadlessLibrary } from './headless'
+import { contractType, type HeadlessElement, type HeadlessLibrary } from './headless'
+export { contractType }
 
 /**
  * What the Contract tab shows and writes (ADR 0013 §3, ADR 0017 §2).
@@ -694,22 +695,6 @@ export const PLACEHOLDER = 'Describe '
 
 /** True for a description nobody has written yet. */
 export const isPlaceholder = (description: string): boolean => description.startsWith(PLACEHOLDER)
-
-/**
- * The contract's type for a manifest attribute type: `boolean` stays,
- * a union of quoted strings becomes an enum in the contract's spelling, and
- * anything else — `string`, `number`, or nothing — is text.
- */
-export function contractType(manifestType: string | undefined): string {
-  if (!manifestType) return 'string'
-  const text = manifestType.trim()
-  if (text === 'boolean') return 'boolean'
-  if (text === 'number') return 'number'
-  const parts = text.split('|').map((part) => part.trim())
-  if (parts.length > 1 && parts.every((part) => /^(['"]).*\1$/.test(part)))
-    return parts.map((part) => `'${part.slice(1, -1)}'`).join(' | ')
-  return 'string'
-}
 
 /**
  * Declarations the library's element implies and the contract lacks (ADR
