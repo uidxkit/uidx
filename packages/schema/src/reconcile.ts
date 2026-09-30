@@ -104,7 +104,7 @@ function defaultsFor(type: NodeType): Readonly<Record<string, unknown>> {
 type IndexedNode = { node: UidxNode; parent: string | null; index: number }
 
 /** What a repeat rides on (ADR 0017 §2); a change to one re-expands the rows. */
-const REPEATS = ['repeat', 'as', 'count']
+const REPEATS = ['repeat', 'as']
 
 /** True when a repeat, or a node a repeat draws, was added, removed or changed. */
 function repeatChanged(before: Map<string, IndexedNode>, after: Map<string, IndexedNode>): boolean {
@@ -188,7 +188,7 @@ export function diffDocuments(
 
   // ADR 0017 §2: a repeat's echoes (`row-2`, `row-3`) are generated at ids
   // this diff does not enumerate, so what a repeat rides on — the list, the
-  // item's name, the count — and anything a repeat draws, its layer and the
+  // item's name — and anything a repeat draws, its layer and the
   // subtree below, rebuild when they change; the same honesty an instance's
   // copies get. Beside a repeat, the incremental path still serves.
   if (repeatChanged(before, after)) return null

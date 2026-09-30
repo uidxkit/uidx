@@ -57,14 +57,8 @@ const ROWS = `    <Frame name="row" repeat="{items}" width={10} height={10}>
 describe('diffDocuments', () => {
   it('rebuilds for a repeat that changes, and for anything a repeat draws (ADR 0017 §2)', () => {
     const before = REPEATED(ROWS)
-    // The echoes are generated at ids the diff cannot address, so the row
-    // count, the item's name, the list, and the rows' own look all rebuild.
-    expect(
-      diffDocuments(
-        before,
-        REPEATED(ROWS.replace('repeat="{items}"', 'repeat="{items}" count={1}')),
-      ),
-    ).toBeNull()
+    // The echoes are generated at ids the diff cannot address, so the
+    // item's name, the list, and the rows' own look all rebuild.
     expect(
       diffDocuments(
         before,

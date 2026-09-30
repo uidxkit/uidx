@@ -123,9 +123,9 @@ export function modelSamples(
 }
 
 /**
- * How many rows the canvas draws for a repeat that says no `count`: the
- * longest sample list among the model's fields, else three — enough to read
- * as a list, few enough to fit.
+ * How many rows the canvas draws for a repeat: the longest sample list
+ * among the model's fields, else three — enough to read as a list, few
+ * enough to fit. The model decides; the tree says only what repeats.
  */
 export function sampleCount(model: ModelSpec | undefined): number {
   let longest = 0
@@ -140,8 +140,6 @@ export interface RepeatAttrs {
   list: string
   /** The item's name for the bindings below; `item` unless `as` says. */
   as: string
-  /** The canvas's row count, when the file says. */
-  count?: number
 }
 
 export function repeatOf(node: UidxNode): RepeatAttrs | null {
@@ -149,12 +147,7 @@ export function repeatOf(node: UidxNode): RepeatAttrs | null {
   const list = typeof value === 'string' ? aliasTarget(value) : null
   if (list === null || list.includes('#')) return null
   const as = node.attrs.as?.value
-  const count = node.attrs.count?.value
-  return {
-    list,
-    as: typeof as === 'string' && as !== '' ? as : 'item',
-    ...(typeof count === 'number' ? { count } : {}),
-  }
+  return { list, as: typeof as === 'string' && as !== '' ? as : 'item' }
 }
 
 /** One enclosing repeat, for resolving `{item.children}` and `{item.name}` below it. */

@@ -25,7 +25,7 @@ import type { HeadlessElement, HeadlessLibrary } from './headless'
  * The tab binds the visual tree to the code render: a `<Component>` names the
  * headless element it implements, a layer names the part it draws, and any
  * layer names the list it repeats over. Three bindings — `implements`,
- * `part`, `repeat`/`as`/`count` — that the prop table deliberately does not
+ * `part`, `repeat`/`as` — that the prop table deliberately does not
  * know, because they are bindings to the contract rather than scene fields.
  *
  * Pure, like `instance-prop-edits`: the view is computed from the document
@@ -48,7 +48,7 @@ export interface PartRow {
 export interface SlotRow {
   name: string
   /** The `<Slot>` providing it, with what it repeats over when it does, or null while missing. */
-  provided: { address: string; repeat: { list: string; count: number | null } | null } | null
+  provided: { address: string; repeat: { list: string } | null } | null
 }
 
 export interface Candidate {
@@ -78,10 +78,8 @@ export interface RepeatBinding {
   /** The alias target: `items`, or `person.tags` inside an outer repeat. */
   list: string
   as: string
-  /** Rows the canvas draws when the file says; null leaves it to the model's samples. */
-  count: number | null
-  /** The rows drawn while `count` is null: the model's longest sample list. */
-  defaultCount: number
+  /** Rows the canvas draws: the model's longest sample list, three when it has none. */
+  rows: number
   /** The model of one item, when the contract can place the list; by type alone when unknown. */
   model: string | null
   /** True when the list is placed but its model is declared on no page in the index. */
@@ -226,7 +224,7 @@ function componentView(component: UidxNode, library: HeadlessLibrary | null): Co
         if (row && !row.provided)
           row.provided = {
             address: child.address,
-            repeat: repeat ? { list: repeat.list, count: repeat.count ?? null } : null,
+            repeat: repeat ? { list: repeat.list } : null,
           }
       }
       if (child.element !== 'Instance') provide(child)
@@ -338,8 +336,7 @@ function repeatFacet(component: UidxNode | null, node: UidxNode, models?: ModelI
     repeat: {
       list: attrs.list,
       as: attrs.as,
-      count: attrs.count ?? null,
-      defaultCount: sampleCount(model),
+      rows: sampleCount(model),
       model: model?.name ?? (placed ? placed.slice(0, -2) : null),
       unknownModel: !model && typeof placed === 'string',
     },
@@ -438,13 +435,13 @@ export function bindPart(
 }
 
 /**
- * `repeat="{list}"` on a layer (ADR 0017 §2). Clearing it takes `as` and
- * `count` with it — those first, since the parser refuses either without a
- * repeat to ride on and every patch must leave a valid file.
+ * `repeat="{list}"` on a layer (ADR 0017 §2). Clearing it takes `as` with
+ * it — first, since the parser refuses `as` without a repeat to ride on and
+ * every patch must leave a valid file.
  */
 export function setRepeat(node: UidxNode, list: string | null): UidxPatch[] {
   const target = list?.trim().replace(/^\{|\}$/g, '') ?? ''
-  if (target === '') return ['as', 'count', 'repeat'].flatMap((prop) => setAttr(node, prop, null))
+  if (target === '') return ['as', 'repeat'].flatMap((prop) => setAttr(node, prop, null))
   return setAttr(node, 'repeat', toAlias(target))
 }
 
@@ -454,13 +451,6 @@ export function setRepeatAs(node: UidxNode, as: string | null): UidxPatch[] {
   if (name === '' || name === 'item') return setAttr(node, 'as', null)
   if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return []
   return setAttr(node, 'as', name)
-}
-
-/** How many rows the canvas draws; a non-negative integer, or null to let the model's samples say. */
-export function setRepeatCount(node: UidxNode, count: number | null): UidxPatch[] {
-  if (count === null || Number.isNaN(count)) return setAttr(node, 'count', null)
-  if (!Number.isInteger(count) || count < 0) return []
-  return setAttr(node, 'count', count)
 }
 
 /* ------------------------------------------------- the contract itself */

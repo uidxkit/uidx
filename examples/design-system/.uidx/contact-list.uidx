@@ -11,7 +11,7 @@ Contact.
 <Page>
   <Component name="ContactList" status="stable" implements="hwc-radio-group"
     layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" itemSpacing="{space#xs}" width={280}>
-    <Slot name="option" repeat="{items}" count={3}>
+    <Slot name="option" repeat="{items}">
       <Instance name="row" component="ContactOption" layoutAlign="STRETCH" />
     </Slot>
     <Slot name="empty">

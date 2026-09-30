@@ -194,7 +194,7 @@ const ROW_SOURCE = page(
 const LIST_SOURCE = page(
   'contact-list',
   `  <Component name="ContactList" status="draft" implements="hwc-list" layoutMode="VERTICAL">
-    <Slot name="item" repeat="{items}" count={3}>
+    <Slot name="item" repeat="{items}">
       <Instance name="row" component="ContactItem" />
     </Slot>
     <Slot name="empty" />
@@ -360,7 +360,7 @@ describe('repeat draws an element once per item (ADR 0017 §2)', () => {
   const index = componentIndex(row, list)
   const scene = toSceneGraph(list, { resolveComponent: (name) => index.get(name) })
 
-  it('draws count rows of a repeating slot, the n-th filled from the n-th sample, wrapping and blanking', () => {
+  it('draws one row per sample of a repeating slot, the n-th filled from the n-th, wrapping and blanking', () => {
     const at = (n: number) => (n === 1 ? 'ContactList#item' : `ContactList#item-${n}`)
     const text = (n: number, part: string) => scene.graph.getNode(`${at(n)}/row/${part}`)!.text
     expect(scene.graph.getNode('ContactList#item')!.type).toBe('FRAME')

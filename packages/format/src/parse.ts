@@ -487,9 +487,9 @@ export class Lowerer {
       )
     }
     // ADR 0017 §2: `repeat="{items}"` draws this element once per element
-    // of a list; `as` names the item for the bindings below, `count` is the
-    // canvas's number of rows. Checked here for shape only — whether the
-    // list exists is the audit's question, which needs the contract.
+    // of a list; `as` names the item for the bindings below. Checked here
+    // for shape only — whether the list exists is the audit's question,
+    // which needs the contract.
     if (!isRoot && element !== 'Variant') this.checkRepeat(node, loc)
     // ADR 0008 §1: a `<Component>` *is* a frame, so it holds what a frame holds
     // — any number of children, and none. The one-child rule it used to share
@@ -538,7 +538,6 @@ export class Lowerer {
     void loc
     const repeat = node.attrs.repeat
     const as = node.attrs.as
-    const count = node.attrs.count
     if (repeat !== undefined) {
       const target = typeof repeat.value === 'string' ? aliasTarget(repeat.value) : null
       if (target === null || target.includes('#')) {
@@ -558,16 +557,6 @@ export class Lowerer {
           '"as" is a bare word the bindings below use, like item',
           as.loc,
         )
-    }
-    if (count !== undefined) {
-      if (repeat === undefined)
-        this.error(
-          CODES.BAD_REPEAT,
-          '"count" says how many rows a repeat draws; add repeat="{…}"',
-          count.loc,
-        )
-      else if (typeof count.value !== 'number' || !Number.isInteger(count.value) || count.value < 0)
-        this.error(CODES.BAD_REPEAT, '"count" is a non-negative integer', count.loc)
     }
   }
 

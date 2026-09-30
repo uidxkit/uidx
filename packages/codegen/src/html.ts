@@ -100,7 +100,6 @@ const VOID_ATTRS = new Set([
   'vectorPaths',
   'implements',
   'slot',
-  'count',
   'component',
   'props',
   'overrides',
@@ -253,10 +252,7 @@ function markup(
   // headless list holds its items directly.
   const repeat = repeatFor(model, node)
   if (repeat && !repeating.has(node)) {
-    const count =
-      typeof node.attrs.count?.value === 'number'
-        ? node.attrs.count.value
-        : sampleCount(repeat.model)
+    const count = sampleCount(repeat.model)
     const lines: string[] = []
     repeating.add(node)
     try {

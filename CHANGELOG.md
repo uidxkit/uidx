@@ -15,9 +15,9 @@ describe migrations when an existing document or integration is affected.
   contract, and a `<Styles>` table beside the root. Models are shared across
   pages and named by a prop's type (`Contact`, `Contact[]`). Any layer of a
   component repeats over a list with `repeat="{items}"` — or `{person.tags}`
-  inside an outer repeat, which makes a tree — naming its item with `as` and
-  the canvas's rows with `count` (the model's samples decide otherwise); a
-  repeat on a `<Slot>` is the one consumers fill. Declarations only: nothing
+  inside an outer repeat, which makes a tree — naming its item with `as`; the
+  model's samples decide how many rows the canvas draws; a repeat on a
+  `<Slot>` is the one consumers fill. Declarations only: nothing
   in the file computes. The viewer draws a styles table as the variant set it
   derives, resolves `{item.field}` bindings to a model's samples and `{prop}`
   to the prop's `sample` or default, expands a repeat into sample rows (a
@@ -61,7 +61,7 @@ describe migrations when an existing document or integration is affected.
 - The inspector gains a **Contract** tab beside Design. A component chooses
   the headless element it implements from the library; its parts are bound to
   layers from the component's list or from the layer's own row, and any layer
-  picks the list it repeats over, its item's name and its count. The tab shows the
+  picks the list it repeats over and its item's name. The tab shows the
   file's contract beside the bindings and counts the parts still to bind.
   `uidx.json` gains an optional `"headless"` path to the library's
   `custom-elements.json`, served to the viewer and used by `uidx codegen` when

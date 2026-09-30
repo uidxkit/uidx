@@ -19,7 +19,6 @@ import {
   setPart,
   setRepeat,
   setRepeatAs,
-  setRepeatCount,
   undeclare,
 } from './contract-edits'
 import type { ModelIndex } from '@uidx/schema'
@@ -136,11 +135,6 @@ function chooseRepeat(list: string): void {
 function chooseAs(raw: string): void {
   if (!repeatable.value) return
   send(setRepeatAs(repeatable.value.node, raw))
-}
-
-function chooseCount(raw: string): void {
-  if (!repeatable.value) return
-  send(setRepeatCount(repeatable.value.node, raw.trim() === '' ? null : Number(raw)))
 }
 
 function findNode(root: UidxNode, address: string): UidxNode | null {
@@ -424,11 +418,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               />
             </svg>
             <span class="layer-name">
-              {{
-                slot.provided.repeat
-                  ? `Slot × ${slot.provided.repeat.count ?? 'samples'}`
-                  : 'Slot in tree'
-              }}
+              {{ slot.provided.repeat ? 'Slot, one per item' : 'Slot in tree' }}
             </span>
           </button>
           <span v-else class="status">No slot in the tree yet</span>
@@ -934,8 +924,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
     <template v-if="repeatable && repeatable.component">
       <header class="head">
         <span class="title">Repeat</span>
-        <span v-if="repeatable.repeat" class="of"
-          >× {{ repeatable.repeat.count ?? repeatable.repeat.defaultCount }}</span
+        <span
+          v-if="repeatable.repeat"
+          class="of"
+          title="Rows the canvas draws: one per sample of the model, three when it has none"
+          >× {{ repeatable.repeat.rows }}</span
         >
       </header>
       <div class="row" data-field="repeat" :data-set="repeatable.repeat !== null">
@@ -995,36 +988,6 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             @change="chooseAs(($event.target as HTMLInputElement).value)"
           />
           <span class="reset-spacer" />
-        </div>
-        <div class="row" data-field="count" :data-set="repeatable.repeat.count !== null">
-          <span
-            class="name"
-            title="How many rows the canvas draws; empty follows the model's samples"
-            >Count</span
-          >
-          <input
-            class="text"
-            type="number"
-            min="0"
-            step="1"
-            :value="repeatable.repeat.count ?? ''"
-            :disabled="!writable"
-            aria-label="Count"
-            :placeholder="`${repeatable.repeat.defaultCount} · samples`"
-            @change="chooseCount(($event.target as HTMLInputElement).value)"
-          />
-          <button
-            v-if="repeatable.repeat.count !== null"
-            type="button"
-            class="reset"
-            :disabled="!writable"
-            aria-label="Clear count"
-            title="Follow the model's samples"
-            @click="chooseCount('')"
-          >
-            ↺
-          </button>
-          <span v-else class="reset-spacer" />
         </div>
         <p v-if="repeatable.repeat.model && !repeatable.repeat.unknownModel" class="hint">
           Each item is a

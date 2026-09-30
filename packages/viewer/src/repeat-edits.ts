@@ -39,8 +39,8 @@ export function repeatTargetFor(
 
 /**
  * The gesture: `repeat="{list}"` lands on the layer, and nothing else moves.
- * The count is left to the model's samples; the Contract tab sets one when
- * the canvas should draw more or fewer.
+ * The rows are the model's samples; the Contract tab edits the list and the
+ * item's name from the layer.
  */
 export function newRepeatFor(
   doc: UidxDocument,

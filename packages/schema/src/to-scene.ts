@@ -310,7 +310,7 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
       // rows (an instance row binds through its own definition); the audit
       // is where an unplaceable list is reported.
       const model = repeatModel(repeat, spec, scope.repeats ?? [], scope.models)
-      const count = repeat.count ?? sampleCount(model)
+      const count = sampleCount(model)
       const row = unrepeated(node)
       for (let index = 0; index < count; index++) {
         const first = index === 0
@@ -723,7 +723,6 @@ function unrepeated(node: UidxNode): UidxNode {
   const attrs = { ...node.attrs }
   delete attrs.repeat
   delete attrs.as
-  delete attrs.count
   return { ...node, attrs }
 }
 
@@ -1076,7 +1075,7 @@ function expandInstance(
     const repeat = repeatOf(source)
     if (repeat) {
       const model = repeatModel(repeat, definition.spec, local.repeats ?? [], local.models)
-      const count = repeat.count ?? sampleCount(model)
+      const count = sampleCount(model)
       const row = unrepeated(source)
       for (let index = 0; index < count; index++) {
         const bindings = model

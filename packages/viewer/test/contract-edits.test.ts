@@ -14,7 +14,6 @@ import {
   setPart,
   setRepeat,
   setRepeatAs,
-  setRepeatCount,
 } from '../src/contract-edits'
 import { parseHeadless, type HeadlessLibrary } from '../src/headless'
 
@@ -83,7 +82,7 @@ const CHECKBOX = page(
 const LIST = page(
   'list',
   `  <Component name="List" status="draft" implements="hwc-field" layoutMode="VERTICAL">
-    <Slot name="option" repeat="{items}" count={3}>
+    <Slot name="option" repeat="{items}">
       <Instance name="row" component="Row" />
     </Slot>
     <Slot name="empty" />
@@ -177,7 +176,7 @@ describe('what the tab shows', () => {
     if (view.kind !== 'slot') throw new Error(view.kind)
     expect(view).toMatchObject({
       declared: { accepts: 'hwc-row' },
-      repeat: { list: 'items', as: 'item', count: 3, defaultCount: 3, model: 'Item' },
+      repeat: { list: 'items', as: 'item', rows: 3, model: 'Item' },
       lists: ['items'],
     })
     const row = contractView(doc, resolve(doc.tree, 'List#option/row'), LIBRARY)
@@ -188,7 +187,7 @@ describe('what the tab shows', () => {
     expect(component.slots).toEqual([
       {
         name: 'option',
-        provided: { address: 'List#option', repeat: { list: 'items', count: 3 } },
+        provided: { address: 'List#option', repeat: { list: 'items' } },
       },
       { name: 'empty', provided: { address: 'List#empty', repeat: null } },
       { name: 'control', provided: null },
@@ -285,7 +284,7 @@ describe('the writes', () => {
     ])
   })
 
-  it('repeats any layer over a list, names its item, and counts whole rows only', () => {
+  it('repeats any layer over a list and names its item', () => {
     const list = parseOrThrow(LIST)
     const slot = resolve(list.tree, 'List#option')!
     const row = resolve(list.tree, 'List#option/row')!
@@ -300,20 +299,16 @@ describe('the writes', () => {
     ])
     expect(setRepeatAs(slot, 'item')).toEqual([])
     expect(setRepeatAs(slot, 'not a name')).toEqual([])
-    expect(setRepeatCount(slot, 5)).toEqual([
-      { op: 'set', address: 'List#option', prop: 'count', value: 5 },
-    ])
-    expect(setRepeatCount(slot, -1)).toEqual([])
-    expect(setRepeatCount(slot, 2.5)).toEqual([])
-    expect(setRepeatCount(slot, null)).toEqual([
-      { op: 'remove', address: 'List#option', prop: 'count' },
-    ])
-    expect(applyPatches(LIST, setRepeatCount(slot, 5)).source).toContain(
-      '<Slot name="option" repeat="{items}" count={5}>',
+    expect(applyPatches(LIST, setRepeatAs(slot, 'person')).source).toContain(
+      '<Slot name="option" repeat="{items}" as="person">',
     )
-    // Clearing the repeat takes the count with it: the parser refuses one alone.
+    // Clearing the repeat takes `as` with it: the parser refuses one alone.
+    const named = parseOrThrow(applyPatches(LIST, setRepeatAs(slot, 'person')).source)
+    expect(setRepeat(resolve(named.tree, 'List#option')!, null)).toEqual([
+      { op: 'remove', address: 'List#option', prop: 'as' },
+      { op: 'remove', address: 'List#option', prop: 'repeat' },
+    ])
     expect(setRepeat(slot, null)).toEqual([
-      { op: 'remove', address: 'List#option', prop: 'count' },
       { op: 'remove', address: 'List#option', prop: 'repeat' },
     ])
     expect(applyPatches(LIST, setRepeat(slot, null)).source).toContain('<Slot name="option">')
@@ -403,18 +398,16 @@ describe('the Contract section', () => {
 
   it('edits a repeat from the layer it rides on', async () => {
     const section = mountFor(LIST, 'List#option')
-    await section.find('[data-field="count"] input').setValue('4')
+    await section.find('[data-field="as"] input').setValue('person')
     expect(section.emitted('patches')).toEqual([
-      [[{ op: 'set', address: 'List#option', prop: 'count', value: 4 }]],
+      [[{ op: 'add', address: 'List#option', prop: 'as', value: 'person' }]],
     ])
+    expect(section.findAll('.head .of').map((e) => e.text())).toContain('× 3')
     const over = section.find('[data-field="repeat"] select')
     expect(over.findAll('option').map((o) => o.text().trim())).toEqual(['Once', '{items}'])
     await over.setValue('')
     expect(section.emitted('patches')!.at(-1)).toEqual([
-      [
-        { op: 'remove', address: 'List#option', prop: 'count' },
-        { op: 'remove', address: 'List#option', prop: 'repeat' },
-      ],
+      [{ op: 'remove', address: 'List#option', prop: 'repeat' }],
     ])
     // An instance below shows the same rows, unset.
     const instance = mountFor(LIST, 'List#option/row')

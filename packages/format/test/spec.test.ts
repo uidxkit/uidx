@@ -227,10 +227,10 @@ describe('repeat (ADR 0017 §2)', () => {
   const page = (body: string) =>
     `---\nid: r\n---\n\n## Visual Contract\n\n<Page>\n  <Component name="List" status="draft">\n    <Frame name="root" layoutMode="VERTICAL">\n${body}\n    </Frame>\n  </Component>\n</Page>\n`
 
-  it('is an attribute of the element that repeats, with its item name and canvas count', () => {
+  it('is an attribute of the element that repeats, with its item name', () => {
     const doc = parseOrThrow(
       page(
-        '      <Frame name="row" repeat="{items}" as="contact" count={3}><Text name="t" characters="{contact.name}" /></Frame>',
+        '      <Frame name="row" repeat="{items}" as="contact"><Text name="t" characters="{contact.name}" /></Frame>',
       ),
     )
     const row = doc.tree.children[0]!.children[0]!.children[0]!
@@ -238,10 +238,9 @@ describe('repeat (ADR 0017 §2)', () => {
     expect(row.address).toBe('List#root/row')
     expect(row.attrs.repeat?.value).toBe('{items}')
     expect(row.attrs.as?.value).toBe('contact')
-    expect(row.attrs.count?.value).toBe(3)
   })
 
-  it('checks the shape of repeat, as and count', () => {
+  it('checks the shape of repeat and as', () => {
     const codes = (body: string) => parse(page(body)).diagnostics.map((d) => d.code)
     expect(codes('      <Frame name="row" repeat="items" />')).toEqual([CODES.BAD_REPEAT])
     expect(codes('      <Frame name="row" repeat="{space#md}" />')).toEqual([CODES.BAD_REPEAT])
@@ -249,10 +248,6 @@ describe('repeat (ADR 0017 §2)', () => {
     expect(codes('      <Frame name="row" repeat="{items}" as="not a word" />')).toEqual([
       CODES.BAD_REPEAT,
     ])
-    expect(codes('      <Frame name="row" repeat="{items}" count={-1} />')).toEqual([
-      CODES.BAD_REPEAT,
-    ])
-    expect(codes('      <Frame name="row" count={2} />')).toEqual([CODES.BAD_REPEAT])
     expect(codes('      <Frame name="row" repeat="{items}" />')).toEqual([])
   })
 })

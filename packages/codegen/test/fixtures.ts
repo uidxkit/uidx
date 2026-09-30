@@ -140,7 +140,7 @@ id: contact-list
 
 <Page>
   <Component name="ContactList" status="draft" implements="hwc-radio-group" layoutMode="VERTICAL">
-    <Slot name="item" repeat="{items}" count={2}>
+    <Slot name="item" repeat="{items}">
       <Instance name="row" component="ContactItem" />
     </Slot>
     <Slot name="empty" />

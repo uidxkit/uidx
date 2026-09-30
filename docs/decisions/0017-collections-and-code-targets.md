@@ -49,8 +49,9 @@ the row of a tree). The list is a list prop of the contract (`{items}`) or a
 list field of an enclosing item (`{person.tags}`), so nesting a repeat inside
 a repeat is a tree. `as` names the item for the bindings below (`item` unless
 said), and `{as.field}` bindings resolve against the list's model, whose
-`key` field keys the rows. `count` is the canvas's row count; absent, the
-model's longest sample list decides.
+`key` field keys the rows. The model decides how many rows the canvas draws:
+its longest sample list, three when it has none. The tree says only what
+repeats — there is no count to keep in step with the samples.
 
 A repeat on a `<Slot>` is the one consumers fill: code renders it as a render
 prop named after the slot (`renderItem(item, index)`), with the slot's
@@ -58,12 +59,12 @@ placeholder as the default content, and `accepts` on the declared slot
 constrains what a consumer passes. A repeat on any other layer is the
 component's own, rendered in place. The toolbar's Repeat tool writes
 `repeat="{…}"` on the selected layer with the first list its contract can
-place; the Contract tab edits the list, `as` and `count` from the layer. The
-canvas expands a repeat to `count` rows, the n-th resolving `{as.*}` from the
+place; the Contract tab edits the list and `as` from the layer. The canvas
+expands a repeat to one row per sample, the n-th resolving `{as.*}` from the
 n-th samples: the first row is the layer itself, selected and edited like any
 other, and the rows after it (`row-2`, `row-3`) are generated echoes that
 follow it. Figma export renders instances with an instance-swap property.
-Code ignores `count` and uses the contract.
+Code uses the contract.
 
 ### 3. Code targets
 
