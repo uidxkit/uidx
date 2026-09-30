@@ -14,6 +14,12 @@ doing at the time — a defect in something already called done outranks new wor
 **Status key.** ⬜ waiting on you · 🔁 you found something, I am on it ·
 ✅ you signed it off (moved down).
 
+**Automated journeys.** `pnpm test:journeys` (after `pnpm build:cli`) walks
+the overview, the canvas, the Contract tab, the Docs and Models faces and an
+agent edit through the CLI in a real browser, on every canary run. An entry
+whose checks it covers can be signed off on a green run; add a journey when
+you sign one off by hand, so the check keeps running.
+
 **Before any live check.** A fresh clone fails five `packages/cli` tests until
 `pnpm build:cli` runs, and the viewer needs a document, not a bare file:
 

@@ -28,7 +28,8 @@
     "audit:release": "node scripts/audit-release.mjs",
     "test:security": "node scripts/check-dependency-fixes.mjs",
     "test:release": "node --test scripts/test-release.mjs",
-    "test:canvas": "node scripts/canvas-canary.mjs"
+    "test:canvas": "node scripts/canvas-canary.mjs",
+    "test:journeys": "node scripts/journeys.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9",
