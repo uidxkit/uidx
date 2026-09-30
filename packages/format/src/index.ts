@@ -17,6 +17,9 @@ export {
   CONTRACT_LISTS,
   PatchError,
   printContractItem,
+  printModel,
+  printField,
+  fieldDeclarationOf,
   type PatchResult,
 } from './patch.js'
 export { predictDocument } from './predict.js'
@@ -114,6 +117,7 @@ export {
   type ContractSpec,
   type ContractKind,
   type ContractDeclaration,
+  type ModelDeclaration,
   type DocumentSpec,
   type EventSpec,
   type ExampleSet,

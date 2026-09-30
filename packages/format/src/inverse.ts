@@ -1,5 +1,5 @@
 import { addressOf, resolve, resolveParent } from './parse.js'
-import { PatchError } from './patch.js'
+import { fieldDeclarationOf, PatchError } from './patch.js'
 import { predictDocument } from './predict.js'
 import type {
   ContractDeclaration,
@@ -133,6 +133,43 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
           kind: patch.kind,
           name: patch.name,
           ...(before ? { declaration: before } : {}),
+        },
+      ]
+    }
+    case 'model': {
+      const before = doc.spec?.models?.find((model) => model.name === patch.name)
+      if (!before && !patch.declaration)
+        throw new PatchError(`<Model name="${patch.name}"> is not declared; nothing to restore`)
+      // A removal took the fields too; the inverse brings them back one by one.
+      const fields: UidxPatch[] =
+        before && !patch.declaration
+          ? before.fields.map((field) => ({
+              op: 'field',
+              model: patch.name,
+              name: field.name,
+              declaration: fieldDeclarationOf(field),
+            }))
+          : []
+      return [
+        {
+          op: 'model',
+          name: patch.name,
+          ...(before ? { declaration: { description: before.description } } : {}),
+        },
+        ...fields,
+      ]
+    }
+    case 'field': {
+      const model = doc.spec?.models?.find((entry) => entry.name === patch.model)
+      const before = model?.fields.find((field) => field.name === patch.name)
+      if (!before && !patch.declaration)
+        throw new PatchError(`<Field name="${patch.name}"> is not declared; nothing to restore`)
+      return [
+        {
+          op: 'field',
+          model: patch.model,
+          name: patch.name,
+          ...(before ? { declaration: fieldDeclarationOf(before) } : {}),
         },
       ]
     }

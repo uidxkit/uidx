@@ -97,6 +97,8 @@ export function rebasePatches(
       // have moved; the op lands on whatever the table holds now.
       case 'style':
       case 'contract':
+      case 'model':
+      case 'field':
         rebased.push(patch)
         break
       case 'retag': {

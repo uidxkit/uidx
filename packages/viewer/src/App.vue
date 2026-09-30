@@ -73,6 +73,8 @@ import { createPatchChannel, type PatchNotice } from './patch-channel'
 import { rebasePatches } from './patch-rebase'
 import { HOME, pageInUrl, upgradedView, urlWithView, viewToOpen, type View } from './page-url'
 import TokensPane, { type TokenEditIntent } from './TokensPane.vue'
+import ModelsPane from './ModelsPane.vue'
+import { modelsViewModel, pagesForModels, undeclaredModels } from './model-edits'
 import TokenDetailPane from './TokenDetailPane.vue'
 import RemoveCollectionDialog from './RemoveCollectionDialog.vue'
 import { tokensViewModel } from './tokens-view-model'
@@ -217,8 +219,60 @@ const panelTokens = computed(() => {
  * this is what lets the canvas and the rail agree about what it holds.
  */
 const components = computed(() => componentIndex(pages.value.values()))
-/** Model name -> declaration across every page (ADR 0015 §2): a list's model is written once. */
-const models = computed(() => modelIndex(pages.value.values()))
+/**
+ * Model name -> declaration across every page (ADR 0015 §2): a list's model
+ * is written once. Rebuilt only when some page's models change, not on every
+ * keystroke anywhere, since the canvas redraws every repeat when it does.
+ */
+const modelSignature = computed(() =>
+  [...pages.value]
+    .map(
+      ([file, doc]) =>
+        `${file}=${JSON.stringify(
+          (doc.spec?.models ?? []).map((model) => ({
+            ...model,
+            loc: undefined,
+            fields: model.fields.map((field) => ({ ...field, loc: undefined })),
+          })),
+        )}`,
+    )
+    .join('\u0000'),
+)
+const models = shallowRef(modelIndex(pages.value.values()))
+watch(modelSignature, () => {
+  models.value = modelIndex(pages.value.values())
+})
+
+// ---------------------------------------------------------------- models view
+
+const modelCards = computed(() =>
+  view.value.kind === 'models' ? modelsViewModel(pages.value, view.value.file) : [],
+)
+const modelPages = computed(() =>
+  view.value.kind === 'models' ? pagesForModels(pages.value, view.value.file) : [],
+)
+const undeclared = computed(() =>
+  view.value.kind === 'models' ? undeclaredModels(pages.value) : [],
+)
+/** The model a repeat's row sent the author to: marked and scrolled to on the face. */
+const focusedModel = ref<string | null>(null)
+
+function onModelEdit(file: string, patches: UidxPatch[]): void {
+  commitAcrossPages(new Map([[file, patches]]))
+}
+
+/** A model card names a page or a component: land there, as a token's dependent row does. */
+function onModelOpen(file: string, component?: string): void {
+  openView({ kind: 'page', file })
+  if (component) selection.value = [component]
+}
+
+/** From a repeat's row in the Contract tab to the model it draws. */
+function openModel(name: string): void {
+  focusedModel.value = name
+  const now = view.value
+  if (now.kind !== 'home' && now.kind !== 'models') openView({ kind: 'models', file: now.file })
+}
 
 /**
  * The document as a list of pages, for the rail (the page switcher).
@@ -744,7 +798,7 @@ watch(
 )
 
 /** Workspace faces. Elements is disabled for a token-only page. */
-function toggleFace(kind: 'page' | 'tokens' | 'fonts'): void {
+function toggleFace(kind: 'page' | 'tokens' | 'fonts' | 'models'): void {
   const now = view.value
   if (now.kind === 'home' || now.kind === kind) return
   if (kind === 'page' && !renderable.value) return
@@ -1080,6 +1134,8 @@ function labelFor(patches: readonly UidxPatch[]): string {
     return `${first.prop} on ${first.address || 'page'}`
   }
   if (first.op === 'contract') return `${first.kind} ${first.name}`
+  if (first.op === 'model') return `model ${first.name}`
+  if (first.op === 'field') return `${first.model}.${first.name}`
   if (first.op === 'style') {
     const at = Object.entries(first.keys)
       .map(([axis, value]) => `${axis}=${value}`)
@@ -1634,7 +1690,10 @@ onUnmounted(() => socket.close())
       class="panes"
       :class="{
         solo: view.kind === 'home',
-        'without-inspector': view.kind === 'fonts' || (view.kind === 'tokens' && !selectedTokenRow),
+        'without-inspector':
+          view.kind === 'fonts' ||
+          view.kind === 'models' ||
+          (view.kind === 'tokens' && !selectedTokenRow),
       }"
     >
       <aside v-if="view.kind !== 'home'" class="rail" aria-label="Document navigation">
@@ -1695,6 +1754,17 @@ onUnmounted(() => socket.close())
         as this view.
       -->
       <ErrorBoundary v-else-if="view.kind === 'fonts'" pane="Fonts"><FontsPane /></ErrorBoundary>
+      <ErrorBoundary v-else-if="view.kind === 'models'" pane="Models">
+        <ModelsPane
+          :cards="modelCards"
+          :undeclared="undeclared"
+          :pages="modelPages"
+          :focus="focusedModel"
+          :writable="connection === 'open'"
+          @edit="onModelEdit"
+          @open="onModelOpen"
+        />
+      </ErrorBoundary>
       <template v-else-if="view.kind === 'tokens'">
         <ErrorBoundary pane="Tokens">
           <TokensPane
@@ -1803,6 +1873,7 @@ onUnmounted(() => socket.close())
             @refused="onRefused"
             @patches="commitPatches"
             @hover="onHover"
+            @open-model="openModel"
           />
         </ErrorBoundary>
       </template>

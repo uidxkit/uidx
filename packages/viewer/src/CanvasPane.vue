@@ -1871,6 +1871,14 @@ watch(
   },
 )
 
+/** A model's samples draw every repeat of it (ADR 0015 §2); a change anywhere redraws. */
+watch(
+  () => props.models,
+  () => {
+    void renderWithAssets(props.doc, true)
+  },
+)
+
 /** Importing a face changes text metrics even when the document did not change. */
 watch(fontGeneration, () => {
   void renderWithAssets(props.doc, true)

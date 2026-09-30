@@ -214,6 +214,7 @@ the label comes from a Field.
 - **Models.** For a list, a view model of what each row receives — declared
   once, named by a prop's type, sampled for the canvas, never derived. Any
   layer repeats over a list with `repeat="{items}"`; nested, that is a tree.
+  The viewer's Models face edits every model of the document in one place.
 
 Then `uidx check` audits the regions against the tree, and `uidx codegen`
 renders HTML/CSS and React over the headless library, checking each contract

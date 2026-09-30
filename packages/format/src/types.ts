@@ -419,6 +419,14 @@ export type UidxPatch =
       name: string
       declaration?: ContractDeclaration
     }
+  /**
+   * One `<Model>` of `## Models`, written or removed (ADR 0015 §1). The
+   * declaration is its description; the fields are the `field` op's. A model
+   * is reprinted canonically by either, the way the styles table is.
+   */
+  | { op: 'model'; name: string; declaration?: ModelDeclaration }
+  /** One `<Field>` of a model, written or removed; absent, the field goes. */
+  | { op: 'field'; model: string; name: string; declaration?: ContractDeclaration }
   // structural ops
   | { op: 'insert-node'; parent: string; index: number; node: UidxNodeSpec }
   | { op: 'remove-node'; address: string }
@@ -460,6 +468,11 @@ export type ContractKind = 'prop' | 'event' | 'slot' | 'state' | 'part'
 /** One contract element as the `contract` op writes it: its attributes besides `name`, and its description. */
 export interface ContractDeclaration {
   attrs: Record<string, JsonValue>
+  description: string
+}
+
+/** A model as the `model` op writes it: the words above its fields. */
+export interface ModelDeclaration {
   description: string
 }
 

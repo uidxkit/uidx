@@ -243,6 +243,8 @@ const emit = defineEmits<{
   finishVector: []
   vectorAction: [action: VectorAction]
   makeComponent: []
+  /** The Contract tab names the model a repeat draws; the shell opens the Models face on it. */
+  openModel: [name: string]
   /** The Contract tab names layers; choosing one selects it, as the rail would. */
   select: [address: string]
   /** The Contract tab chose a headless library; the shell has the server write it. */
@@ -1371,6 +1373,7 @@ function onDetach(prop: string, value: JsonValue): void {
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"
+          @open-model="emit('openModel', $event)"
           @choose-library="emit('chooseLibrary', $event)"
           @generate-code="emit('generateCode')"
         />

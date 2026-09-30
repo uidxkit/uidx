@@ -42,6 +42,14 @@ describe migrations when an existing document or integration is affected.
   layer in the inspector. The toolbar gains a Repeat tool that repeats the
   selected layer over the first list its component's contract can place; the
   first row of a repeat is the layer itself, the rows after it its echoes.
+- A **Models** face beside Tokens and Fonts: every model of the document
+  with the page that declares it and the components that receive it, edited
+  in place (description; fields with type, key, optional, sample and words),
+  a new model declared on a chosen page — a `models` page being the shared
+  one — and models a contract names but nobody declares offered for
+  declaring. The new `model` and `field` patch ops write one `<Model>` back
+  canonically and invert. A sample changed there redraws every repeat of it,
+  and a repeat's row in the Contract tab links to its model.
 - The Contract tab edits the contract: each prop, event, slot, state and
   part opens into a small form (description, type, default, sample, flags;
   a slot's `accepts`), a row adds one, and "Fill from library"

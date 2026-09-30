@@ -238,7 +238,7 @@ function relowerBatch(doc: UidxDocument, patches: readonly UidxPatch[]): Increme
   // A style op edits the table beside the tree, which no node's span holds,
   // and the derived variants it changes are rebuilt from the spec — so the
   // whole document is re-read rather than one node re-lowered.
-  if (patches.some((p) => p.op === 'style' || p.op === 'contract')) {
+  if (patches.some((p) => ['style', 'contract', 'model', 'field'].includes(p.op))) {
     const { doc: full, diagnostics } = parse(spliced.source)
     if (!full) {
       const detail = diagnostics

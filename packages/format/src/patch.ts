@@ -19,6 +19,8 @@ import {
   type UidxPatch,
   type ContractDeclaration,
   type ContractKind,
+  type FieldSpec,
+  type ModelSpec,
 } from './types.js'
 
 /**
@@ -127,6 +129,8 @@ function addressOfPatch(patch: UidxPatch): string {
       .map(([axis, value]) => `${axis}="${value}"`)
       .join(' ')}>`
   if (patch.op === 'contract') return `<${CONTRACT_LISTS[patch.kind][1]} name="${patch.name}">`
+  if (patch.op === 'model') return `<Model name="${patch.name}">`
+  if (patch.op === 'field') return `<Field name="${patch.name}"> of ${patch.model}`
   return patch.op === 'insert-node' ? patch.parent : patch.address
 }
 
@@ -153,6 +157,10 @@ function applyOne(doc: UidxDocument, s: MagicString, patch: UidxPatch, eol: '\r\
         return styleCell(doc, s, patch, eol)
       case 'contract':
         return contractDeclaration(doc, s, patch, eol)
+      case 'model':
+        return modelDeclaration(doc, s, patch, eol)
+      case 'field':
+        return fieldDeclaration(doc, s, patch, eol)
       default:
         // Unreachable through the type: the union above is exhaustive, so this
         // only fires for an op that arrived from somewhere newer than this
@@ -812,6 +820,164 @@ function contractDeclaration(
   const insertion = `${eol}${eol}## Contract${eol}${eol}${block}${doc.trailing ? `${eol}${eol}` : eol}`
   s.overwrite(from, at, insertion)
   return { start: from, end: from + insertion.length }
+}
+
+/* ------------------------------------------------- the models region */
+
+/** The bare boolean attributes of a field (ADR 0015 §1). */
+const FIELD_FLAGS: ReadonlySet<string> = new Set(['key', 'optional'])
+const FIELD_ATTR_ORDER: readonly string[] = ['type', 'key', 'optional', 'sample']
+
+/** `<Field name="x" type="string" key sample={[…]}>Words.</Field>`, canonical. */
+export function printField(name: string, declaration: ContractDeclaration): string {
+  const attrs = [`name=${serializeValue(name)}`]
+  const order = [
+    ...FIELD_ATTR_ORDER,
+    ...Object.keys(declaration.attrs).filter((k) => !FIELD_ATTR_ORDER.includes(k)),
+  ]
+  for (const key of order) {
+    const value = declaration.attrs[key]
+    if (value === undefined) continue
+    if (FIELD_FLAGS.has(key)) {
+      if (value === true) attrs.push(key)
+      continue
+    }
+    if (value === null && key !== 'sample') continue
+    attrs.push(`${key}=${serializeValue(value)}`)
+  }
+  const open = `<Field ${attrs.join(' ')}`
+  return declaration.description ? `${open}>${declaration.description}</Field>` : `${open} />`
+}
+
+/** One model in canonical form: its words, then its fields, one per line. */
+export function printModel(
+  model: {
+    name: string
+    description: string
+    fields: readonly { name: string; declaration: ContractDeclaration }[]
+  },
+  eol: '\r\n' | '\n' = '\n',
+): string {
+  const lines = [`<Model name=${serializeValue(model.name)}>`]
+  const words = model.description.trim()
+  if (words) lines.push(`${INDENT_UNIT}${words}`)
+  for (const field of model.fields)
+    lines.push(`${INDENT_UNIT}${printField(field.name, field.declaration)}`)
+  lines.push('</Model>')
+  return lines.join(eol)
+}
+
+/** A field as the `field` op would write it back. */
+export function fieldDeclarationOf(field: FieldSpec): ContractDeclaration {
+  const attrs: Record<string, JsonValue> = { type: field.type }
+  if (field.key) attrs.key = true
+  if (field.optional) attrs.optional = true
+  if (field.sample !== undefined) attrs.sample = field.sample
+  return { attrs, description: field.description }
+}
+
+/**
+ * Writes a model — new, changed or removed — reprinting it whole (ADR 0015
+ * §1), the way `styleCell` reprints the table: a model is a few lines and a
+ * hand-wrapped one is normalised the first time the inspector writes to it.
+ * A new model goes after the last; the region is created before `## Examples`
+ * or at the end of the file; a removal that empties the region removes it.
+ */
+function writeModel(
+  doc: UidxDocument,
+  s: MagicString,
+  name: string,
+  next: {
+    description: string
+    fields: { name: string; declaration: ContractDeclaration }[]
+  } | null,
+  eol: '\r\n' | '\n',
+): Range {
+  const source = doc.source
+  const models = doc.spec?.models ?? []
+  const existing = models.find((model) => model.name === name)
+  if (next === null) {
+    if (!existing) throw new PatchError(`<Model name="${name}"> is not declared; nothing to remove`)
+    if (models.length === 1) {
+      const heading = source.lastIndexOf('## Models', existing.loc.start)
+      let from = heading === -1 ? existing.loc.start : heading
+      while (from > 0 && /\s/.test(source[from - 1]!)) from--
+      s.remove(from, existing.loc.end)
+      return { start: from, end: from }
+    }
+    // Models are blocks a blank line apart: the blank line goes with it.
+    let from = existing.loc.start
+    while (from > 0 && /\s/.test(source[from - 1]!)) from--
+    s.remove(from, existing.loc.end)
+    return { start: from, end: from }
+  }
+  const text = printModel({ name, ...next }, eol)
+  if (existing) {
+    s.overwrite(existing.loc.start, existing.loc.end, text)
+    return { start: existing.loc.start, end: existing.loc.start + text.length }
+  }
+  if (models.length) {
+    const last = models[models.length - 1]!
+    const insertion = `${eol}${eol}${text}`
+    s.appendRight(last.loc.end, insertion)
+    return { start: last.loc.end, end: last.loc.end + insertion.length }
+  }
+  // No `## Models` yet: before `## Examples` when there is one, else last.
+  const examples = doc.spec?.examples ?? []
+  const examplesHeading = examples.length
+    ? source.lastIndexOf('## Examples', examples[0]!.loc.start)
+    : -1
+  if (examplesHeading !== -1) {
+    const insertion = `## Models${eol}${eol}${text}${eol}${eol}`
+    s.appendLeft(examplesHeading, insertion)
+    return { start: examplesHeading, end: examplesHeading + insertion.length }
+  }
+  let from = source.length
+  while (from > 0 && /\s/.test(source[from - 1]!)) from--
+  const insertion = `${eol}${eol}## Models${eol}${eol}${text}${eol}`
+  s.overwrite(from, source.length, insertion)
+  return { start: from, end: from + insertion.length }
+}
+
+const fieldsOf = (model: ModelSpec): { name: string; declaration: ContractDeclaration }[] =>
+  model.fields.map((field) => ({ name: field.name, declaration: fieldDeclarationOf(field) }))
+
+function modelDeclaration(
+  doc: UidxDocument,
+  s: MagicString,
+  patch: Extract<UidxPatch, { op: 'model' }>,
+  eol: '\r\n' | '\n',
+): Range {
+  if (patch.name === '') throw new PatchError('a model op names the model it declares')
+  const existing = doc.spec?.models?.find((model) => model.name === patch.name)
+  if (!patch.declaration) return writeModel(doc, s, patch.name, null, eol)
+  return writeModel(
+    doc,
+    s,
+    patch.name,
+    { description: patch.declaration.description, fields: existing ? fieldsOf(existing) : [] },
+    eol,
+  )
+}
+
+function fieldDeclaration(
+  doc: UidxDocument,
+  s: MagicString,
+  patch: Extract<UidxPatch, { op: 'field' }>,
+  eol: '\r\n' | '\n',
+): Range {
+  if (patch.name === '') throw new PatchError('a field op names the field it declares')
+  const model = doc.spec?.models?.find((entry) => entry.name === patch.model)
+  if (!model) throw new PatchError(`<Model name="${patch.model}"> is not declared`)
+  const fields = fieldsOf(model)
+  const at = fields.findIndex((field) => field.name === patch.name)
+  if (!patch.declaration) {
+    if (at === -1)
+      throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to remove`)
+    fields.splice(at, 1)
+  } else if (at === -1) fields.push({ name: patch.name, declaration: patch.declaration })
+  else fields[at] = { name: patch.name, declaration: patch.declaration }
+  return writeModel(doc, s, model.name, { description: model.description, fields }, eol)
 }
 
 /* ------------------------------------------------- the styles table */

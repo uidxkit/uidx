@@ -64,6 +64,8 @@ const emit = defineEmits<{
   select: [address: string]
   /** Name the library the document uses; the server writes it into uidx.json. */
   chooseLibrary: [path: string]
+  /** Open the Models face on the model a repeat draws (ADR 0015 §1). */
+  openModel: [name: string]
   /** Render the code targets into `codegen.out` on the server. */
   generateCode: []
 }>()
@@ -1025,13 +1027,29 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           <span v-else class="reset-spacer" />
         </div>
         <p v-if="repeatable.repeat.model && !repeatable.repeat.unknownModel" class="hint">
-          Each item is a {{ repeatable.repeat.model }}; bind text below to
-          <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
+          Each item is a
+          <button
+            type="button"
+            class="stale-name"
+            :title="`Open ${repeatable.repeat.model} on the Models face`"
+            @click="emit('openModel', repeatable.repeat.model)"
+          >
+            {{ repeatable.repeat.model }}
+          </button>
+          ; bind text below to <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
           >.
         </p>
         <p v-else-if="repeatable.repeat.model" class="stale" role="status">
           Each item is a {{ repeatable.repeat.model }}, which no page declares under
           <code>## Models</code>.
+          <button
+            type="button"
+            class="stale-name"
+            :disabled="!writable"
+            @click="emit('openModel', repeatable.repeat.model)"
+          >
+            Declare it
+          </button>
         </p>
         <p v-else class="stale" role="status">
           The contract cannot place <code>{{ '{' + repeatable.repeat.list + '}' }}</code

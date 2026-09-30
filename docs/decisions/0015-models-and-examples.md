@@ -39,6 +39,16 @@ and sample values so the canvas and Figma have something to draw.
   component that displays them or on a shared models page, and named by a
   prop's `type` — `Contact`, or `Contact[]` for a list. The audit refuses a
   second declaration of the same name, and a name no page declares.
+- The viewer has a **Models** face beside Tokens and Fonts: every model of
+  the document, with the page that declares it and the components that
+  receive it, edited in place — description, and a table of fields with
+  type, key, optional, sample and words. A new model goes on the page the
+  author picks, a page called `models` being the suggested shared one; a
+  model a contract names and nobody declares is offered for declaring. The
+  `model` and `field` patch ops write one `<Model>` back canonically, and a
+  sample changed there redraws every repeat that shows it, since the canvas
+  reads every page's models. A repeat's row in the Contract tab links to its
+  model on the face.
 
 ### 2. Bindings are lookups
 

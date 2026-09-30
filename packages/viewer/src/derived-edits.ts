@@ -78,6 +78,8 @@ function addressOf(patch: UidxPatch): string | null {
       return patch.parent
     case 'style':
     case 'contract':
+    case 'model':
+    case 'field':
       return null
     default:
       return patch.address

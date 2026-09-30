@@ -2,12 +2,12 @@
 defineProps<{
   title: string
   page?: string | null
-  view: 'home' | 'page' | 'tokens' | 'fonts'
+  view: 'home' | 'page' | 'tokens' | 'fonts' | 'models'
   canGoHome: boolean
   renderable: boolean
 }>()
 
-const emit = defineEmits<{ home: []; face: [view: 'page' | 'tokens' | 'fonts'] }>()
+const emit = defineEmits<{ home: []; face: [view: 'page' | 'tokens' | 'fonts' | 'models'] }>()
 </script>
 
 <template>
@@ -56,6 +56,9 @@ const emit = defineEmits<{ home: []; face: [view: 'page' | 'tokens' | 'fonts'] }
       </button>
       <button type="button" :aria-pressed="view === 'fonts'" @click="emit('face', 'fonts')">
         Fonts
+      </button>
+      <button type="button" :aria-pressed="view === 'models'" @click="emit('face', 'models')">
+        Models
       </button>
     </nav>
   </header>
