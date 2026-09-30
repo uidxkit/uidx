@@ -296,6 +296,9 @@ importers:
 
   packages/server:
     dependencies:
+      '@uidx/codegen':
+        specifier: workspace:*
+        version: link:../codegen
       '@uidx/format':
         specifier: workspace:*
         version: link:../format

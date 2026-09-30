@@ -49,6 +49,8 @@ const props = defineProps<{
   libraryError?: string
   /** Libraries the project's dependencies ship, offered while none is named. */
   candidates?: HeadlessCandidate[]
+  /** Where generated code goes, when uidx.json says (`codegen.out`), and how the last run went. */
+  codegen?: { out: string | null; running: boolean; notice: string }
   writable: boolean
 }>()
 
@@ -58,6 +60,8 @@ const emit = defineEmits<{
   select: [address: string]
   /** Name the library the document uses; the server writes it into uidx.json. */
   chooseLibrary: [path: string]
+  /** Render the code targets into `codegen.out` on the server. */
+  generateCode: []
 }>()
 
 /** The library's tag for the selected component, when `uidx.json` binds one (ADR 0013 §3). */
@@ -994,9 +998,25 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 
     <!-- Where the choices come from, on every view: a fact the author can act on. -->
     <p v-if="libraryError" class="stale library" role="status">{{ libraryError }}</p>
-    <p v-else-if="library" class="library">
-      Library: {{ library.path }} · {{ library.roots.length }} elements
-    </p>
+    <div v-else-if="library" class="library">
+      <p>Library: {{ library.path }} · {{ library.roots.length }} elements</p>
+      <div v-if="codegen?.out" class="row" data-field="generate">
+        <span class="name" :title="`Into ${codegen.out}, as uidx codegen would`">Code</span>
+        <button
+          type="button"
+          class="layer generate"
+          :disabled="!writable || codegen.running"
+          :title="`Render HTML/CSS and React into ${codegen.out}`"
+          @click="emit('generateCode')"
+        >
+          {{ codegen.running ? 'Generating…' : `Generate → ${codegen.out}` }}
+        </button>
+        <span class="reset-spacer" />
+      </div>
+      <p v-if="codegen?.notice" class="faint" role="status" data-field="generate-notice">
+        {{ codegen.notice }}
+      </p>
+    </div>
     <div v-else class="library" data-field="choose-library">
       <p>No headless library yet. Choose one to pick elements and parts from a list.</p>
       <div v-if="candidates?.length" class="row">

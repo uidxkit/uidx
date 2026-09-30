@@ -30,6 +30,8 @@ export interface HeadlessResponse {
   profile?: Record<string, string>
   bindings?: Record<string, unknown>
   candidates: HeadlessCandidate[]
+  /** Where the viewer's Generate button writes, when `uidx.json` says. */
+  codegen?: { out: string }
 }
 
 /**
@@ -157,7 +159,13 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
       const config: HeadlessConfig | undefined = found.manifest.headless
       if (config === undefined) {
         const candidates = await discoverHeadless(found.dir)
-        response.end(JSON.stringify({ path: null, candidates } satisfies HeadlessResponse))
+        response.end(
+          JSON.stringify({
+            path: null,
+            candidates,
+            ...(found.manifest.codegen ? { codegen: { out: found.manifest.codegen.out } } : {}),
+          } satisfies HeadlessResponse),
+        )
         return
       }
       const raw = await readFile(resolve(found.dir, config.manifest), 'utf8')
@@ -169,6 +177,7 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
           ...(config.profile ? { profile: config.profile } : {}),
           ...(config.bindings ? { bindings: config.bindings } : {}),
           candidates: [],
+          ...(found.manifest.codegen ? { codegen: { out: found.manifest.codegen.out } } : {}),
         } satisfies HeadlessResponse),
       )
     } catch (error) {

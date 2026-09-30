@@ -28,6 +28,17 @@ export interface Manifest {
    * choices in the Contract tab, and `uidx codegen` reads it by default.
    */
   headless?: HeadlessConfig
+  /**
+   * Where `uidx codegen` and the viewer's Generate button write the code
+   * targets, relative to `uidx.json` (ADR 0017 §3), and which targets.
+   * Optional: a document with no code render has none.
+   */
+  codegen?: CodegenConfig
+}
+
+export interface CodegenConfig {
+  out: string
+  targets?: string[]
 }
 
 /**
@@ -165,6 +176,32 @@ export async function readManifest(path: string): Promise<Manifest> {
     }
   }
 
+  let codegen: CodegenConfig | undefined
+  const generation = record.codegen
+  if (generation !== undefined) {
+    const config =
+      typeof generation === 'object' && generation !== null && !Array.isArray(generation)
+        ? (generation as Record<string, unknown>)
+        : undefined
+    const out = config?.out
+    if (typeof out !== 'string' || out === '') {
+      problems.push(
+        `${path}: "codegen" must be { "out": path, "targets"?: ["html", "react", "contract"] }`,
+      )
+    } else {
+      codegen = { out }
+      const targets = config!.targets
+      if (targets !== undefined) {
+        if (
+          !Array.isArray(targets) ||
+          targets.some((target) => !['html', 'react', 'contract'].includes(target as string))
+        )
+          problems.push(`${path}: "codegen.targets" may hold html, react and contract`)
+        else codegen.targets = targets as string[]
+      }
+    }
+  }
+
   if (problems.length) throw new ManifestError(problems)
   return {
     id: id as string,
@@ -173,6 +210,7 @@ export async function readManifest(path: string): Promise<Manifest> {
     // different statement — "this document has no assets" — and is honoured.
     assets: assets === undefined ? [...DEFAULT_ASSET_GLOBS] : (assets as string[]),
     ...(headless === undefined ? {} : { headless }),
+    ...(codegen === undefined ? {} : { codegen }),
   }
 }
 

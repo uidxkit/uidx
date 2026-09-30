@@ -13,7 +13,7 @@ import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import { contractIssues, contractView } from './contract-edits'
 import { describe as describeDerived } from './derived-edits'
-import type { HeadlessCandidate, HeadlessLibrary } from './headless'
+import type { CodegenState, HeadlessCandidate, HeadlessLibrary } from './headless'
 
 import { computed, ref, shallowRef, watch } from 'vue'
 import { vectorEndpoints } from '@open-pencil/core/vector'
@@ -129,6 +129,8 @@ const props = defineProps<{
   headlessError?: string
   /** Libraries the project's dependencies ship, offered while none is named. */
   headlessCandidates?: HeadlessCandidate[]
+  /** Where generated code goes and how the last run went, for the Contract tab's button. */
+  codegen?: CodegenState
   /** Token address -> literal, so a bound row can show what it resolves to. */
   tokens?: Map<string, JsonValue>
   /**
@@ -242,6 +244,8 @@ const emit = defineEmits<{
   select: [address: string]
   /** The Contract tab chose a headless library; the shell has the server write it. */
   chooseLibrary: [path: string]
+  /** The Contract tab asked for the code targets to be rendered. */
+  generateCode: []
 }>()
 
 /**
@@ -1357,10 +1361,12 @@ function onDetach(prop: string, value: JsonValue): void {
           :library="headless ?? null"
           :library-error="headlessError"
           :candidates="headlessCandidates"
+          :codegen="codegen"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"
           @choose-library="emit('chooseLibrary', $event)"
+          @generate-code="emit('generateCode')"
         />
       </section>
     </template>

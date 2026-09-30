@@ -33,10 +33,19 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
     return 1
   }
   const cwd = io.cwd ?? process.cwd()
-  const out = parsed.values.out
+  // `--out` wins; otherwise uidx.json's `codegen.out` (relative to it) says
+  // where the code goes, so the viewer's Generate button and this command
+  // write the same place.
+  const configured = await findManifest(cwd)
+  const out =
+    parsed.values.out ??
+    (configured?.manifest.codegen
+      ? resolve(configured.dir, configured.manifest.codegen.out)
+      : undefined)
   if (!out && !parsed.values.check) {
     io.err(
-      'uidx codegen <glob...> --out <dir> [--target html,react,contract] [--manifest custom-elements.json] [--check]\n',
+      'uidx codegen <glob...> --out <dir> [--target html,react,contract] [--manifest custom-elements.json] [--check]\n' +
+        '  (or add "codegen": { "out": "…" } to uidx.json)\n',
     )
     return 1
   }
@@ -69,7 +78,7 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
   // same file this command checks against.
   let manifestPath = parsed.values.manifest ? resolve(cwd, parsed.values.manifest) : undefined
   let library: LibraryBindings | undefined
-  const found = await findManifest(cwd)
+  const found = configured
   const headless = found?.manifest.headless
   if (headless) {
     manifestPath ??= resolve(found!.dir, headless.manifest)
@@ -82,7 +91,11 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
   if (manifestPath) {
     manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Manifest
   }
-  const targets = parsed.values.target!.split(',').map((t) => t.trim()) as Target[]
+  const targets = (
+    parsed.values.target === 'html,react,contract' && configured?.manifest.codegen?.targets
+      ? configured.manifest.codegen.targets
+      : parsed.values.target!.split(',').map((t) => t.trim())
+  ) as Target[]
   for (const target of targets) {
     if (!['html', 'react', 'contract'].includes(target)) {
       io.err(`unknown target "${target}"; choose from html, react, contract\n`)

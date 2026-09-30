@@ -40,6 +40,9 @@ describe migrations when an existing document or integration is affected.
   a slot's `of` and `accepts`), a row adds one, and "Fill from library"
   declares what the implemented element exposes and the contract lacks. The
   new `contract` patch op writes one declaration in canonical form.
+- `uidx.json` gains an optional `codegen` (`out`, `targets`): `uidx codegen`
+  needs no `--out`, and the Contract tab's Generate button renders the code
+  targets from the server into that folder, reporting what it wrote.
 - The inspector gains a **Contract** tab beside Design. A component chooses
   the headless element it implements from the library; its parts are bound to
   layers from the component's list or from the layer's own row, and a

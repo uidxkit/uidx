@@ -51,6 +51,8 @@ import FontsPane from './FontsPane.vue'
 import { fontGeneration, fontsInFileKey, openFontsKey } from './font-library'
 import {
   chooseHeadless,
+  codegenState,
+  generateCode,
   headlessCandidates,
   headlessError,
   headlessLibrary,
@@ -1764,8 +1766,10 @@ onUnmounted(() => socket.close())
             :headless="headlessLibrary"
             :headless-error="headlessError"
             :headless-candidates="headlessCandidates"
+            :codegen="codegenState"
             @select="selection = [$event]"
             @choose-library="chooseHeadless($event)"
+            @generate-code="generateCode()"
             @edit-vector="editVector"
             @finish-vector="canvasPane?.finishDrawing()"
             @vector-action="canvasPane?.vectorAction($event)"

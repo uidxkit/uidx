@@ -168,13 +168,65 @@ interface HeadlessPayload {
   library?: unknown
   bindings?: HeadlessLibrary['bindings']
   candidates?: HeadlessCandidate[]
+  codegen?: { out: string }
   error?: string
 }
+
+/** Where `uidx.json` says generated code goes (`codegen.out`), and how the last run went. */
+export interface CodegenState {
+  out: string | null
+  running: boolean
+  notice: string
+}
+export const codegenState = shallowRef<CodegenState>({ out: null, running: false, notice: '' })
 
 function adopt(data: HeadlessPayload): void {
   headlessLibrary.value =
     data.path === null ? null : parseHeadless(data.path, data.library, data.bindings ?? {})
   headlessCandidates.value = data.candidates ?? []
+  codegenState.value = { ...codegenState.value, out: data.codegen?.out ?? null }
+}
+
+/**
+ * Renders the code targets into `codegen.out` on the server (ADR 0017 §3):
+ * the same generator `uidx codegen` runs, over the same files, so the panel
+ * and the command line never disagree about what the code looks like.
+ */
+export async function generateCode(): Promise<void> {
+  codegenState.value = { ...codegenState.value, running: true, notice: '' }
+  try {
+    const response = await fetch('/__uidx/codegen', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+      signal: AbortSignal.timeout(60_000),
+    })
+    unavailable(response)
+    const data = (await response.json()) as {
+      out?: string
+      written?: string[]
+      diagnostics?: {
+        file: string
+        line: number
+        column: number
+        message: string
+        severity: string
+      }[]
+      error?: string
+    }
+    if (!response.ok) throw new Error(data.error ?? 'Could not generate code.')
+    const errors = (data.diagnostics ?? []).filter((d) => d.severity === 'error')
+    const notice = errors.length
+      ? `Not written: ${errors.map((d) => `${d.file}:${d.line} ${d.message}`).join('; ')}`
+      : `Wrote ${data.written?.length ?? 0} files to ${data.out ?? codegenState.value.out}`
+    codegenState.value = { ...codegenState.value, running: false, notice }
+  } catch (error) {
+    codegenState.value = {
+      ...codegenState.value,
+      running: false,
+      notice: error instanceof Error ? error.message : String(error),
+    }
+  }
 }
 
 /**

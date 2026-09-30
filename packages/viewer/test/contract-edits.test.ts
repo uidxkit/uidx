@@ -555,6 +555,28 @@ describe('editing the contract from the tab (ADR 0013 §2)', () => {
   })
 })
 
+describe('generating code from the tab', () => {
+  it('offers the configured folder and asks the shell to generate', async () => {
+    const doc = parseOrThrow(CHECKBOX)
+    const section = mount(ContractSection, {
+      props: {
+        doc,
+        node: resolve(doc.tree, 'Checkbox'),
+        library: LIBRARY,
+        codegen: { out: '../generated', running: false, notice: 'Wrote 3 files to ../generated' },
+        writable: true,
+      },
+    })
+    const button = section.find('[data-field="generate"] button')
+    expect(button.text()).toBe('Generate → ../generated')
+    await button.trigger('click')
+    expect(section.emitted('generateCode')).toEqual([[]])
+    expect(section.find('[data-field="generate-notice"]').text()).toBe(
+      'Wrote 3 files to ../generated',
+    )
+  })
+})
+
 describe('the inspector tabs', () => {
   it('switches between Design and Contract, and counts parts to bind on the tab', async () => {
     const doc = parseOrThrow(CHECKBOX)
