@@ -4,6 +4,7 @@ import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
 import { formatDiagnostic, parse, type UidxDocument } from '@uidx/format'
 import { generate, type Manifest, type Target } from '@uidx/codegen'
+import { findManifest } from '@uidx/server'
 import type { Io } from '../cli.js'
 
 /**
@@ -63,9 +64,17 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
   }
   if (failed) return 1
 
+  // The flag wins; otherwise the document's own `headless` (uidx.json) names
+  // the library, so a checked-in config and the viewer's Contract tab read the
+  // same file this command checks against.
+  let manifestPath = parsed.values.manifest ? resolve(cwd, parsed.values.manifest) : undefined
+  if (!manifestPath) {
+    const found = await findManifest(cwd)
+    if (found?.manifest.headless) manifestPath = resolve(found.dir, found.manifest.headless)
+  }
   let manifest: Manifest | undefined
-  if (parsed.values.manifest) {
-    manifest = JSON.parse(await readFile(resolve(cwd, parsed.values.manifest), 'utf8')) as Manifest
+  if (manifestPath) {
+    manifest = JSON.parse(await readFile(manifestPath, 'utf8')) as Manifest
   }
   const targets = parsed.values.target!.split(',').map((t) => t.trim()) as Target[]
   for (const target of targets) {

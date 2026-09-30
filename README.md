@@ -100,9 +100,14 @@ The separate `.uidx/uidx.json` manifest controls which files belong to the docum
 {
   "id": "my-project",
   "files": ["**/*.uidx"],
-  "assets": ["assets/**"]
+  "assets": ["assets/**"],
+  "headless": "../vendor/hwc/custom-elements.json"
 }
 ```
+
+`headless` is optional. It names the headless library's `custom-elements.json`,
+relative to `uidx.json`; with it, the viewer's Contract tab offers the library's
+elements and parts as choices, and `uidx codegen` checks contracts against it.
 
 ### CLI and MCP
 

@@ -3,6 +3,7 @@ import type { UidxPatch } from '@uidx/format'
 
 import { ASSET_ROUTE, assetReply } from './assets.js'
 import { fontRoutePlugin } from './fonts.js'
+import { headlessRoutePlugin } from './headless.js'
 import { pagesRoutePlugin } from './pages.js'
 import { allowsLocalRequest, localAccessPlugin } from './local-access.js'
 import type { FoundManifest } from './document.js'
@@ -528,6 +529,7 @@ async function listenOnFreePort(
   const plugins = [
     localAccessPlugin(),
     fontRoutePlugin(manifest),
+    headlessRoutePlugin(manifest),
     assetRoutePlugin(manifest),
     selectionRoutePlugin(selection),
     patchRoutePlugin(patchRoute),

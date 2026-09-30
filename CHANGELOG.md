@@ -24,6 +24,14 @@ describe migrations when an existing document or integration is affected.
 - `examples/design-system`: Checkbox, Field, CheckboxField, Button and a
   contact list rendered end to end over `@hwc/components`, with the generated
   output committed and checked for drift.
+- The inspector gains a **Contract** tab beside Design. A component chooses
+  the headless element it implements from the library; its parts are bound to
+  layers from the component's list or from the layer's own row, and a
+  `<Repeat>` picks a declared repeating slot and its count. The tab shows the
+  file's contract beside the bindings and counts the parts still to bind.
+  `uidx.json` gains an optional `"headless"` path to the library's
+  `custom-elements.json`, served to the viewer and used by `uidx codegen` when
+  `--manifest` is absent.
 
 ## 0.1.6 — 2026-09-25
 

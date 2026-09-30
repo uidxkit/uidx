@@ -68,6 +68,16 @@ shorthand rule of the visual contract does not apply here.
 - `part="…"` on any scene node binds it to a declared part. One node per part.
 - `<Slot name="…">` (ADR 0007) is the position of a declared slot.
 - Only `visual` props may appear as styles-table keys (ADR 0016).
+- The bindings are edited from the inspector's **Contract** tab as well as by
+  hand. `uidx.json` may name the headless library's `custom-elements.json`
+  (`"headless"`); the tab then offers its elements as the choices for
+  `implements`, and each root's parts — the `<root>-<part>` elements, plus any
+  `cssParts` — together with the contract's own `<Parts>` as the choices for
+  `part`. A part is bound from the component's list or from the layer's row,
+  the way Figma declares a property on the component and applies it from the
+  layer; binding it from a new layer unbinds the old one, since one node per
+  part is the rule. A `<Repeat>` chooses among the contract's repeating slots.
+  The tab never edits the contract's prose; it shows it beside the bindings.
 
 ### 4. Declaration in uidx, implementation in code
 

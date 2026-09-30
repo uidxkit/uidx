@@ -49,6 +49,7 @@ import EditToolbar from './EditToolbar.vue'
 import WorkspaceNav from './WorkspaceNav.vue'
 import FontsPane from './FontsPane.vue'
 import { fontGeneration, fontsInFileKey, openFontsKey } from './font-library'
+import { headlessError, headlessLibrary, refreshHeadless } from './headless'
 import WorkspaceStatus from './WorkspaceStatus.vue'
 import { canRemove, componentFrom, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
@@ -374,6 +375,10 @@ const socket = createUidxSocket({
         // page and no answer at all for the dashboard.
         documentId.value = message.id
         forgetDeparted(message.pages)
+        // The headless library the Contract tab offers (ADR 0013 §3). On every
+        // announcement rather than once: a reconnect is also when a re-synced
+        // `custom-elements.json` should show its new elements.
+        void refreshHeadless()
         // The URL outranks the server's entry page: a reload, a bookmark and a
         // Back all arrive here, and every one of them means "the page I was on"
         // rather than "the page the command line named". `replaceState` rather
@@ -1715,6 +1720,9 @@ onUnmounted(() => socket.close())
             :pin-frame="pinFrame"
             :vector-info="vectorInfo"
             :can-make-component="componentSource !== null"
+            :headless="headlessLibrary"
+            :headless-error="headlessError"
+            @select="selection = [$event]"
             @edit-vector="editVector"
             @finish-vector="canvasPane?.finishDrawing()"
             @vector-action="canvasPane?.vectorAction($event)"

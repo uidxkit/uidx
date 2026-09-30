@@ -20,6 +20,13 @@ export interface Manifest {
    * document that never referenced an image should not have to say so.
    */
   assets: string[]
+  /**
+   * The headless library's `custom-elements.json`, relative to `uidx.json`
+   * (ADR 0013 §3). Optional: a document with no code render has none. When
+   * present the viewer offers its elements and parts as choices in the
+   * Contract tab, and `uidx codegen` checks contracts against it by default.
+   */
+  headless?: string
 }
 
 export interface FoundManifest {
@@ -108,6 +115,11 @@ export async function readManifest(path: string): Promise<Manifest> {
     }
   }
 
+  const headless = record.headless
+  if (headless !== undefined && (typeof headless !== 'string' || headless === '')) {
+    problems.push(`${path}: "headless" must be a path to a custom-elements.json`)
+  }
+
   if (problems.length) throw new ManifestError(problems)
   return {
     id: id as string,
@@ -115,6 +127,7 @@ export async function readManifest(path: string): Promise<Manifest> {
     // Absent means the conventional folders, all of them. An empty array is a
     // different statement — "this document has no assets" — and is honoured.
     assets: assets === undefined ? [...DEFAULT_ASSET_GLOBS] : (assets as string[]),
+    ...(headless === undefined ? {} : { headless: headless as string }),
   }
 }
 

@@ -49,7 +49,10 @@ If the port is busy, the server tries the next port; CLI/MCP find the live port.
 The default `.uidx/uidx.json` includes `"files": ["**/*.uidx"]` and
 `"assets": ["assets/**"]`. Add pages in nested folders; new pages appear
 automatically. Images such as `assets/logo.svg` are relative to `.uidx/`.
-Viewer and file edits sync both ways.
+Viewer and file edits sync both ways. An optional `"headless"` names the
+headless library's `custom-elements.json` (relative to `uidx.json`): the
+viewer's Contract tab then offers its elements and parts as choices, and
+`uidx codegen` checks contracts against it without `--manifest`.
 
 ## Server and agent tools
 

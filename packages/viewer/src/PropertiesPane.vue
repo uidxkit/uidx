@@ -10,6 +10,9 @@ import {
   isUnitLength,
 } from '@uidx/format'
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
+import ContractSection from './ContractSection.vue'
+import { contractIssues, contractView } from './contract-edits'
+import type { HeadlessLibrary } from './headless'
 
 import { computed, ref, shallowRef, watch } from 'vue'
 import { vectorEndpoints } from '@open-pencil/core/vector'
@@ -117,6 +120,10 @@ import type { VariableCandidate } from './variable-binding'
 const props = defineProps<{
   doc: UidxDocument | null
   selection?: string[]
+  /** The headless library the Contract tab offers choices from (ADR 0013 §3). */
+  headless?: HeadlessLibrary | null
+  /** Why the library could not be read, shown in the Contract tab. */
+  headlessError?: string
   /** Token address -> literal, so a bound row can show what it resolves to. */
   tokens?: Map<string, JsonValue>
   /**
@@ -226,7 +233,24 @@ const emit = defineEmits<{
   finishVector: []
   vectorAction: [action: VectorAction]
   makeComponent: []
+  /** The Contract tab names layers; choosing one selects it, as the rail would. */
+  select: [address: string]
 }>()
+
+/**
+ * Which face the inspector shows: Design, the scene properties, or Contract,
+ * the bindings to the code render (ADR 0013 §3). Two tabs rather than one
+ * more section, because they answer different questions about the same layer
+ * — what it looks like, and what it is to the headless library — and Figma's
+ * Design / Dev split is the precedent authors already know. Pane-local: the
+ * choice is about how to look, not what is open.
+ */
+const face = ref<'design' | 'contract'>('design')
+
+/** Unbound or stray parts on the selected component, for the tab's badge. */
+const contractIssueCount = computed(() =>
+  contractIssues(contractView(props.doc, active.value, props.headless ?? null)),
+)
 
 function onHover(prop: string | null): void {
   const address = active.value?.address
@@ -1255,7 +1279,20 @@ function onDetach(prop: string, value: JsonValue): void {
   <aside class="properties">
     <header class="inspector-header">
       <div class="inspector-title">
-        <h2>Design</h2>
+        <nav class="face-toggle" aria-label="Inspector view">
+          <button type="button" :aria-pressed="face === 'design'" @click="face = 'design'">
+            Design
+          </button>
+          <button type="button" :aria-pressed="face === 'contract'" @click="face = 'contract'">
+            Contract
+            <span
+              v-if="contractIssueCount"
+              class="badge"
+              :title="`${contractIssueCount} part${contractIssueCount === 1 ? '' : 's'} to bind`"
+              >{{ contractIssueCount }}</span
+            >
+          </button>
+        </nav>
         <span v-if="writable === false" class="read-only-badge">Read only</span>
       </div>
       <div v-if="active" class="node-head">
@@ -1273,85 +1310,105 @@ function onDetach(prop: string, value: JsonValue): void {
       </div>
     </header>
 
-    <p v-if="!active" class="note">
-      {{
-        (selection?.length ?? 0) > 1
-          ? 'Select a single layer to edit its properties.'
-          : 'Select a layer to adjust its size, layout, and appearance.'
-      }}
-    </p>
-    <p v-else-if="writable === false" class="note warn">
-      Reconnect to edit. You can still inspect properties and export.
-    </p>
+    <template v-if="face === 'contract'">
+      <p v-if="(selection?.length ?? 0) > 1" class="note">
+        Select a single layer to see what it binds.
+      </p>
+      <p v-else-if="writable === false" class="note warn">
+        Reconnect to edit. You can still inspect the bindings.
+      </p>
+      <section class="editor">
+        <ContractSection
+          :doc="doc"
+          :node="active"
+          :library="headless ?? null"
+          :library-error="headlessError"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @select="emit('select', $event)"
+        />
+      </section>
+    </template>
+    <template v-else>
+      <p v-if="!active" class="note">
+        {{
+          (selection?.length ?? 0) > 1
+            ? 'Select a single layer to edit its properties.'
+            : 'Select a layer to adjust its size, layout, and appearance.'
+        }}
+      </p>
+      <p v-else-if="writable === false" class="note warn">
+        Reconnect to edit. You can still inspect properties and export.
+      </p>
 
-    <!--
+      <!--
       A fill's two states, as the two gestures that reach them (ADR 0007 §2).
       Reset removes the fill and the definition's default returns; empty keeps
       the fill and draws nothing on purpose. They are different documents, so
       they are different buttons.
     -->
-    <GraphicsSection
-      v-if="active?.element === 'Vector'"
-      :node="active"
-      :info="vectorInfo"
-      :writable="writable !== false"
-      :can-make-component="canMakeComponent === true"
-      @edit="emit('editVector', $event)"
-      @finish="emit('finishVector')"
-      @action="emit('vectorAction', $event)"
-      @make-component="emit('makeComponent')"
-      @patches="emit('patches', $event)"
-    />
-    <section v-if="fillSlot" class="fill-actions">
-      <p class="note">
-        This fills the slot <strong>{{ fillSlot.name }}</strong
-        >. Its layout belongs to the component that declares it; what is inside is this
-        page&rsquo;s.
-      </p>
-      <div class="fill-buttons">
-        <button
-          type="button"
-          :disabled="writable === false"
-          title="Remove the fill — the component's default content comes back"
-          @click="resetFill"
-        >
-          Reset slot
-        </button>
-        <button
-          type="button"
-          :disabled="writable === false || !fillHasContents"
-          title="Keep the fill and empty it — the slot draws nothing"
-          @click="emptyFill"
-        >
-          Delete contents
-        </button>
-      </div>
-    </section>
+      <GraphicsSection
+        v-if="active?.element === 'Vector'"
+        :node="active"
+        :info="vectorInfo"
+        :writable="writable !== false"
+        :can-make-component="canMakeComponent === true"
+        @edit="emit('editVector', $event)"
+        @finish="emit('finishVector')"
+        @action="emit('vectorAction', $event)"
+        @make-component="emit('makeComponent')"
+        @patches="emit('patches', $event)"
+      />
+      <section v-if="fillSlot" class="fill-actions">
+        <p class="note">
+          This fills the slot <strong>{{ fillSlot.name }}</strong
+          >. Its layout belongs to the component that declares it; what is inside is this
+          page&rsquo;s.
+        </p>
+        <div class="fill-buttons">
+          <button
+            type="button"
+            :disabled="writable === false"
+            title="Remove the fill — the component's default content comes back"
+            @click="resetFill"
+          >
+            Reset slot
+          </button>
+          <button
+            type="button"
+            :disabled="writable === false || !fillHasContents"
+            title="Keep the fill and empty it — the slot draws nothing"
+            @click="emptyFill"
+          >
+            Delete contents
+          </button>
+        </div>
+      </section>
 
-    <section
-      v-if="!active && doc && !doc.tree.synthetic && (selection?.length ?? 0) === 0"
-      class="root-size-setting"
-    >
-      <label class="field-caption" for="root-font-size">Root font size</label>
-      <div class="root-size-input">
-        <input
-          id="root-font-size"
-          type="number"
-          min="1"
-          step="1"
-          :value="rootFontSize"
-          :disabled="writable === false"
-          @change="changeRootSize"
-          @blur="changeRootSize"
-          @keydown.enter="changeRootSize"
-        />
-        <span>px</span>
-      </div>
-      <p class="note">1rem = {{ rootFontSize }}px</p>
-    </section>
-    <!-- The editor for the one selected node. -->
-    <section v-if="active" class="editor">
-      <!--
+      <section
+        v-if="!active && doc && !doc.tree.synthetic && (selection?.length ?? 0) === 0"
+        class="root-size-setting"
+      >
+        <label class="field-caption" for="root-font-size">Root font size</label>
+        <div class="root-size-input">
+          <input
+            id="root-font-size"
+            type="number"
+            min="1"
+            step="1"
+            :value="rootFontSize"
+            :disabled="writable === false"
+            @change="changeRootSize"
+            @blur="changeRootSize"
+            @keydown.enter="changeRootSize"
+          />
+          <span>px</span>
+        </div>
+        <p class="note">1rem = {{ rootFontSize }}px</p>
+      </section>
+      <!-- The editor for the one selected node. -->
+      <section v-if="active" class="editor">
+        <!--
         Making a hole out of what is already there (story F5, ADR 0007 §6).
         Offered for anything whose attributes would still mean something on a
         `<Slot>`, which is a question `prop-ui.ts` answers per element — so this
@@ -1362,133 +1419,133 @@ function onDetach(prop: string, value: JsonValue): void {
         the other way round asks the author to act before they have been told
         what on.
       -->
-      <div v-if="convertible" class="node-actions">
-        <button
-          type="button"
-          :disabled="writable === false"
-          title="Turn this into a slot — it keeps its layout, and its children become the default content"
-          @click="convertToSlot"
-        >
-          Convert to slot
-        </button>
-      </div>
-      <!--
+        <div v-if="convertible" class="node-actions">
+          <button
+            type="button"
+            :disabled="writable === false"
+            title="Turn this into a slot — it keeps its layout, and its children become the default content"
+            @click="convertToSlot"
+          >
+            Convert to slot
+          </button>
+        </div>
+        <!--
         Above the layer's own, the way Figma stacks them, and named apart from
         them because this repo already calls a scene attribute a "property"
         (F6's own warning).
       -->
-      <!--
+        <!--
         Which component an instance is, before what it says: Figma's swap
         control is the top row of the panel, and a swap changes every property
         below it.
       -->
-      <div
-        v-if="swapRow"
-        class="instance-swap-row"
-        :data-linked="swapRow.boundTo ? 'true' : undefined"
-      >
-        <label>Component</label>
-        <span v-if="!swapRow.boundTo" class="swap-name">{{ swapRow.component }}</span>
-        <PropertyLink
-          :bound-to="swapRow.boundTo"
-          :candidates="swapRow.candidates"
-          icon="prop-instance"
-          :editable="writable !== false"
-          :variables="[]"
-          :component-name="componentName"
-          @link="(name) => onLink('component', name)"
-          @unlink="onUnlink('component')"
-          @create="onCreate('component')"
-          @edit="onEditDeclaration"
-        />
-      </div>
+        <div
+          v-if="swapRow"
+          class="instance-swap-row"
+          :data-linked="swapRow.boundTo ? 'true' : undefined"
+        >
+          <label>Component</label>
+          <span v-if="!swapRow.boundTo" class="swap-name">{{ swapRow.component }}</span>
+          <PropertyLink
+            :bound-to="swapRow.boundTo"
+            :candidates="swapRow.candidates"
+            icon="prop-instance"
+            :editable="writable !== false"
+            :variables="[]"
+            :component-name="componentName"
+            @link="(name) => onLink('component', name)"
+            @unlink="onUnlink('component')"
+            @create="onCreate('component')"
+            @edit="onEditDeclaration"
+          />
+        </div>
 
-      <!--
+        <!--
         An instance's own properties come first: using a component is choosing
         its content, and the geometry below is the only other thing an instance
         lets anyone change.
       -->
-      <InstancePropsSection
-        v-if="active.element === 'Instance'"
-        :doc="doc"
-        :instance="active"
-        :definition="definitionFor(active)"
-        :writable="writable !== false"
-        @patches="emit('patches', $event)"
-      />
+        <InstancePropsSection
+          v-if="active.element === 'Instance'"
+          :doc="doc"
+          :instance="active"
+          :definition="definitionFor(active)"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+        />
 
-      <!--
+        <!--
         A component's states come before its properties: a state is the coarser
         fact — which button this is, before what it says.
       -->
-      <ComponentVariantsSection
-        v-if="active.element === 'Component' && active.attrs.variants !== undefined"
-        :doc="doc"
-        :component="active"
-        :pages="pages"
-        :file="file"
-        :writable="writable !== false"
-        @patches="emit('patches', $event)"
-        @remap="emit('remap', $event)"
-        @refused="emit('refused', $event)"
-      />
+        <ComponentVariantsSection
+          v-if="active.element === 'Component' && active.attrs.variants !== undefined"
+          :doc="doc"
+          :component="active"
+          :pages="pages"
+          :file="file"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @remap="emit('remap', $event)"
+          @refused="emit('refused', $event)"
+        />
 
-      <ComponentPropsSection
-        v-if="active.element === 'Component'"
-        :pages="pages"
-        :file="file"
-        :doc="doc"
-        :component="active"
-        :writable="writable !== false"
-        @remap="emit('remap', $event)"
-        @patches="emit('patches', $event)"
-      />
+        <ComponentPropsSection
+          v-if="active.element === 'Component'"
+          :pages="pages"
+          :file="file"
+          :doc="doc"
+          :component="active"
+          :writable="writable !== false"
+          @remap="emit('remap', $event)"
+          @patches="emit('patches', $event)"
+        />
 
-      <p v-if="!fields.length" class="note">This node declares no properties.</p>
+        <p v-if="!fields.length" class="note">This node declares no properties.</p>
 
-      <PropertySectionRoot
-        v-for="section in sections"
-        :key="section.group"
-        :open="openSections[section.group]"
-        class="section"
-        :aria-label="section.label"
-        @update:open="openSections[section.group] = $event"
-      >
-        <!-- The header is inert markup; the primitive hands the toggle back
+        <PropertySectionRoot
+          v-for="section in sections"
+          :key="section.group"
+          :open="openSections[section.group]"
+          class="section"
+          :aria-label="section.label"
+          @update:open="openSections[section.group] = $event"
+        >
+          <!-- The header is inert markup; the primitive hands the toggle back
              through its slot, so the click has to be wired here. The chevron
              turns with data-state, Figma's own affordance. -->
-        <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
-          <button
-            type="button"
-            class="section-toggle"
-            v-bind="stateAttrs"
-            :aria-expanded="openSections[section.group]"
-            @click="actions.toggle()"
-          >
-            <PropertySectionTitle class="section-title">{{ section.label }}</PropertySectionTitle>
-            <span class="chevron" aria-hidden="true">›</span>
-          </button>
-          <!-- Figma hangs the node's visibility off the Appearance header
+          <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
+            <button
+              type="button"
+              class="section-toggle"
+              v-bind="stateAttrs"
+              :aria-expanded="openSections[section.group]"
+              @click="actions.toggle()"
+            >
+              <PropertySectionTitle class="section-title">{{ section.label }}</PropertySectionTitle>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+            <!-- Figma hangs the node's visibility off the Appearance header
                rather than burying it in a checkbox row. -->
-          <button
-            v-if="section.group === 'appearance'"
-            type="button"
-            class="cluster-btn section-eye"
-            :disabled="writable === false || !!visibleBound"
-            :title="
-              visibleBound
-                ? `visibility is linked to ${visibleBound}`
-                : isVisible
-                  ? 'hide this node'
-                  : 'show this node'
-            "
-            :aria-label="isVisible ? 'hide' : 'show'"
-            :aria-pressed="!isVisible"
-            @click="onCommit('visible', !isVisible)"
-          >
-            <FieldIcon :name="isVisible ? 'eye' : 'eye-off'" />
-          </button>
-          <!--
+            <button
+              v-if="section.group === 'appearance'"
+              type="button"
+              class="cluster-btn section-eye"
+              :disabled="writable === false || !!visibleBound"
+              :title="
+                visibleBound
+                  ? `visibility is linked to ${visibleBound}`
+                  : isVisible
+                    ? 'hide this node'
+                    : 'show this node'
+              "
+              :aria-label="isVisible ? 'hide' : 'show'"
+              :aria-pressed="!isVisible"
+              @click="onCommit('visible', !isVisible)"
+            >
+              <FieldIcon :name="isVisible ? 'eye' : 'eye-off'" />
+            </button>
+            <!--
             The boolean apply flow, beside the eye it fills — Figma's own
             placement ("Boolean property: the Appearance section"). Only while
             unbound: once a property drives visibility the pill is a row in the
@@ -1496,89 +1553,89 @@ function onDetach(prop: string, value: JsonValue): void {
             chevron, and a property name of any length overflows it. Figma puts
             the pill in the section for the same reason.
           -->
-          <span
-            v-for="link in [sectionLink(section.group)].filter((l) => l && !l.boundTo)"
-            :key="link!.prop"
-            class="section-link"
-          >
-            <PropertyLink
-              :bound-to="null"
-              :candidates="link!.candidates"
-              :icon="link!.prop === 'visible' ? 'prop-boolean' : 'prop-text'"
-              :editable="writable !== false"
-              :variables="link!.variables"
-              allow-variables
-              :variable-label="link!.prop === 'visible' ? 'Visibility' : 'Content'"
-              :component-name="componentName"
-              @link="(name) => onLink(link!.prop, name)"
-              @unlink="onUnlink(link!.prop)"
-              @create="onCreate(link!.prop)"
-              @pick-variable="(a) => onPickVariable(link!.prop, a)"
-            />
-          </span>
-          <!-- Fill/Stroke/Effects append here, Figma's placement — the
+            <span
+              v-for="link in [sectionLink(section.group)].filter((l) => l && !l.boundTo)"
+              :key="link!.prop"
+              class="section-link"
+            >
+              <PropertyLink
+                :bound-to="null"
+                :candidates="link!.candidates"
+                :icon="link!.prop === 'visible' ? 'prop-boolean' : 'prop-text'"
+                :editable="writable !== false"
+                :variables="link!.variables"
+                allow-variables
+                :variable-label="link!.prop === 'visible' ? 'Visibility' : 'Content'"
+                :component-name="componentName"
+                @link="(name) => onLink(link!.prop, name)"
+                @unlink="onUnlink(link!.prop)"
+                @create="onCreate(link!.prop)"
+                @pick-variable="(a) => onPickVariable(link!.prop, a)"
+              />
+            </span>
+            <!-- Fill/Stroke/Effects append here, Figma's placement — the
                in-field header row these buttons used to sit in is gone. -->
-          <button
-            v-if="ADDABLE[section.group]"
-            type="button"
-            class="cluster-btn"
-            :data-section-add="section.group"
-            :aria-label="`Add ${section.group === 'effects' ? 'effect' : section.group}`"
-            :disabled="writable === false || sectionAddDisabled(section.group)"
-            :title="
-              sectionAddDisabled(section.group)
-                ? `${ADDABLE[section.group]} the panel cannot edit — authored with variables; edit the file`
-                : `add ${section.group === 'effects' ? 'an effect' : 'a solid paint'}`
-            "
-            @click="onSectionAdd(section.group)"
-          >
-            <FieldIcon name="plus" />
-          </button>
-        </PropertySectionHeader>
-        <PropertySectionContent class="section-body">
-          <!--
+            <button
+              v-if="ADDABLE[section.group]"
+              type="button"
+              class="cluster-btn"
+              :data-section-add="section.group"
+              :aria-label="`Add ${section.group === 'effects' ? 'effect' : section.group}`"
+              :disabled="writable === false || sectionAddDisabled(section.group)"
+              :title="
+                sectionAddDisabled(section.group)
+                  ? `${ADDABLE[section.group]} the panel cannot edit — authored with variables; edit the file`
+                  : `add ${section.group === 'effects' ? 'an effect' : 'a solid paint'}`
+              "
+              @click="onSectionAdd(section.group)"
+            >
+              <FieldIcon name="plus" />
+            </button>
+          </PropertySectionHeader>
+          <PropertySectionContent class="section-body">
+            <!--
             Figma's **Apply variable mode**, in the Appearance section it puts
             it in (G8). Leads the section because a mode governs every value
             below it: changing it re-resolves the rows underneath, so reading
             it after them would explain the numbers only in hindsight.
           -->
-          <ModeRow
-            v-if="section.group === 'appearance'"
-            :token-index="tokenIndex"
-            :explicit="explicitModes"
-            :editable="writable !== false"
-            @set="onSetMode"
-            @clear="onClearMode"
-          />
+            <ModeRow
+              v-if="section.group === 'appearance'"
+              :token-index="tokenIndex"
+              :explicit="explicitModes"
+              :editable="writable !== false"
+              @set="onSetMode"
+              @clear="onClearMode"
+            />
 
-          <!--
+            <!--
             A `<Text>`'s Resizing switch leads the section, above Dimensions —
             Figma's own stacking, and the reason this is rendered here rather
             than left to the generic rows below (which would put it after
             every dimension it governs). `HANDLED_BY_SECTION` keeps it from
             also appearing there.
           -->
-          <div
-            v-if="textResizeField && section.group === sizeGroup"
-            class="field"
-            :data-prop="textResizeField.name"
-            @mouseenter="onHover(textResizeField.name)"
-            @mouseleave="onHover(null)"
-          >
-            <PropertyField
-              :field="textResizeField"
-              :resolved-value="resolved(textResizeField)"
-              :held-value="heldFor(textResizeField)"
-              :editable="editable(textResizeField)"
-              :swatches="swatches"
-              :tokens="tokens"
-              :token-index="tokenIndex"
-              @preview="onPreview"
-              @commit="onCommit"
-            />
-          </div>
+            <div
+              v-if="textResizeField && section.group === sizeGroup"
+              class="field"
+              :data-prop="textResizeField.name"
+              @mouseenter="onHover(textResizeField.name)"
+              @mouseleave="onHover(null)"
+            >
+              <PropertyField
+                :field="textResizeField"
+                :resolved-value="resolved(textResizeField)"
+                :held-value="heldFor(textResizeField)"
+                :editable="editable(textResizeField)"
+                :swatches="swatches"
+                :tokens="tokens"
+                :token-index="tokenIndex"
+                @preview="onPreview"
+                @commit="onCommit"
+              />
+            </div>
 
-          <!--
+            <!--
             Dimensions: W and H each carry the Hug/Fixed state that governs
             them, replacing the separate sizing-mode rows (§5). Figma's own
             word for this row — "Resizing" names the switch above, and the two
@@ -1588,333 +1645,337 @@ function onDetach(prop: string, value: JsonValue): void {
             its box — it just has no Hug to offer unless it is a `<Text>`,
             whose glyphs size it.
           -->
-          <DimensionsField
-            v-if="sizeGroup && section.group === sizeGroup && active"
-            :element="active.element"
-            :layout-mode="layoutMode"
-            :primary-axis-sizing="valueOf('primaryAxisSizingMode', 'FIXED')"
-            :counter-axis-sizing="valueOf('counterAxisSizingMode', 'FIXED')"
-            :text-resize="textResize"
-            :width="authoredNumber('width')"
-            :height="authoredNumber('height')"
-            :modes="sizeModes"
-            :editable="writable !== false"
-            :token-source="tokenSource"
-            @bind="onBindVariables"
-            @detach="onDetachVariables"
-            @preview="onPreview"
-            @commit="onCommit"
-            @hover="onHover"
-          />
+            <DimensionsField
+              v-if="sizeGroup && section.group === sizeGroup && active"
+              :element="active.element"
+              :layout-mode="layoutMode"
+              :primary-axis-sizing="valueOf('primaryAxisSizingMode', 'FIXED')"
+              :counter-axis-sizing="valueOf('counterAxisSizingMode', 'FIXED')"
+              :text-resize="textResize"
+              :width="authoredNumber('width')"
+              :height="authoredNumber('height')"
+              :modes="sizeModes"
+              :editable="writable !== false"
+              :token-source="tokenSource"
+              @bind="onBindVariables"
+              @detach="onDetachVariables"
+              @preview="onPreview"
+              @commit="onCommit"
+              @hover="onHover"
+            />
 
-          <InspectorGroup
-            v-for="group in inspectorGroups(section.group, genericFields(section))"
-            :key="group.id"
-            :group="group"
-          >
-            <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-align">
-              <span class="field-caption">Alignment</span>
-              <AlignmentMatrix
-                :primary="valueOf('primaryAxisAlignItems', 'MIN')"
-                :counter="valueOf('counterAxisAlignItems', 'MIN')"
-                :layout-mode="layoutMode"
-                :editable="writable !== false"
-                @commit="onMultiCommit"
-                @hover="onHover"
-              />
-            </div>
+            <InspectorGroup
+              v-for="group in inspectorGroups(section.group, genericFields(section))"
+              :key="group.id"
+              :group="group"
+            >
+              <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-align">
+                <span class="field-caption">Alignment</span>
+                <AlignmentMatrix
+                  :primary="valueOf('primaryAxisAlignItems', 'MIN')"
+                  :counter="valueOf('counterAxisAlignItems', 'MIN')"
+                  :layout-mode="layoutMode"
+                  :editable="writable !== false"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+              </div>
 
-            <template v-for="paired in group.fields" :key="paired.field.name">
-              <div
-                v-if="paired.pairedWith"
-                class="field field-pair"
-                :data-prop="paired.field.name"
-                :data-authored="paired.field.authored || paired.pairedWith?.authored"
-                :title="paired.field.readonlyReason ?? undefined"
-                @mouseenter="onHover(paired.field.name)"
-                @mouseleave="onHover(null)"
-              >
-                <!--
+              <template v-for="paired in group.fields" :key="paired.field.name">
+                <div
+                  v-if="paired.pairedWith"
+                  class="field field-pair"
+                  :data-prop="paired.field.name"
+                  :data-authored="paired.field.authored || paired.pairedWith?.authored"
+                  :title="paired.field.readonlyReason ?? undefined"
+                  @mouseenter="onHover(paired.field.name)"
+                  @mouseleave="onHover(null)"
+                >
+                  <!--
                 One caption above each half — Left | Right, Top | Bottom, Line
                 height | Letter spacing. The x pair used to carry one spanning
                 "Position" caption with letters inside the boxes instead;
                 review preferred every edge named the same way, above.
               -->
-                <div class="pair-captions">
-                  <span class="field-caption">{{ paired.field.label }}</span>
-                  <span class="field-caption">{{ paired.pairedWith.label }}</span>
-                </div>
-                <div class="pair-grid">
-                  <div
-                    class="field-cell"
-                    :data-prop="paired.field.name"
-                    @mouseenter="onHover(paired.field.name)"
-                    @mouseleave="onHover(null)"
-                  >
-                    <PropertyField
-                      :field="paired.field"
-                      :resolved-value="resolved(paired.field)"
-                      :held-value="heldFor(paired.field)"
-                      :editable="editable(paired.field)"
-                      :swatches="swatches"
-                      :candidates="candidatesFor(paired.field)"
-                      :variables="variablesFor(paired.field)"
-                      :component-name="componentName"
-                      :tokens="tokens"
-                      :token-index="tokenIndex"
-                      compact
-                      @preview="onPreview"
-                      @commit="onCommit"
-                      @link="onLink"
-                      @unlink="onUnlink"
-                      @create="onCreate"
-                      @edit="onEditDeclaration"
-                      @pick-variable="onPickVariable"
-                      @detach="onDetach"
-                    />
+                  <div class="pair-captions">
+                    <span class="field-caption">{{ paired.field.label }}</span>
+                    <span class="field-caption">{{ paired.pairedWith.label }}</span>
                   </div>
-                  <div
-                    class="field-cell"
-                    :data-prop="paired.pairedWith.name"
-                    :title="paired.pairedWith.readonlyReason ?? undefined"
-                    @mouseenter="onHover(paired.pairedWith.name)"
-                    @mouseleave="onHover(null)"
-                  >
-                    <PropertyField
-                      :field="paired.pairedWith"
-                      :resolved-value="resolved(paired.pairedWith)"
-                      :held-value="heldFor(paired.pairedWith)"
-                      :editable="editable(paired.pairedWith)"
-                      :swatches="swatches"
-                      :candidates="candidatesFor(paired.pairedWith)"
-                      :variables="variablesFor(paired.pairedWith)"
-                      :component-name="componentName"
-                      :tokens="tokens"
-                      :token-index="tokenIndex"
-                      compact
-                      @preview="onPreview"
-                      @commit="onCommit"
-                      @link="onLink"
-                      @unlink="onUnlink"
-                      @create="onCreate"
-                      @edit="onEditDeclaration"
-                      @pick-variable="onPickVariable"
-                      @detach="onDetach"
-                    />
+                  <div class="pair-grid">
+                    <div
+                      class="field-cell"
+                      :data-prop="paired.field.name"
+                      @mouseenter="onHover(paired.field.name)"
+                      @mouseleave="onHover(null)"
+                    >
+                      <PropertyField
+                        :field="paired.field"
+                        :resolved-value="resolved(paired.field)"
+                        :held-value="heldFor(paired.field)"
+                        :editable="editable(paired.field)"
+                        :swatches="swatches"
+                        :candidates="candidatesFor(paired.field)"
+                        :variables="variablesFor(paired.field)"
+                        :component-name="componentName"
+                        :tokens="tokens"
+                        :token-index="tokenIndex"
+                        compact
+                        @preview="onPreview"
+                        @commit="onCommit"
+                        @link="onLink"
+                        @unlink="onUnlink"
+                        @create="onCreate"
+                        @edit="onEditDeclaration"
+                        @pick-variable="onPickVariable"
+                        @detach="onDetach"
+                      />
+                    </div>
+                    <div
+                      class="field-cell"
+                      :data-prop="paired.pairedWith.name"
+                      :title="paired.pairedWith.readonlyReason ?? undefined"
+                      @mouseenter="onHover(paired.pairedWith.name)"
+                      @mouseleave="onHover(null)"
+                    >
+                      <PropertyField
+                        :field="paired.pairedWith"
+                        :resolved-value="resolved(paired.pairedWith)"
+                        :held-value="heldFor(paired.pairedWith)"
+                        :editable="editable(paired.pairedWith)"
+                        :swatches="swatches"
+                        :candidates="candidatesFor(paired.pairedWith)"
+                        :variables="variablesFor(paired.pairedWith)"
+                        :component-name="componentName"
+                        :tokens="tokens"
+                        :token-index="tokenIndex"
+                        compact
+                        @preview="onPreview"
+                        @commit="onCommit"
+                        @link="onLink"
+                        @unlink="onUnlink"
+                        @create="onCreate"
+                        @edit="onEditDeclaration"
+                        @pick-variable="onPickVariable"
+                        @detach="onDetach"
+                      />
+                    </div>
                   </div>
                 </div>
-              </div>
+                <div
+                  v-else
+                  class="field"
+                  :class="{ 'field-check': paired.field.control === 'boolean' }"
+                  :data-prop="paired.field.name"
+                  :data-authored="paired.field.authored"
+                  :data-linked="isPropertyBound(paired.field) || undefined"
+                  :title="paired.field.readonlyReason ?? undefined"
+                  @mouseenter="onHover(paired.field.name)"
+                  @mouseleave="onHover(null)"
+                >
+                  <PropertyField
+                    :field="paired.field"
+                    :text-direction="textDirection"
+                    :resolved-value="resolved(paired.field)"
+                    :held-value="heldFor(paired.field)"
+                    :editable="editable(paired.field)"
+                    :swatches="swatches"
+                    :candidates="candidatesFor(paired.field)"
+                    :variables="variablesFor(paired.field)"
+                    :component-name="componentName"
+                    :tokens="tokens"
+                    :token-index="tokenIndex"
+                    @preview="onPreview"
+                    @commit="onCommit"
+                    @link="onLink"
+                    @unlink="onUnlink"
+                    @create="onCreate"
+                    @edit="onEditDeclaration"
+                    @pick-variable="onPickVariable"
+                    @detach="onDetach"
+                  />
+                </div>
+              </template>
               <div
-                v-else
-                class="field"
-                :class="{ 'field-check': paired.field.control === 'boolean' }"
-                :data-prop="paired.field.name"
-                :data-authored="paired.field.authored"
-                :data-linked="isPropertyBound(paired.field) || undefined"
-                :title="paired.field.readonlyReason ?? undefined"
-                @mouseenter="onHover(paired.field.name)"
-                @mouseleave="onHover(null)"
+                v-if="group.id === 'layout-spacing' && hasAutoLayout"
+                class="field field-padding"
               >
-                <PropertyField
-                  :field="paired.field"
-                  :text-direction="textDirection"
-                  :resolved-value="resolved(paired.field)"
-                  :held-value="heldFor(paired.field)"
-                  :editable="editable(paired.field)"
-                  :swatches="swatches"
-                  :candidates="candidatesFor(paired.field)"
-                  :variables="variablesFor(paired.field)"
-                  :component-name="componentName"
-                  :tokens="tokens"
-                  :token-index="tokenIndex"
-                  @preview="onPreview"
-                  @commit="onCommit"
-                  @link="onLink"
-                  @unlink="onUnlink"
-                  @create="onCreate"
-                  @edit="onEditDeclaration"
-                  @pick-variable="onPickVariable"
-                  @detach="onDetach"
+                <span class="field-caption">Padding</span>
+                <PaddingField
+                  :values="paddingValues"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
                 />
               </div>
-            </template>
-            <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-padding">
-              <span class="field-caption">Padding</span>
-              <PaddingField
-                :values="paddingValues"
-                :editable="writable !== false"
-                :token-source="tokenSource"
-                @bind="onBindVariables"
-                @detach="onDetachVariables"
-                @preview="onMultiPreview"
-                @commit="onMultiCommit"
-                @hover="onHover"
-              />
-            </div>
-            <div v-if="group.id === 'appearance-main' && showCorners" class="field field-corner">
-              <span class="field-caption">Corner radius</span>
-              <CornerField
-                :corners="cornerValues"
-                :per-corner="hasPerCorner"
-                :smoothing="numberOf('cornerSmoothing')"
-                :editable="writable !== false"
-                :token-source="tokenSource"
-                @bind="onBindVariables"
-                @detach="onDetachVariables"
-                @preview="onMultiPreview"
-                @commit="onMultiCommit"
-                @hover="onHover"
-              />
-            </div>
-          </InspectorGroup>
-        </PropertySectionContent>
-      </PropertySectionRoot>
+              <div v-if="group.id === 'appearance-main' && showCorners" class="field field-corner">
+                <span class="field-caption">Corner radius</span>
+                <CornerField
+                  :corners="cornerValues"
+                  :per-corner="hasPerCorner"
+                  :smoothing="numberOf('cornerSmoothing')"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+              </div>
+            </InspectorGroup>
+          </PropertySectionContent>
+        </PropertySectionRoot>
 
-      <!--
+        <!--
         One dialog for the pane, not one per row: only one field can be asking
         at a time, and the submit is the pane's to make either way.
       -->
-      <PropertyDialog
-        v-if="creating"
-        :key="creating.prop"
-        mode="create"
-        :type="creating.type"
-        :value="creating.value"
-        @submit="onCreateSubmit"
-        @close="creating = null"
-      />
+        <PropertyDialog
+          v-if="creating"
+          :key="creating.prop"
+          mode="create"
+          :type="creating.type"
+          :value="creating.value"
+          @submit="onCreateSubmit"
+          @close="creating = null"
+        />
 
-      <PropertyDialog
-        v-if="editing"
-        :key="editing.from"
-        mode="edit"
-        :type="editing.type"
-        :name="editing.from"
-        :value="editing.value"
-        @submit="onEditSubmit"
-        @close="editing = null"
-      />
+        <PropertyDialog
+          v-if="editing"
+          :key="editing.from"
+          mode="edit"
+          :type="editing.type"
+          :name="editing.from"
+          :value="editing.value"
+          @submit="onEditSubmit"
+          @close="editing = null"
+        />
 
-      <InspectorGroup
-        v-if="unmapped.length"
-        :group="{
-          id: 'additional-properties',
-          label: 'Additional properties',
-          advanced: true,
-          fields: unmapped.map((field) => ({ field, pairedWith: null })),
-        }"
-      >
-        <div
-          v-for="field in unmapped"
-          :key="field.name"
-          class="field"
-          :data-prop="field.name"
-          :data-authored="field.authored"
-          @mouseenter="onHover(field.name)"
-          @mouseleave="onHover(null)"
+        <InspectorGroup
+          v-if="unmapped.length"
+          :group="{
+            id: 'additional-properties',
+            label: 'Additional properties',
+            advanced: true,
+            fields: unmapped.map((field) => ({ field, pairedWith: null })),
+          }"
         >
-          <PropertyField
-            :field="field"
-            :resolved-value="null"
-            :held-value="null"
-            :editable="editable(field)"
-            :swatches="swatches"
-            :tokens="tokens"
-            :token-index="tokenIndex"
-            @preview="onPreview"
-            @commit="onCommit"
-            @detach="onDetach"
-          />
-        </div>
-      </InspectorGroup>
-      <!--
+          <div
+            v-for="field in unmapped"
+            :key="field.name"
+            class="field"
+            :data-prop="field.name"
+            :data-authored="field.authored"
+            @mouseenter="onHover(field.name)"
+            @mouseleave="onHover(null)"
+          >
+            <PropertyField
+              :field="field"
+              :resolved-value="null"
+              :held-value="null"
+              :editable="editable(field)"
+              :swatches="swatches"
+              :tokens="tokens"
+              :token-index="tokenIndex"
+              @preview="onPreview"
+              @commit="onCommit"
+              @detach="onDetach"
+            />
+          </div>
+        </InspectorGroup>
+        <!--
         Export closes the panel, after every section that styles the layer —
         the last thing you do to a layer is take it away as a file. It is not
         a `PropGroup`: it reads no property, writes no patch, and holds no
         value the document could carry.
       -->
-      <PropertySectionRoot
-        v-model:open="exportOpen"
-        class="section"
-        aria-label="Export"
-        data-export-section
-      >
-        <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
-          <button
-            type="button"
-            class="section-toggle"
-            v-bind="stateAttrs"
-            :aria-expanded="exportOpen"
-            @click="actions.toggle()"
-          >
-            <PropertySectionTitle class="section-title">Export</PropertySectionTitle>
-            <span class="chevron" aria-hidden="true">›</span>
-          </button>
-        </PropertySectionHeader>
-        <PropertySectionContent class="section-body">
-          <!--
+        <PropertySectionRoot
+          v-model:open="exportOpen"
+          class="section"
+          aria-label="Export"
+          data-export-section
+        >
+          <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
+            <button
+              type="button"
+              class="section-toggle"
+              v-bind="stateAttrs"
+              :aria-expanded="exportOpen"
+              @click="actions.toggle()"
+            >
+              <PropertySectionTitle class="section-title">Export</PropertySectionTitle>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+          </PropertySectionHeader>
+          <PropertySectionContent class="section-body">
+            <!--
             The whole vocabulary on one row rather than behind a menu: three
             formats fit, and a menu that has to be opened to be read hides how
             few choices there are.
           -->
-          <div class="format-pills" role="radiogroup" aria-label="Export format">
-            <button
-              v-for="format in EXPORT_FORMATS"
-              :key="format"
-              type="button"
-              role="radio"
-              class="format-pill"
-              :data-export-format="format"
-              :aria-checked="exportFormat === format"
-              @click="exportFormat = format"
-            >
-              {{ format }}
-            </button>
-          </div>
+            <div class="format-pills" role="radiogroup" aria-label="Export format">
+              <button
+                v-for="format in EXPORT_FORMATS"
+                :key="format"
+                type="button"
+                role="radio"
+                class="format-pill"
+                :data-export-format="format"
+                :aria-checked="exportFormat === format"
+                @click="exportFormat = format"
+              >
+                {{ format }}
+              </button>
+            </div>
 
-          <!--
+            <!--
             Scale and the pixels it lands on, side by side, because one is the
             question and the other is its consequence. Under SVG both go quiet
             rather than disappearing: a section that changed height on every
             format click would move the button out from under the cursor.
           -->
-          <div class="export-row">
-            <label class="export-field">
-              <span>Scale</span>
-              <input
-                type="text"
-                inputmode="decimal"
-                data-export-scale
-                :value="exportScale"
-                :disabled="!scaleApplies"
-                @input="onExportScale"
-              />
-            </label>
-            <span class="export-field">
-              <span>Pixels</span>
-              <span class="export-pixels" data-export-pixels>
-                {{ exportPixels ? `${exportPixels.width} × ${exportPixels.height}` : '—' }}
+            <div class="export-row">
+              <label class="export-field">
+                <span>Scale</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  data-export-scale
+                  :value="exportScale"
+                  :disabled="!scaleApplies"
+                  @input="onExportScale"
+                />
+              </label>
+              <span class="export-field">
+                <span>Pixels</span>
+                <span class="export-pixels" data-export-pixels>
+                  {{ exportPixels ? `${exportPixels.width} × ${exportPixels.height}` : '—' }}
+                </span>
               </span>
-            </span>
-          </div>
+            </div>
 
-          <!--
+            <!--
             The button names the file, so the answer is legible before it is
             given. Enabled while the file is read-only: every other control in
             this panel writes, and this one only reads.
           -->
-          <button
-            type="button"
-            class="export-run"
-            data-export-run
-            :disabled="!canExport"
-            @click="onExport"
-          >
-            Export {{ exportFileName }}
-          </button>
-        </PropertySectionContent>
-      </PropertySectionRoot>
-    </section>
+            <button
+              type="button"
+              class="export-run"
+              data-export-run
+              :disabled="!canExport"
+              @click="onExport"
+            >
+              Export {{ exportFileName }}
+            </button>
+          </PropertySectionContent>
+        </PropertySectionRoot>
+      </section>
+    </template>
   </aside>
 </template>
 
@@ -1982,6 +2043,48 @@ h2 {
 .read-only-badge {
   color: var(--warn);
   font-size: var(--ui-size-sm);
+}
+/* The same toggle the left rail uses for Elements / Tokens / Fonts. */
+.face-toggle {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.face-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 10px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.face-toggle button[aria-pressed='true'] {
+  background: var(--raised);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.face-toggle button:hover {
+  color: var(--text);
+}
+.face-toggle .badge {
+  min-width: 14px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--warn);
+  color: var(--bg);
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 14px;
+  text-align: center;
 }
 .note {
   color: var(--text-faint);

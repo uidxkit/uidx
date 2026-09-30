@@ -225,11 +225,11 @@
 }
 
 /* Component rows share the inspector's gutters and leave room for 32px fields. */
-.properties .editor :is(.component-props, .instance-props, .variants) {
+.properties .editor :is(.component-props, .instance-props, .variants, .contract) {
   margin: 0 calc(-1 * var(--section-pad));
   padding: 0 var(--section-pad) 12px;
 }
-.properties .editor :is(.component-props, .instance-props, .variants) > .head {
+.properties .editor :is(.component-props, .instance-props, .variants, .contract) > .head {
   height: 44px;
   align-items: center;
 }
