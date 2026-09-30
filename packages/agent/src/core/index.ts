@@ -223,6 +223,7 @@ export { viewerSelection } from './viewer.js'
 export { describeComponent, listComponents, listTokens } from './design-system.js'
 export type { ComponentDetail, ComponentSummary, TokenRow } from './design-system.js'
 export { appLintContext, lintAppSource } from './app-lint.js'
+export { exportFig } from './fig.js'
 export type { AppFinding, AppLintContext } from './app-lint.js'
 export type { ViewerSelection, ViewerSelectionResult } from './viewer.js'
 

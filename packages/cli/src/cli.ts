@@ -25,6 +25,7 @@ import { runAdopt } from './commands/adopt.js'
 import { runComponent, runComponents } from './commands/components.js'
 import { runLint } from './commands/lint.js'
 import { runDiff } from './commands/diff.js'
+import { runExport } from './commands/export.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -42,6 +43,8 @@ Usage:
   uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
   uidx codegen <glob...> --out <dir>
                           render HTML/CSS, React and contract JSON from the pages
+  uidx export fig [--out dir]
+                          one Figma file per page, drawn as the canvas draws it
   uidx diff [--base ref] [--fail-on-breaking]
                           design-system changes since a git ref, breaking ones marked
   uidx lint [path...]     app code against the design system: token literals, raw elements
@@ -178,6 +181,8 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return await runLint(rest, io)
       case 'diff':
         return await runDiff(rest, io)
+      case 'export':
+        return await runExport(rest, io)
       case 'component':
         return await runComponent(rest, io)
       case 'dev':
