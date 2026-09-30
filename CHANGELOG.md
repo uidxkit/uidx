@@ -64,6 +64,17 @@ describe migrations when an existing document or integration is affected.
   the instance would sit inside. Removing the last declaration removes the
   empty `## Contract` heading; `uidx codegen` takes directories as `check`
   does.
+- Reviewed against Builder.io, Plasmic, Framer, Webflow, Figma and Penpot,
+  for a designer's first hour: a text is typed where it is drawn (the Text
+  tool opens it for typing, a double-click reopens it; Escape or ⌘Enter
+  keeps the words); a right-click menu offers the toolbar's actions with
+  their shortcuts; the status strip says "Saving…" and "All changes saved";
+  an empty page says how to start; the "Inside …" breadcrumb names the
+  container by its current name; the Contract tab leads with properties
+  and slots and folds the code binding and code library under "for
+  developers"; the overview counts pages "with content" and "problems"
+  instead of "drawable" and "parse"; the file-error overlay leads with what
+  happened in plain words; the Models face explains itself without jargon.
 - For designers who never open the file: a page that cannot be drawn keeps
   its last frame and says why in a banner instead of going blank; a number
   field commits on Enter as well as on leaving it; declaring a prop offers

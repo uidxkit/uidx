@@ -54,7 +54,7 @@ function created(file: string): void {
 const kpis = computed(() => {
   const { stats } = props.model
   return [
-    { label: 'Pages', value: stats.pages, note: `${stats.scenes} drawable` },
+    { label: 'Pages', value: stats.pages, note: `${stats.scenes} with content` },
     {
       label: 'Components',
       value: stats.components,
@@ -66,9 +66,12 @@ const kpis = computed(() => {
       note: `${stats.collections.length} collections`,
     },
     {
-      label: 'Errors',
+      label: 'Problems',
       value: stats.brokenPages,
-      note: stats.brokenPages === 0 ? 'all pages parse' : 'pages will not parse',
+      note:
+        stats.brokenPages === 0
+          ? 'every page opens'
+          : `${stats.brokenPages === 1 ? 'a page' : 'pages'} cannot be drawn`,
       alarm: stats.brokenPages > 0,
     },
   ]

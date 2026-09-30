@@ -131,8 +131,8 @@ watch(
             Models <span>{{ cards.length }}</span>
           </h1>
           <p>
-            What each component receives: declared once, named by a prop's type, sampled for the
-            canvas. Nothing here is computed — a derived value is a field the consumer supplies.
+            The data your components show. Declare a model once, give each field sample values, and
+            every list that repeats over it draws those samples on the canvas.
           </p>
         </div>
       </header>
@@ -161,8 +161,8 @@ watch(
         </label>
         <button type="button" class="add root" :disabled="!canAdd" @click="add">+ New model</button>
         <p class="hint">
-          A model belongs on the page of the component that shows it, or on a page called
-          <code>models</code> that every page shares.
+          Keep a model on the page of the component that shows it, or on a page called
+          <code>models</code> when several pages share it.
         </p>
       </section>
 
@@ -188,8 +188,8 @@ watch(
       </section>
 
       <p v-if="!cards.length" class="empty">
-        No models yet. A list prop typed <code>Contact[]</code> names one; declare it above and give
-        its fields samples, and the canvas draws the rows.
+        No models yet. Name one above — a list of contacts is a <code>Contact</code> model — then
+        add its fields with sample values, and the canvas draws the rows.
       </p>
 
       <section

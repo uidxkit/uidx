@@ -62,6 +62,7 @@ import {
 } from './headless'
 import { routeDerivedPatches } from './derived-edits'
 import WorkspaceStatus from './WorkspaceStatus.vue'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
 import { canRemove, componentFrom, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
 import { enclosingComponent } from './component-prop-edits'
@@ -422,6 +423,55 @@ function dismissNotice(): void {
   editorNotice.value = null
 }
 
+/**
+ * What the status strip says about the file: edits in flight, or all of
+ * them landed. Every peer tool shows this — Webflow's check mark, Penpot's
+ * file status — because a designer who cannot see the file needs to know
+ * their last change reached it. Counted, not flagged: two quick edits are
+ * two confirmations.
+ */
+const savesInFlight = ref(0)
+const savedOnce = ref(false)
+function saveStarted(): void {
+  savesInFlight.value += 1
+}
+function saveSettled(): void {
+  savesInFlight.value = Math.max(0, savesInFlight.value - 1)
+  savedOnce.value = true
+}
+
+/**
+ * The right-click menu: the toolbar's actions, at the pointer, with their
+ * shortcuts beside them.
+ */
+const menu = ref<{ x: number; y: number } | null>(null)
+const menuItems = (): MenuItem[] => [
+  {
+    label: 'Make component',
+    shortcut: '⌘⌥K',
+    disabled: componentSource.value === null,
+    run: startMakeComponent,
+  },
+  {
+    label: 'Place instance…',
+    disabled: components.value.size === 0,
+    run: () => (picking.value = true),
+  },
+  { label: 'New slot', disabled: slotTarget.value === null, run: addSlot },
+  { label: 'Repeat over a list', disabled: repeatTarget.value === null, run: addRepeat },
+  { kind: 'separator' },
+  { label: 'Undo', shortcut: '⌘Z', disabled: !undoStack.canUndo, run: undo },
+  { label: 'Redo', shortcut: '⇧⌘Z', disabled: !undoStack.canRedo, run: redo },
+  { kind: 'separator' },
+  {
+    label: 'Delete',
+    shortcut: '⌫',
+    danger: true,
+    disabled: deletable.value === null,
+    run: removeSelection,
+  },
+]
+
 const socket = createUidxSocket({
   onState: (state) => {
     connection.value = state
@@ -522,6 +572,7 @@ const socket = createUidxSocket({
         if (message.patchId) {
           // Our own write landing: the prediction is now the document.
           inFlight.settle(message.patchId)
+          if (own) saveSettled()
           historyPatchIds.delete(message.patchId)
           const pending = pendingInverse.get(message.patchId)
           if (pending) {
@@ -1054,7 +1105,10 @@ const channel = createPatchChannel({
     doc.value = null
     doc.value = authoritative
   },
-  onNotice: (next) => (patchNotice.value = next),
+  onNotice: (next) => {
+    patchNotice.value = next
+    if (next?.kind === 'rejected') saveSettled()
+  },
   /**
    * E4. The file is the source of truth, so it changing underneath an edit is
    * routine, not an error. The stale answer always arrives after the
@@ -1171,6 +1225,7 @@ function dispatch(file: string, patches: readonly UidxPatch[], record: boolean):
   }
   const patchId = channel.dispatch(file, at, patches, base)
   if (!patchId) return null
+  saveStarted()
   if (file === entry.value) inFlight.push(patchId, patches)
   if (!record) historyPatchIds.add(patchId)
   else if (inverse) undoStack.pushAuthor(file, [...patches], inverse, labelFor(patches))
@@ -1650,6 +1705,8 @@ onUnmounted(() => socket.close())
       </div>
     </div>
 
+    <ContextMenu v-if="menu" :x="menu.x" :y="menu.y" :items="menuItems()" @close="menu = null" />
+
     <NameComponentDialog
       v-if="naming !== null"
       :suggested="naming.split(/[#/]/).at(-1) ?? 'Component'"
@@ -1735,7 +1792,12 @@ onUnmounted(() => socket.close())
             @moved="onMoved"
           />
         </ErrorBoundary>
-        <WorkspaceStatus :connection="connection" :revision="revision" />
+        <WorkspaceStatus
+          :connection="connection"
+          :revision="revision"
+          :saving="savesInFlight > 0"
+          :saved="savedOnce"
+        />
       </aside>
 
       <!--
@@ -1829,6 +1891,7 @@ onUnmounted(() => socket.close())
             @patches="onCanvasPatches"
             @moved="onMoved"
             @notice="editorNotice = $event || null"
+            @context-menu="menu = $event"
             @vertex-edit="vertexEditing = $event"
             @vector-info="vectorInfo = $event"
             @drawing-done="armTool(null)"

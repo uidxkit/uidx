@@ -264,237 +264,15 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
     <!-- Nothing selected: what the tab is for, and whether a library is loaded. -->
     <template v-if="view.kind === 'page'">
       <p class="empty">
-        Select a component to choose the headless element it implements, or a layer inside one to
-        name the part it draws.
+        Select a component to declare what its instances can change — properties, slots and states —
+        or a layer inside one to name the part it draws.
       </p>
     </template>
 
     <template v-else-if="view.kind === 'component'">
       <header class="head">
-        <span class="title">Implements</span>
-        <span class="of">{{ view.component.name }}</span>
-      </header>
-      <div class="row" data-field="implements" :data-set="view.implementsValue !== null">
-        <span class="name" title="The headless element this component is a render of">
-          Element
-        </span>
-        <select
-          v-if="library"
-          class="pick"
-          :value="view.implementsValue ?? ''"
-          :disabled="!writable"
-          aria-label="Element"
-          @change="chooseElement(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">None</option>
-          <option v-for="option in view.rootOptions" :key="option.tag" :value="option.tag">
-            {{ option.tag }}{{ option.known ? '' : ' · not in library' }}
-          </option>
-        </select>
-        <input
-          v-else
-          class="text"
-          :value="view.implementsValue ?? ''"
-          :disabled="!writable"
-          aria-label="Element"
-          placeholder="e.g. hwc-button"
-          @change="chooseElement(($event.target as HTMLInputElement).value.trim())"
-        />
-        <button
-          v-if="view.implementsValue !== null"
-          type="button"
-          class="reset"
-          :disabled="!writable"
-          aria-label="Clear element"
-          title="Implement nothing"
-          @click="chooseElement('')"
-        >
-          ↺
-        </button>
-        <span v-else class="reset-spacer" />
-      </div>
-      <p v-if="boundTag && boundTag !== view.implementsValue" class="hint" data-field="bound">
-        Rendered as <code>{{ boundTag }}</code> — uidx.json binds this component to it.
-      </p>
-      <p v-if="view.element" class="hint">
-        <template v-if="view.element.attributes.length">
-          Attributes: {{ view.element.attributes.join(', ') }}.
-        </template>
-        <template v-if="view.element.events.length">
-          Events: {{ view.element.events.join(', ') }}.
-        </template>
-      </p>
-
-      <header class="head">
-        <span class="title">Parts</span>
-        <span v-if="view.parts.length" class="of"
-          >{{ boundCount }} of {{ view.parts.length }} bound</span
-        >
-      </header>
-      <p v-if="!view.parts.length" class="empty">
-        <template v-if="view.implementsValue === null">
-          Choose an element above to see the parts it offers.
-        </template>
-        <template v-else-if="!view.element">
-          “{{ view.implementsValue }}” is not in the library, and the contract declares no parts.
-        </template>
-        <template v-else>“{{ view.implementsValue }}” has no parts to bind.</template>
-      </p>
-      <!--
-        Bound from the component's side (Figma declares a property here) — each
-        declared part is a row, and an unbound row is a picker over the layers
-        that could draw it. A bound row names its layer and jumps to it.
-      -->
-      <div
-        v-for="row in view.parts"
-        :key="row.name"
-        class="row"
-        :data-part="row.name"
-        :data-bound="row.boundTo !== null"
-      >
-        <span
-          class="name"
-          :title="
-            `${row.name} · ` +
-            (row.declaredBy === 'both'
-              ? 'declared by the library and the contract'
-              : row.declaredBy === 'library'
-                ? 'declared by the library'
-                : 'declared by the contract; the library does not know it')
-          "
-        >
-          {{ row.name }}
-          <span v-if="row.declaredBy === 'contract' && view.element" class="flag">?</span>
-          <span
-            v-if="row.kind === 'shadow'"
-            class="pill"
-            title="A shadow part: styled through ::part() and drawn by the library. What the bound layer holds stays design-only."
-            >shadow</span
-          >
-        </span>
-        <button
-          v-if="row.boundTo"
-          type="button"
-          class="layer"
-          :title="`Select ${row.boundTo.name}`"
-          @click="emit('select', row.boundTo.address)"
-        >
-          <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-            <path
-              :d="LAYER_ICONS[row.boundTo.element as keyof typeof LAYER_ICONS]"
-              :fill="STROKE_ICONS.has(row.boundTo.element as never) ? 'none' : 'currentColor'"
-              :stroke="STROKE_ICONS.has(row.boundTo.element as never) ? 'currentColor' : 'none'"
-              stroke-width="1"
-            />
-          </svg>
-          <span class="layer-name">{{ row.boundTo.name }}</span>
-        </button>
-        <select
-          v-else
-          class="pick unbound"
-          value=""
-          :disabled="!writable || !view.candidates.length"
-          :aria-label="`Bind ${row.name}`"
-          @change="bind(row.name, ($event.target as HTMLSelectElement).value)"
-        >
-          <option value="" disabled>
-            {{ view.candidates.length ? 'Bind a layer…' : 'No layer to bind' }}
-          </option>
-          <option v-for="c in view.candidates" :key="c.address" :value="c.address">
-            {{ indent(c.depth) }}{{ c.name }}
-          </option>
-        </select>
-        <button
-          v-if="row.boundTo"
-          type="button"
-          class="reset"
-          :disabled="!writable"
-          :aria-label="`Unbind ${row.name}`"
-          :title="`Unbind ${row.boundTo.name} from ${row.name}`"
-          @click="unbind(row.boundTo.address)"
-        >
-          ×
-        </button>
-        <span v-else class="reset-spacer" />
-      </div>
-      <p v-for="stray in view.strayParts" :key="stray.address" class="stale" role="status">
-        “{{ stray.name }}” is bound to “{{ stray.part }}”, which nothing declares.
-        <button type="button" class="stale-name" @click="emit('select', stray.address)">
-          Show it
-        </button>
-      </p>
-
-      <template v-if="view.slots.length || view.straySlots.length">
-        <header class="head"><span class="title">Slots</span></header>
-        <div
-          v-for="stray in view.straySlots"
-          :key="`stray:${stray.address}`"
-          class="row"
-          :data-stray-slot="stray.name"
-          data-bound="false"
-        >
-          <span class="name">{{ stray.name }}</span>
-          <button
-            type="button"
-            class="layer"
-            title="Select the slot"
-            @click="emit('select', stray.address)"
-          >
-            <span class="layer-name">Not declared</span>
-          </button>
-          <button
-            type="button"
-            class="stale-name"
-            :disabled="!writable"
-            :title="`Declare slot ${stray.name} in the contract`"
-            @click="declareSlot(stray.name)"
-          >
-            Declare
-          </button>
-        </div>
-        <div
-          v-for="slot in view.slots"
-          :key="slot.name"
-          class="row"
-          :data-slot="slot.name"
-          :data-bound="slot.provided !== null"
-        >
-          <span class="name">
-            {{ slot.name }}
-            <span
-              v-if="slot.provided?.repeat"
-              class="pill"
-              :title="`Repeats over {${slot.provided.repeat.list}}: consumers fill one per item`"
-              >repeats</span
-            >
-          </span>
-          <button
-            v-if="slot.provided"
-            type="button"
-            class="layer"
-            title="Select the slot"
-            @click="emit('select', slot.provided.address)"
-          >
-            <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
-              <path
-                :d="slot.provided.repeat ? REPEAT_ICON : LAYER_ICONS.Slot"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="1"
-              />
-            </svg>
-            <span class="layer-name">
-              {{ slot.provided.repeat ? 'Slot, one per item' : 'Slot in tree' }}
-            </span>
-          </button>
-          <span v-else class="status">No slot in the tree yet</span>
-          <span class="reset-spacer" />
-        </div>
-      </template>
-
-      <header class="head">
-        <span class="title">Contract</span>
-        <span class="of">the file's</span>
+        <span class="title">Properties</span>
+        <span class="of">of {{ view.component.name }}</span>
         <button
           v-if="view.element"
           type="button"
@@ -507,7 +285,8 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         </button>
       </header>
       <p v-if="!contract" class="empty">
-        No <code>## Contract</code> yet. Fill it from the library, or add a prop below.
+        Nothing declared yet. A property is what an instance can change without reaching inside; a
+        slot is where it can put its own content. Add one below.
       </p>
 
       <!-- Props -->
@@ -898,6 +677,241 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           +
         </button>
       </div>
+
+      <template v-if="view.slots.length || view.straySlots.length">
+        <header class="head"><span class="title">Slots</span></header>
+        <div
+          v-for="stray in view.straySlots"
+          :key="`stray:${stray.address}`"
+          class="row"
+          :data-stray-slot="stray.name"
+          data-bound="false"
+        >
+          <span class="name">{{ stray.name }}</span>
+          <button
+            type="button"
+            class="layer"
+            title="Select the slot"
+            @click="emit('select', stray.address)"
+          >
+            <span class="layer-name">Not declared</span>
+          </button>
+          <button
+            type="button"
+            class="stale-name"
+            :disabled="!writable"
+            :title="`Declare slot ${stray.name} in the contract`"
+            @click="declareSlot(stray.name)"
+          >
+            Declare
+          </button>
+        </div>
+        <div
+          v-for="slot in view.slots"
+          :key="slot.name"
+          class="row"
+          :data-slot="slot.name"
+          :data-bound="slot.provided !== null"
+        >
+          <span class="name">
+            {{ slot.name }}
+            <span
+              v-if="slot.provided?.repeat"
+              class="pill"
+              :title="`Repeats over {${slot.provided.repeat.list}}: consumers fill one per item`"
+              >repeats</span
+            >
+          </span>
+          <button
+            v-if="slot.provided"
+            type="button"
+            class="layer"
+            title="Select the slot"
+            @click="emit('select', slot.provided.address)"
+          >
+            <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                :d="slot.provided.repeat ? REPEAT_ICON : LAYER_ICONS.Slot"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="1"
+              />
+            </svg>
+            <span class="layer-name">
+              {{ slot.provided.repeat ? 'Slot, one per item' : 'Slot in tree' }}
+            </span>
+          </button>
+          <span v-else class="status">No slot in the tree yet</span>
+          <span class="reset-spacer" />
+        </div>
+      </template>
+
+      <!--
+        How the component reaches code. A designer never needs this; a
+        developer binding the render to a headless element opens it. Closed by
+        default so the tab leads with what instances can change.
+      -->
+      <details class="code-binding" data-field="code-binding" :open="view.implementsValue !== null">
+        <summary>
+          <span class="title">Code binding</span>
+          <span class="of">{{
+            view.implementsValue ? view.implementsValue : 'optional · for developers'
+          }}</span>
+        </summary>
+        <header class="head">
+          <span class="title">Implements</span>
+          <span class="of">{{ view.component.name }}</span>
+        </header>
+        <div class="row" data-field="implements" :data-set="view.implementsValue !== null">
+          <span class="name" title="The headless element this component is a render of">
+            Element
+          </span>
+          <select
+            v-if="library"
+            class="pick"
+            :value="view.implementsValue ?? ''"
+            :disabled="!writable"
+            aria-label="Element"
+            @change="chooseElement(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">None</option>
+            <option v-for="option in view.rootOptions" :key="option.tag" :value="option.tag">
+              {{ option.tag }}{{ option.known ? '' : ' · not in library' }}
+            </option>
+          </select>
+          <input
+            v-else
+            class="text"
+            :value="view.implementsValue ?? ''"
+            :disabled="!writable"
+            aria-label="Element"
+            placeholder="e.g. hwc-button"
+            @change="chooseElement(($event.target as HTMLInputElement).value.trim())"
+          />
+          <button
+            v-if="view.implementsValue !== null"
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            aria-label="Clear element"
+            title="Implement nothing"
+            @click="chooseElement('')"
+          >
+            ↺
+          </button>
+          <span v-else class="reset-spacer" />
+        </div>
+        <p v-if="boundTag && boundTag !== view.implementsValue" class="hint" data-field="bound">
+          Rendered as <code>{{ boundTag }}</code> — uidx.json binds this component to it.
+        </p>
+        <p v-if="view.element" class="hint">
+          <template v-if="view.element.attributes.length">
+            Attributes: {{ view.element.attributes.join(', ') }}.
+          </template>
+          <template v-if="view.element.events.length">
+            Events: {{ view.element.events.join(', ') }}.
+          </template>
+        </p>
+
+        <header class="head">
+          <span class="title">Parts</span>
+          <span v-if="view.parts.length" class="of"
+            >{{ boundCount }} of {{ view.parts.length }} bound</span
+          >
+        </header>
+        <p v-if="!view.parts.length" class="empty">
+          <template v-if="view.implementsValue === null">
+            Choose an element above to see the parts it offers.
+          </template>
+          <template v-else-if="!view.element">
+            “{{ view.implementsValue }}” is not in the library, and the contract declares no parts.
+          </template>
+          <template v-else>“{{ view.implementsValue }}” has no parts to bind.</template>
+        </p>
+        <!--
+        Bound from the component's side (Figma declares a property here) — each
+        declared part is a row, and an unbound row is a picker over the layers
+        that could draw it. A bound row names its layer and jumps to it.
+      -->
+        <div
+          v-for="row in view.parts"
+          :key="row.name"
+          class="row"
+          :data-part="row.name"
+          :data-bound="row.boundTo !== null"
+        >
+          <span
+            class="name"
+            :title="
+              `${row.name} · ` +
+              (row.declaredBy === 'both'
+                ? 'declared by the library and the contract'
+                : row.declaredBy === 'library'
+                  ? 'declared by the library'
+                  : 'declared by the contract; the library does not know it')
+            "
+          >
+            {{ row.name }}
+            <span v-if="row.declaredBy === 'contract' && view.element" class="flag">?</span>
+            <span
+              v-if="row.kind === 'shadow'"
+              class="pill"
+              title="A shadow part: styled through ::part() and drawn by the library. What the bound layer holds stays design-only."
+              >shadow</span
+            >
+          </span>
+          <button
+            v-if="row.boundTo"
+            type="button"
+            class="layer"
+            :title="`Select ${row.boundTo.name}`"
+            @click="emit('select', row.boundTo.address)"
+          >
+            <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+              <path
+                :d="LAYER_ICONS[row.boundTo.element as keyof typeof LAYER_ICONS]"
+                :fill="STROKE_ICONS.has(row.boundTo.element as never) ? 'none' : 'currentColor'"
+                :stroke="STROKE_ICONS.has(row.boundTo.element as never) ? 'currentColor' : 'none'"
+                stroke-width="1"
+              />
+            </svg>
+            <span class="layer-name">{{ row.boundTo.name }}</span>
+          </button>
+          <select
+            v-else
+            class="pick unbound"
+            value=""
+            :disabled="!writable || !view.candidates.length"
+            :aria-label="`Bind ${row.name}`"
+            @change="bind(row.name, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="" disabled>
+              {{ view.candidates.length ? 'Bind a layer…' : 'No layer to bind' }}
+            </option>
+            <option v-for="c in view.candidates" :key="c.address" :value="c.address">
+              {{ indent(c.depth) }}{{ c.name }}
+            </option>
+          </select>
+          <button
+            v-if="row.boundTo"
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Unbind ${row.name}`"
+            :title="`Unbind ${row.boundTo.name} from ${row.name}`"
+            @click="unbind(row.boundTo.address)"
+          >
+            ×
+          </button>
+          <span v-else class="reset-spacer" />
+        </div>
+        <p v-for="stray in view.strayParts" :key="stray.address" class="stale" role="status">
+          “{{ stray.name }}” is bound to “{{ stray.part }}”, which nothing declares.
+          <button type="button" class="stale-name" @click="emit('select', stray.address)">
+            Show it
+          </button>
+        </p>
+      </details>
     </template>
 
     <template v-else-if="view.kind === 'part'">
@@ -1206,8 +1220,14 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         {{ codegen.notice }}
       </p>
     </div>
-    <div v-else class="library" data-field="choose-library">
-      <p>No headless library yet. Choose one to pick elements and parts from a list.</p>
+    <details v-else class="library code-binding" data-field="choose-library">
+      <summary>
+        <span class="title">Code library</span>
+        <span class="of">optional · for developers</span>
+      </summary>
+      <p>
+        Connect a component library so the code binding can pick elements and parts from a list.
+      </p>
       <div v-if="candidates?.length" class="row">
         <span class="name">From a dependency</span>
         <select
@@ -1244,13 +1264,38 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         </button>
       </div>
       <p class="faint">Written into uidx.json as <code>"headless"</code>, relative to it.</p>
-    </div>
+    </details>
   </section>
 </template>
 
 <style scoped>
 .contract {
   padding: var(--pad);
+}
+.code-binding {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+.code-binding > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 10px 0 4px;
+  cursor: pointer;
+  list-style: none;
+}
+.code-binding > summary::-webkit-details-marker {
+  display: none;
+}
+.code-binding > summary::before {
+  content: '›';
+  display: inline-block;
+  width: 10px;
+  color: var(--text-dim);
+  transition: transform 120ms;
+}
+.code-binding[open] > summary::before {
+  transform: rotate(90deg);
 }
 .head {
   display: flex;

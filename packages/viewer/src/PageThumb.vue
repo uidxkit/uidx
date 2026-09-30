@@ -212,7 +212,12 @@ onUnmounted(stopObserving)
     <div class="caption">
       <span class="label">{{ card.label }}</span>
       <span v-if="card.errors > 0" class="badge" data-kind="error">{{ card.errors }}</span>
-      <span v-else-if="card.revision !== null" class="rev">rev {{ card.revision }}</span>
+      <span
+        v-else-if="card.revision !== null"
+        class="rev"
+        :title="`Saved ${card.revision} time${card.revision === 1 ? '' : 's'}`"
+        >v{{ card.revision }}</span
+      >
     </div>
 
     <!--

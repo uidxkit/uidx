@@ -513,11 +513,28 @@ describe('the Contract section', () => {
     const section = mountFor(CHECKBOX, 'Checkbox', true, null)
     const text = section.find('[data-field="implements"] input')
     expect(text.exists()).toBe(true)
-    expect(section.text()).toContain('No headless library')
+    expect(section.text()).toContain('Connect a component library')
     await text.setValue('hwc-toggle')
     expect(section.emitted('patches')).toEqual([
       [[{ op: 'set', address: 'Checkbox', prop: 'implements', value: 'hwc-toggle' }]],
     ])
+  })
+
+  it('leads with properties and keeps the code binding closed until an element is chosen', () => {
+    // A designer declares what instances can change; how the render reaches
+    // code is a developer's section, folded until it is in use.
+    const fresh = mountFor(
+      page('fresh', `  <Component name="Plain" status="draft" width={10} height={10} />`),
+      'Plain',
+    )
+    expect(fresh.find('.head .title').text()).toBe('Properties')
+    const folded = fresh.find('details[data-field="code-binding"]')
+    expect(folded.exists()).toBe(true)
+    expect(folded.attributes('open')).toBeUndefined()
+    expect(folded.text()).toContain('for developers')
+
+    const bound = mountFor(CHECKBOX, 'Checkbox')
+    expect(bound.find('details[data-field="code-binding"]').attributes('open')).toBeDefined()
   })
 
   it('lists parts with their layer, binds an unbound one, and selects a bound one', async () => {

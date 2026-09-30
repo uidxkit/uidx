@@ -51,7 +51,13 @@ const click = (
   })
 }
 
-function harness(options: { zoom?: number; isAddressable?: (id: string) => boolean } = {}) {
+function harness(
+  options: {
+    zoom?: number
+    isAddressable?: (id: string) => boolean
+    onActivate?: (id: string) => void
+  } = {},
+) {
   const zoom = options.zoom ?? 1
   const zoomCalls: { level: number; x: number; y: number }[] = []
   let fits = 0
@@ -138,6 +144,7 @@ function harness(options: { zoom?: number; isAddressable?: (id: string) => boole
     keyTarget: keys,
     onSelectionChange: (ids) => emitted.push(ids),
     isAddressable: options.isAddressable,
+    onActivate: options.onActivate,
   })
   return {
     editor,
@@ -450,6 +457,18 @@ describe('deep selection', () => {
     dbl(h)
     expect(h.emitted.at(-1)).toEqual(['Card#inner/leaf'])
     expect(h.editor.state.enteredContainerId).toBe(depth)
+  })
+
+  it('activates a leaf on the double-click that has nowhere left to go', () => {
+    // Where the descent ends is where editing begins: a text opens for typing
+    // in place, as it does in every canvas tool.
+    const activated: string[] = []
+    const h = harness({ onActivate: (id) => activated.push(id) })
+    dbl(h)
+    dbl(h)
+    expect(activated).toEqual([])
+    dbl(h)
+    expect(activated).toEqual(['Card#inner/leaf'])
   })
 
   it('cmd-click reaches the leaf in one gesture', () => {

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { LENGTH_PROPS, rootFontSizeOf } from '@uidx/format'
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { createEditor } from '@open-pencil/core/editor'
 import {
   getAbsolutePosition,
@@ -275,6 +275,11 @@ const emit = defineEmits<{
   vertexEdit: [address: string | null]
   vectorInfo: [info: VectorEditInfo | null]
   drawingDone: []
+  /**
+   * A right-click on the canvas, in viewport px, after the node under it
+   * was selected. The shell owns the actions, so it draws the menu.
+   */
+  contextMenu: [at: { x: number; y: number }]
 }>()
 
 /**
@@ -326,7 +331,11 @@ const vectorInfo = shallowRef<VectorEditInfo | null>(null)
 const toolHint = computed(() => drawingHint(props.tool))
 
 const controls = useCanvasControls(canvasEl, editorWithPlacement, {
-  onChange: scheduleCameraReadout,
+  onChange: () => {
+    scheduleCameraReadout()
+    if (textEdit.value) placeTextEdit()
+  },
+  onActivate: (id) => openTextEdit(id),
   isAddressable,
   dropTargetFor: dropParentAt,
   tool: () => props.tool ?? (props.placing ? 'Instance' : null),
@@ -561,6 +570,176 @@ function createNode(
   // The node does not exist yet; its address does. `applySelection` skips what
   // the graph has not got, and runs again when the echo brings it.
   emit('selection', [addressOf(parent, name)])
+  // A text placed with the tool is a text about to be typed: it opens for
+  // editing the moment the file echoes it back, as it does in every canvas tool.
+  if (element === 'Text') pendingTextEdit = addressOf(parent, name)
+}
+
+/*
+ * Editing the words of a `<Text>` in place.
+ *
+ * The inspector's Content field always could, but a designer double-clicks
+ * the words on the canvas — Figma, Framer, Builder and Webflow all edit there.
+ * The editor is a textarea laid over the node at the camera's scale, with the
+ * node's own face and size; the canvas keeps drawing underneath, and the
+ * words reach the file as one `characters` write when the editing ends.
+ */
+type TextEdit = {
+  id: string
+  address: string
+  original: string
+  draft: string
+  style: Record<string, string>
+}
+const textEdit = ref<TextEdit | null>(null)
+const textEditEl = ref<HTMLTextAreaElement | null>(null)
+/** The address of a text the tool just placed, to open once the echo lands. */
+let pendingTextEdit: string | null = null
+
+function textStyleFor(node: UidxNode, id: string): Record<string, string> | null {
+  const built = scene.value
+  const drawn = editor.graph?.getNode(id)
+  const at = editorWithPlacement.absolutePositionOf(id)
+  if (!built || !drawn || !at) return null
+  const zoom = editor.state.zoom
+  const origin = toPane(at)
+  const size = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback
+  const fontSize = size(node.attrs.fontSize?.value, 14)
+  const family = node.attrs.fontFamily?.value
+  const lineHeight = node.attrs.lineHeight?.value
+  const align = node.attrs.textAlignHorizontal?.value
+  return {
+    left: `${origin.x}px`,
+    top: `${origin.y}px`,
+    minWidth: `${Math.max(drawn.width * zoom, 24)}px`,
+    minHeight: `${Math.max(drawn.height * zoom, fontSize * 1.2 * zoom)}px`,
+    fontSize: `${fontSize * zoom}px`,
+    fontFamily: typeof family === 'string' && !family.startsWith('{') ? family : 'Inter',
+    lineHeight: typeof lineHeight === 'number' ? `${lineHeight * zoom}px` : 'normal',
+    textAlign:
+      align === 'CENTER'
+        ? 'center'
+        : align === 'RIGHT'
+          ? 'right'
+          : align === 'JUSTIFIED'
+            ? 'justify'
+            : 'left',
+  }
+}
+
+function openTextEdit(id: string): void {
+  const built = scene.value
+  if (!built || !current || props.writable === false) return
+  const address = built.addresses.addressOf(id)
+  const node = address === undefined ? undefined : resolve(current.tree, address)
+  if (!address || !node || node.element !== 'Text') return
+  const style = textStyleFor(node, id)
+  if (!style) return
+  const original = node.attrs.characters?.value
+  const words = typeof original === 'string' ? original : ''
+  textEdit.value = { id, address, original: words, draft: words, style }
+  void nextTick(() => {
+    textEditEl.value?.focus()
+    textEditEl.value?.select()
+  })
+}
+
+/** The camera moved: the editor follows the node it sits on. */
+function placeTextEdit(): void {
+  const open = textEdit.value
+  if (!open || !current) return
+  const node = resolve(current.tree, open.address)
+  const style = node ? textStyleFor(node, open.id) : null
+  if (!style) {
+    textEdit.value = null
+    return
+  }
+  open.style = style
+}
+
+function commitTextEdit(): void {
+  const open = textEdit.value
+  if (!open) return
+  textEdit.value = null
+  if (!current) return
+  const node = resolve(current.tree, open.address)
+  if (!node || open.draft === open.original) return
+  emit('patches', [
+    {
+      op: node.attrs.characters === undefined ? 'add' : 'set',
+      address: open.address,
+      prop: 'characters',
+      value: open.draft,
+    },
+  ])
+}
+
+function onTextEditKey(event: KeyboardEvent): void {
+  // The canvas listens on the window; nothing typed here is a shortcut.
+  event.stopPropagation()
+  if (event.key === 'Escape' || (event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
+    event.preventDefault()
+    commitTextEdit()
+  }
+}
+
+/** The text the tool placed has arrived: open it for typing. */
+function openPendingTextEdit(): void {
+  const address = pendingTextEdit
+  const built = scene.value
+  if (!address || !built) return
+  const id = built.addresses.sceneIdOf(address)
+  if (id === undefined) return
+  pendingTextEdit = null
+  openTextEdit(id)
+}
+
+/**
+ * The container the author has stepped into, by the name the rail shows.
+ * The controller holds a scene id, which a rename or a rebuild can leave
+ * behind: the breadcrumb once kept saying `frame-1` after the frame became
+ * `Card`. Resolved through the file on every read, and dropped with the
+ * descent when the id no longer answers.
+ */
+const enteredName = computed(() => {
+  const id = controls.entered.value
+  const built = scene.value
+  if (!id || !built || !current) return null
+  const address = built.addresses.addressOf(id)
+  const node = address === undefined ? undefined : resolve(current.tree, address)
+  if (!node) return null
+  const name = node.attrs.name?.value
+  return typeof name === 'string' ? name : address!
+})
+
+/** An empty page says what to do next rather than showing a blank canvas. */
+const pageIsEmpty = computed(() => (props.doc?.tree.children.length ?? 1) === 0)
+
+/**
+ * A right-click selects what is under it — Figma's rule, so the menu the
+ * shell opens acts on the thing the pointer named — and hands the shell the
+ * viewport point to draw at.
+ */
+function onContextMenu(event: MouseEvent): void {
+  const built = scene.value
+  const surface = canvasEl.value
+  if (!built || !surface || props.writable === false) return
+  const rect = surface.getBoundingClientRect()
+  const point = editor.screenToCanvas(event.clientX - rect.left, event.clientY - rect.top)
+  const hit = editor.hitTestAtPoint(point.x, point.y, false)
+  const id = hit && hit.id !== built.rootId && isAddressable(hit.id) ? hit.id : null
+  if (id && !editor.state.selectedIds.has(id)) {
+    editor.select([id])
+    const address = built.addresses.addressOf(id)
+    emit('selection', address === undefined ? [] : [address])
+    canvas.renderNow()
+  } else if (!id && editor.state.selectedIds.size) {
+    editor.clearSelection()
+    emit('selection', [])
+    canvas.renderNow()
+  }
+  emit('contextMenu', { x: event.clientX, y: event.clientY })
 }
 
 /**
@@ -1106,6 +1285,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
         // only now, which is why this path needs the re-apply even more than
         // the rebuild below does.
         applySelection(props.selection ?? [])
+        openPendingTextEdit()
         return
       }
     }
@@ -1157,6 +1337,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // `replaceGraph` drops the editor's selection, and a rebuild is not the
     // author deselecting anything — the shell still holds what they picked.
     applySelection(props.selection ?? [])
+    openPendingTextEdit()
   } catch (error) {
     // A page that cannot be drawn says so and keeps the last frame it drew,
     // rather than going blank with the reason in a console nobody has open.
@@ -2034,8 +2215,8 @@ onUnmounted(() => unwatchGraph?.())
         </option>
       </select>
     </div>
-    <div v-if="controls.entered.value" class="entered-context">
-      <span :title="controls.entered.value">{{ controls.entered.value }}</span
+    <div v-if="enteredName" class="entered-context">
+      <span :title="enteredName">Inside {{ enteredName }}</span
       ><kbd>Esc to exit</kbd>
     </div>
     <div class="canvas-dock">
@@ -2057,7 +2238,39 @@ onUnmounted(() => unwatchGraph?.())
       </button>
     </div>
     <canvas ref="sceneEl" class="surface" aria-hidden="true" />
-    <canvas ref="canvasEl" class="surface" @dragover.prevent @drop="onDrop" />
+    <canvas
+      ref="canvasEl"
+      class="surface"
+      @dragover.prevent
+      @drop="onDrop"
+      @contextmenu.prevent="onContextMenu"
+    />
+
+    <!--
+      The words of a text, edited where they are drawn. Escape or ⌘Enter
+      keeps them; so does clicking away. Enter is a new line, as in a text.
+    -->
+    <textarea
+      v-if="textEdit"
+      ref="textEditEl"
+      v-model="textEdit.draft"
+      class="text-editor"
+      aria-label="Edit text"
+      spellcheck="false"
+      :style="textEdit.style"
+      @keydown="onTextEditKey"
+      @blur="commitTextEdit"
+      @pointerdown.stop
+    />
+
+    <!-- An empty page says what to do next; a blank canvas says nothing. -->
+    <div v-if="pageIsEmpty && ready && !diagnostics.length" class="empty-page" role="status">
+      <p class="empty-title">This page is empty</p>
+      <p class="empty-hint">
+        Press <kbd>F</kbd> and drag to draw a frame, <kbd>T</kbd> to place text, or <kbd>R</kbd> for
+        a rectangle. Right-click a layer for more.
+      </p>
+    </div>
 
     <div
       v-if="rotationReadout"
@@ -2070,7 +2283,15 @@ onUnmounted(() => unwatchGraph?.())
 
     <!-- Dimmed over the last good render, never instead of it (spec §11). -->
     <div v-if="diagnostics.length" class="overlay">
-      <h3>{{ diagnostics.length }} problem{{ diagnostics.length === 1 ? '' : 's' }}</h3>
+      <h3>
+        The file has {{ diagnostics.length }} problem{{ diagnostics.length === 1 ? '' : 's' }} the
+        canvas cannot draw
+      </h3>
+      <p class="hint lead">
+        {{ hasRendered ? 'This is the last good version.' : 'Nothing has been drawn yet.' }}
+        Fix the file where it says below — or undo the last change to it — and the canvas recovers
+        on its own.
+      </p>
       <ul>
         <li v-for="(d, i) in diagnostics" :key="i">
           <span class="where">{{ d.line }}:{{ d.column }}</span>
@@ -2078,10 +2299,6 @@ onUnmounted(() => unwatchGraph?.())
           {{ d.message }}
         </li>
       </ul>
-      <p class="hint">
-        {{ hasRendered ? 'showing the last valid render' : 'nothing has rendered yet' }} — fix the
-        file and it recovers on its own
-      </p>
     </div>
 
     <!--
@@ -2281,6 +2498,60 @@ onUnmounted(() => unwatchGraph?.())
   background: var(--panel);
   color: var(--bound);
   pointer-events: none;
+}
+.text-editor {
+  position: absolute;
+  z-index: 4;
+  box-sizing: content-box;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  field-sizing: content;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* Drawn on the canvas, which is light whatever the chrome is: its own greys. */
+.empty-page {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+  color: #6f6f6f;
+}
+.empty-page p {
+  margin: 0;
+}
+.empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2b2b2b;
+}
+.empty-hint {
+  margin-top: 6px !important;
+  max-width: 34ch;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.empty-hint kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 4px;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  color: #2b2b2b;
 }
 .entered-context span {
   overflow: hidden;

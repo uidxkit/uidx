@@ -181,9 +181,9 @@ describe('the dashboard', () => {
 
     // 3 pages, 2 of them drawable; 1 variable in 1 collection; nothing broken.
     expect(text).toContain('3')
-    expect(text).toContain('2 drawable')
+    expect(text).toContain('2 with content')
     expect(text).toContain('1 collections')
-    expect(text).toContain('all pages parse')
+    expect(text).toContain('every page opens')
   })
 
   it('lists each collection with its modes', () => {
