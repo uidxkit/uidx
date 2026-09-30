@@ -34,6 +34,7 @@ import {
   type VectorEditInfo,
 } from './vertex-edit'
 import { drawingHint } from './graphics-tools'
+import { variantHeaders, type VariantCell } from './variant-labels'
 import { resizeVectorPaths } from './vector-resize'
 import type { Point, Rect } from './gesture-model'
 import { importSvg, type SvgProblem } from './svg-import'
@@ -1075,6 +1076,14 @@ const hasRendered = ref(false)
 
 /** Keep the zoom control in sync with both gestures and programmatic fitting. */
 const cameraZoom = ref(1)
+/** The camera's pan, read with the zoom so pane-space overlays follow a pan. */
+const cameraPan = ref({ x: 0, y: 0 })
+/** Moves whenever the scene is rebuilt or patched, for overlays that read it. */
+const sceneTick = ref(0)
+function readCamera(): void {
+  cameraZoom.value = editor.state.zoom
+  cameraPan.value = { x: editor.state.panX, y: editor.state.panY }
+}
 function fitCanvas(): void {
   editor.zoomToFit()
   scheduleCameraReadout()
@@ -1091,13 +1100,13 @@ function chooseZoom(event: Event): void {
 let readoutFrame = 0
 function scheduleCameraReadout(): void {
   if (typeof requestAnimationFrame !== 'function') {
-    cameraZoom.value = editor.state.zoom
+    readCamera()
     return
   }
   if (readoutFrame) return
   readoutFrame = requestAnimationFrame(() => {
     readoutFrame = 0
-    cameraZoom.value = editor.state.zoom
+    readCamera()
   })
 }
 onUnmounted(() => {
@@ -1276,7 +1285,8 @@ function render(doc: UidxDocument | null, rebuild = false): void {
         // same-page definition the diff just pushed into its copies — so the
         // components watch below has nothing further to rebuild for.
         renderedWith = props.components
-        cameraZoom.value = editor.state.zoom
+        readCamera()
+        sceneTick.value += 1
         canvas.renderNow()
         // A rename or a reparent reaches here as a remove plus an insert, and
         // the shell remapped its selection to the new addresses before this
@@ -1331,6 +1341,8 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // Opening another page *is* the author asking to be taken somewhere, and
     // the camera they left on the last page frames nothing on this one.
     if (!hasRendered.value || pageChanged) editor.zoomToFit()
+    readCamera()
+    sceneTick.value += 1
     cameraZoom.value = editor.state.zoom
     canvas.renderNow()
     hasRendered.value = true
@@ -1719,6 +1731,48 @@ function moveNode(id: string, at: Point): void {
 const rotationReadout = ref<{ x: number; y: number; degrees: number } | null>(null)
 
 const formatDegrees = (degrees: number): string => `${Math.round(degrees * 10) / 10}°`
+
+/**
+ * Column and row headers for every component set on the page, in pane px:
+ * which value each column and row of a derived or authored variant grid is.
+ * Hidden when zoomed out too far to read them.
+ */
+const setHeaders = computed(() => {
+  void sceneTick.value
+  const zoom = cameraZoom.value
+  const pan = cameraPan.value
+  const result = scene.value
+  if (!result || zoom < 0.35) return []
+  const graph = result.graph
+  const page = graph.getNode(result.rootId)
+  if (!page) return []
+  const place = (point: Point): Point => ({ x: point.x * zoom + pan.x, y: point.y * zoom + pan.y })
+  const out: { key: string; kind: 'column' | 'row'; text: string; x: number; y: number }[] = []
+  for (const id of page.childIds) {
+    const set = graph.getNode(id)
+    if (set?.type !== 'COMPONENT_SET') continue
+    const cells: VariantCell[] = []
+    for (const childId of set.childIds) {
+      const child = graph.getNode(childId)
+      if (!child) continue
+      const at = getAbsolutePosition(child, graph)
+      cells.push({ name: child.name, x: at.x, y: at.y, width: child.width, height: child.height })
+    }
+    const headers = variantHeaders(cells)
+    for (const column of headers.columns) {
+      const at = place(column)
+      out.push({ key: `${id}:c:${column.text}`, kind: 'column', text: column.text, ...at })
+    }
+    // Rows are named on the right, where the canvas has room; the left edge
+    // sits against the rulers once the page is fitted.
+    const origin = getAbsolutePosition(set, graph)
+    for (const row of headers.rows) {
+      const at = place({ x: origin.x + set.width, y: row.y })
+      out.push({ key: `${id}:r:${row.text}`, kind: 'row', text: row.text, ...at })
+    }
+  }
+  return out
+})
 
 /** Canvas units to pane px — the camera the SDK's own overlays map through. */
 const toPane = (point: Point): Point => ({
@@ -2273,6 +2327,16 @@ onUnmounted(() => unwatchGraph?.())
     </div>
 
     <div
+      v-for="header in setHeaders"
+      :key="header.key"
+      class="set-header"
+      :data-kind="header.kind"
+      :style="{ left: `${header.x}px`, top: `${header.y}px` }"
+    >
+      {{ header.text }}
+    </div>
+
+    <div
       v-if="rotationReadout"
       class="rotation-readout"
       role="status"
@@ -2373,6 +2437,24 @@ onUnmounted(() => unwatchGraph?.())
   left: 32px;
   z-index: 1;
   color: var(--text-dim);
+}
+.set-header {
+  position: absolute;
+  z-index: 3;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--component, #9747ff);
+  font-size: 10px;
+  line-height: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.set-header[data-kind='column'] {
+  transform: translateY(calc(-100% - 3px));
+}
+.set-header[data-kind='row'] {
+  transform: translate(8px, -50%);
 }
 .rotation-readout {
   position: absolute;
