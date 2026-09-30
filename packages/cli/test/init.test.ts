@@ -218,3 +218,23 @@ describe('project setup', () => {
     })
   })
 })
+
+describe('init --design-system', () => {
+  it('writes a starter system that checks clean, beside existing pages', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-starter-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'starter', private: true }))
+      await initProject(dir)
+      await initProject(dir, 'uidx', { designSystem: true })
+      const files = (await readdir(join(dir, '.uidx'))).filter((f) => f.endsWith('.uidx')).sort()
+      expect(files).toEqual(['button.uidx', 'tokens.uidx', 'welcome.uidx'])
+      const { parse } = await import('@uidx/format')
+      for (const file of files) {
+        const { doc, diagnostics } = parse(await readFile(join(dir, '.uidx', file), 'utf8'))
+        expect(doc, `${file}: ${diagnostics.map((d) => d.message).join('; ')}`).not.toBeNull()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})

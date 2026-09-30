@@ -98,6 +98,32 @@ const kpis = computed(() => {
       </li>
     </ul>
 
+    <section
+      v-if="connected && model.stats.components === 0"
+      class="block start"
+      aria-labelledby="start-title"
+    >
+      <h2 id="start-title" class="block-title">Start a design system</h2>
+      <p class="empty">
+        Nothing here declares a component yet. Start from one of these, in a terminal at your
+        project, or ask your coding agent to — it has the uidx skills and MCP tools.
+      </p>
+      <ul class="starts">
+        <li>
+          <code>npx uidx init --design-system</code>
+          <span>tiered tokens with light and dark modes, and a Button to copy from</span>
+        </li>
+        <li>
+          <code>npx uidx tokens import tokens.json</code>
+          <span>tokens exported from Figma, Tokens Studio or Style Dictionary (DTCG)</span>
+        </li>
+        <li>
+          <code>npx uidx adopt node_modules/…/custom-elements.json</code>
+          <span>a draft component for every element your headless library ships</span>
+        </li>
+      </ul>
+    </section>
+
     <section class="block">
       <div class="pages-heading">
         <h2 class="block-title">
@@ -309,5 +335,28 @@ li + li .collection {
   background: var(--raised);
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
+}
+.starts {
+  display: grid;
+  gap: 8px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.starts li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.starts code {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text);
+}
+.starts span {
+  font-size: 12px;
+  color: var(--text-dim);
 }
 </style>

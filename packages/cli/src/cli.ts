@@ -80,6 +80,7 @@ root defaults to the current project, or select one with --root <dir>.
 Options for init:
   --script <name>         run script name (default: uidx)
   --port <n>              save the shared viewer/MCP port in .uidx/config.json
+  --design-system         start with a design system: tiered tokens and a Button
 
 Options for dev / open:
   --port <n>              override config.json port (default: 4400, auto-increments)
