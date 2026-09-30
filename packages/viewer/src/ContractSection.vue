@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 import {
   bindPart,
@@ -9,7 +9,7 @@ import {
   setRepeatCount,
   setRepeatSlot,
 } from './contract-edits'
-import type { HeadlessLibrary } from './headless'
+import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
 
 /**
@@ -35,6 +35,8 @@ const props = defineProps<{
   node: UidxNode | null
   library: HeadlessLibrary | null
   libraryError?: string
+  /** Libraries the project's dependencies ship, offered while none is named. */
+  candidates?: HeadlessCandidate[]
   writable: boolean
 }>()
 
@@ -42,7 +44,20 @@ const emit = defineEmits<{
   patches: [patches: UidxPatch[]]
   /** Jump the selection to a layer the tab names, as clicking it in the rail would. */
   select: [address: string]
+  /** Name the library the document uses; the server writes it into uidx.json. */
+  chooseLibrary: [path: string]
 }>()
+
+/** The library's tag for the selected component, when `uidx.json` binds one (ADR 0013 §3). */
+const boundTag = computed(() => {
+  if (view.value.kind !== 'component') return null
+  return props.library?.bindings[view.value.component.name]?.tag ?? null
+})
+
+const otherPath = ref('')
+function chooseCandidate(path: string): void {
+  if (path) emit('chooseLibrary', path)
+}
 
 const view = computed(() => contractView(props.doc, props.node, props.library))
 
@@ -162,6 +177,9 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         </button>
         <span v-else class="reset-spacer" />
       </div>
+      <p v-if="boundTag && boundTag !== view.implementsValue" class="hint" data-field="bound">
+        Rendered as <code>{{ boundTag }}</code> — uidx.json binds this component to it.
+      </p>
       <p v-if="view.element" class="hint">
         <template v-if="view.element.attributes.length">
           Attributes: {{ view.element.attributes.join(', ') }}.
@@ -515,10 +533,45 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
     <p v-else-if="library" class="library">
       Library: {{ library.path }} · {{ library.roots.length }} elements
     </p>
-    <p v-else class="library">
-      No headless library. Add <code>"headless": "…/custom-elements.json"</code> to uidx.json to
-      choose elements and parts from a list.
-    </p>
+    <div v-else class="library" data-field="choose-library">
+      <p>No headless library yet. Choose one to pick elements and parts from a list.</p>
+      <div v-if="candidates?.length" class="row">
+        <span class="name">From a dependency</span>
+        <select
+          class="pick unbound"
+          value=""
+          :disabled="!writable"
+          aria-label="Choose a library"
+          @change="chooseCandidate(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="" disabled>Choose…</option>
+          <option v-for="c in candidates" :key="c.path" :value="c.path">{{ c.package }}</option>
+        </select>
+        <span class="reset-spacer" />
+      </div>
+      <div class="row">
+        <span class="name">Or a path</span>
+        <input
+          v-model="otherPath"
+          class="text"
+          :disabled="!writable"
+          aria-label="Library path"
+          placeholder="…/custom-elements.json"
+          @keydown.enter="chooseCandidate(otherPath.trim())"
+        />
+        <button
+          type="button"
+          class="reset"
+          :disabled="!writable || !otherPath.trim()"
+          aria-label="Use this library"
+          title="Write it into uidx.json"
+          @click="chooseCandidate(otherPath.trim())"
+        >
+          ✓
+        </button>
+      </div>
+      <p class="faint">Written into uidx.json as <code>"headless"</code>, relative to it.</p>
+    </div>
   </section>
 </template>
 
@@ -693,6 +746,13 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 }
 code {
   font-family: var(--mono-font, ui-monospace, monospace);
+  font-size: 10px;
+}
+.library p {
+  margin: 0 0 4px;
+}
+.faint {
+  color: var(--text-faint);
   font-size: 10px;
 }
 </style>

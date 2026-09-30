@@ -38,7 +38,11 @@ describe migrations when an existing document or integration is affected.
   `custom-elements.json`, served to the viewer and used by `uidx codegen` when
   `--manifest` is absent. Parts a library exposes as shadow parts (`cssParts`)
   are offered beside element parts and marked; the code target styles them
-  through `::part()`.
+  through `::part()`. `headless` may also be an object with a `profile` (how
+  the library reflects props, its own states and parts) and `bindings` (its
+  names per component), so one design renders over libraries that spell
+  things differently; when nothing is named, the Contract tab offers the
+  libraries the project's dependencies ship and writes the choice.
 
 ## 0.1.6 — 2026-09-25
 

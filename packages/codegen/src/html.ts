@@ -1,7 +1,7 @@
 import type { ContractSpec, JsonValue, UidxNode } from '@uidx/format'
 import { specBindings, STATE_AXIS, stateKind, styleTarget } from '@uidx/schema/design-system'
 import { cssDeclarations, cssRule, type CssKind } from './css.js'
-import { boundPath, boundProp, type ComponentModel } from './model.js'
+import { attributeName, boundPath, boundProp, type ComponentModel, type PartInfo } from './model.js'
 
 /**
  * The HTML/CSS target (ADR 0017 §3): one stylesheet per component, keyed by
@@ -15,17 +15,67 @@ export interface HtmlContext {
 }
 
 /** How a state of the contract is selected in CSS. */
-export function stateSelector(state: string, contract?: ContractSpec): string {
+export function stateSelector(
+  state: string,
+  contract?: ContractSpec,
+  model?: ComponentModel,
+): string {
   switch (stateKind(state, contract)) {
     case 'interaction':
       return state === 'hover' ? ':hover' : state === 'focus' ? ':focus-visible' : ':active'
-    // A state the element produces itself, exposed through ElementInternals.
+    // A state the element produces itself: `:state()` through ElementInternals
+    // unless the library spells it otherwise.
     case 'declared':
-      return `:state(${state})`
-    // A visual boolean prop, reflected as an attribute — and the fallback
-    // for a name the contract cannot place, which the audit has reported.
+      switch (model?.profile.customStates) {
+        case 'data-attribute':
+          return `[data-${state}]`
+        case 'class':
+          return `.${state}`
+        default:
+          return `:state(${state})`
+      }
+    // A visual boolean prop, reflected the way the library reflects props —
+    // and the fallback for a name the contract cannot place, which the audit
+    // has reported.
     default:
-      return `[${state}]`
+      return model ? propSelector(model, state) : `[${state}]`
+  }
+}
+
+/** A prop's selector the way the library reflects it: `[variant="a"]`, `[data-variant="a"]`, `.variant-a`. */
+export function propSelector(model: ComponentModel, prop: string, value?: string): string {
+  const attr = attributeName(model, prop)
+  switch (model.profile.props) {
+    case 'data-attribute':
+      return value === undefined ? `[data-${attr}]` : `[data-${attr}="${value}"]`
+    case 'class':
+      return value === undefined ? `.${attr}` : `.${attr}-${value}`
+    default:
+      return value === undefined ? `[${attr}]` : `[${attr}="${value}"]`
+  }
+}
+
+/** A part's selector below the root, by the kind the library gives it. */
+function partSelector(root: string, info: PartInfo): string {
+  switch (info.kind) {
+    case 'shadow':
+      return `${root}::part(${info.libraryName})`
+    case 'data-part':
+      return `${root} [data-part="${info.libraryName}"]`
+    default:
+      return `${root} ${info.tag}`
+  }
+}
+
+/** The open and close tags a part's node renders as, or null for a shadow part. */
+function partTags(info: PartInfo): [string, string] | null {
+  switch (info.kind) {
+    case 'shadow':
+      return null
+    case 'data-part':
+      return [`<span data-part="${info.libraryName}">`, '</span>']
+    default:
+      return [`<${info.tag}>`, `</${info.tag}>`]
   }
 }
 
@@ -66,7 +116,7 @@ function selectorFor(model: ComponentModel, node: UidxNode, root: string): strin
   const part = model.partOf.get(node)
   if (part !== undefined) {
     const info = model.parts.find((entry) => entry.name === part)!
-    return info.kind === 'shadow' ? `${root}::part(${part})` : `${root} ${info.tag}`
+    return partSelector(root, info)
   }
   if (node.element === 'Slot') return `${root} [data-slot="${node.name}"]`
   return `${root} [data-node="${node.name}"]`
@@ -116,7 +166,10 @@ export function emitCss(model: ComponentModel): string {
   for (const row of model.spec?.styles ?? []) {
     let scoped = root
     for (const [axis, value] of Object.entries(row.keys)) {
-      scoped += axis === STATE_AXIS ? stateSelector(value, model.contract) : `[${axis}="${value}"]`
+      scoped +=
+        axis === STATE_AXIS
+          ? stateSelector(value, model.contract, model)
+          : propSelector(model, axis, value)
     }
     for (const [part, props] of Object.entries(row.values)) {
       const info = part === 'root' ? undefined : model.parts.find((entry) => entry.name === part)
@@ -126,9 +179,7 @@ export function emitCss(model: ComponentModel): string {
         part === 'root'
           ? scoped
           : info
-            ? info.kind === 'shadow'
-              ? `${scoped}::part(${part})`
-              : `${scoped} ${info.tag}`
+            ? partSelector(scoped, info)
             : `${scoped} [data-node="${part}"]`
       rules.push(cssRule(selector, cssDeclarations(props, target ? kindOf(target) : 'container')))
     }
@@ -229,9 +280,10 @@ function markup(
       return [`${pad}<span data-slot="${node.name}">`, ...inner, `${pad}</span>`]
     }
     case 'Text': {
-      const tag = info?.tag ?? 'span'
-      const open = info ? `<${tag}>` : `<span data-node="${node.name}">`
-      const close = info ? `</${tag}>` : '</span>'
+      const [open, close] = (info && partTags(info)) ?? [
+        `<span data-node="${node.name}">`,
+        '</span>',
+      ]
       return [`${pad}${open}${escapeHtml(sampleText(model, node, samples))}${close}`]
     }
     case 'Vector': {
@@ -248,8 +300,11 @@ function markup(
         )
         .filter((data): data is string => typeof data === 'string')
       const svg = `<svg viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" aria-hidden="true">${d.map((data) => `<path d="${escapeHtml(data)}" fill="currentColor" />`).join('')}</svg>`
-      if (info) return [`${pad}<${info.tag}>${svg}</${info.tag}>`]
-      return [`${pad}<span data-node="${node.name}">${svg}</span>`]
+      const [open, close] = (info && partTags(info)) ?? [
+        `<span data-node="${node.name}">`,
+        '</span>',
+      ]
+      return [`${pad}${open}${svg}${close}`]
     }
     default: {
       // Frame, Rectangle, Ellipse — and the component itself.
@@ -260,9 +315,7 @@ function markup(
         const attrs = model.tag ? '' : ` class="${model.stem}"`
         return [`${pad}<${tag}${attrs}>`, ...children(), `${pad}</${tag}>`]
       }
-      const tag = info?.tag ?? 'div'
-      const open = info ? `<${tag}>` : `<div data-node="${node.name}">`
-      const close = info ? `</${tag}>` : '</div>'
+      const [open, close] = (info && partTags(info)) ?? [`<div data-node="${node.name}">`, '</div>']
       return [`${pad}${open}`, ...children(), `${pad}${close}`]
     }
   }

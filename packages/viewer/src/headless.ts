@@ -36,6 +36,14 @@ export interface HeadlessLibrary {
   elements: Map<string, HeadlessElement>
   /** The tags an author may implement: elements that are not a part of another. */
   roots: HeadlessElement[]
+  /** `uidx.json`'s `headless.bindings`: the library's names per component, when configured. */
+  bindings: Record<string, { tag?: string; parts?: Record<string, string> }>
+}
+
+/** A library a dependency ships, offered when the document names none. */
+export interface HeadlessCandidate {
+  package: string
+  path: string
 }
 
 /** The slice of a `custom-elements.json` this module reads. */
@@ -65,7 +73,11 @@ const names = (entries: { name?: string }[] | undefined): string[] =>
  * root wins, so `hwc-text-input-leading-icon` belongs to `hwc-text-input`, not
  * to a shorter `hwc-text` if one existed.
  */
-export function parseHeadless(path: string, manifest: unknown): HeadlessLibrary {
+export function parseHeadless(
+  path: string,
+  manifest: unknown,
+  bindings: HeadlessLibrary['bindings'] = {},
+): HeadlessLibrary {
   const declared = new Map<string, HeadlessElement>()
   for (const module of (manifest as Manifest)?.modules ?? []) {
     for (const declaration of module.declarations ?? []) {
@@ -109,13 +121,59 @@ export function parseHeadless(path: string, manifest: unknown): HeadlessLibrary 
   const roots = [...declared.values()]
     .filter((element) => !partOf.has(element.tag))
     .sort((a, b) => a.tag.localeCompare(b.tag))
-  return { path, elements: declared, roots }
+  return { path, elements: declared, roots, bindings }
 }
 
 /** `null` until loaded, and when the document declares no library. */
 export const headlessLibrary = shallowRef<HeadlessLibrary | null>(null)
 /** Why the library could not be read, or `''`. Shown in the tab, never thrown. */
 export const headlessError = shallowRef('')
+/** Libraries the project's dependencies ship, while the document names none. */
+export const headlessCandidates = shallowRef<HeadlessCandidate[]>([])
+
+function unavailable(response: Response): void {
+  if (!response.headers.get('content-type')?.includes('application/json')) {
+    throw new Error('The headless library service is unavailable.')
+  }
+}
+
+interface HeadlessPayload {
+  path: string | null
+  library?: unknown
+  bindings?: HeadlessLibrary['bindings']
+  candidates?: HeadlessCandidate[]
+  error?: string
+}
+
+function adopt(data: HeadlessPayload): void {
+  headlessLibrary.value =
+    data.path === null ? null : parseHeadless(data.path, data.library, data.bindings ?? {})
+  headlessCandidates.value = data.candidates ?? []
+}
+
+/**
+ * Names the library the document uses: written into `uidx.json` by the
+ * server, so the choice is committed with the project and every tool reads
+ * the same file. `path` is one of the candidates, or any path relative to
+ * `uidx.json`.
+ */
+export async function chooseHeadless(path: string): Promise<void> {
+  headlessError.value = ''
+  try {
+    const response = await fetch('/__uidx/headless', {
+      method: 'PUT',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ path }),
+      signal: AbortSignal.timeout(15_000),
+    })
+    unavailable(response)
+    const data = (await response.json()) as HeadlessPayload
+    if (!response.ok) throw new Error(data.error ?? 'Could not choose the headless library.')
+    adopt(data)
+  } catch (error) {
+    headlessError.value = error instanceof Error ? error.message : String(error)
+  }
+}
 
 /**
  * Fetches the document's library from the server (`/__uidx/headless`).
@@ -128,18 +186,13 @@ export async function refreshHeadless(): Promise<void> {
   headlessError.value = ''
   try {
     const response = await fetch('/__uidx/headless', { signal: AbortSignal.timeout(15_000) })
-    if (!response.headers.get('content-type')?.includes('application/json')) {
-      throw new Error('The headless library service is unavailable.')
-    }
-    const data = (await response.json()) as {
-      path: string | null
-      library?: unknown
-      error?: string
-    }
+    unavailable(response)
+    const data = (await response.json()) as HeadlessPayload
     if (!response.ok) throw new Error(data.error ?? 'Could not read the headless library.')
-    headlessLibrary.value = data.path === null ? null : parseHeadless(data.path, data.library)
+    adopt(data)
   } catch (error) {
     headlessLibrary.value = null
+    headlessCandidates.value = []
     headlessError.value = error instanceof Error ? error.message : String(error)
   }
 }

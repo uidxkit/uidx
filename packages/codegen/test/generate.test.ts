@@ -218,6 +218,105 @@ A switch whose parts live in the library's shadow tree.
   })
 })
 
+describe('a library profile and bindings (ADR 0013 §3)', () => {
+  const shoelace = {
+    modules: [
+      {
+        declarations: [
+          {
+            tagName: 'sl-checkbox',
+            attributes: [{ name: 'checked' }, { name: 'disabled' }, { name: 'indeterminate' }],
+            events: [{ name: 'sl-change' }],
+            cssParts: [{ name: 'control' }],
+          },
+        ],
+      },
+    ],
+  }
+  const bindings = {
+    components: {
+      Checkbox: {
+        tag: 'sl-checkbox',
+        parts: { 'checked-indicator': 'control' },
+        events: { change: 'sl-change' },
+      },
+    },
+  }
+  const out = generate({
+    pages: [{ file: 'checkbox.uidx', doc: CHECKBOX }],
+    tokens: [TOKENS],
+    manifest: shoelace,
+    library: bindings,
+  })
+
+  it("renders the same identity over another library's names, without editing the file", () => {
+    const css = out.files.get('html/checkbox.css')!
+    expect(css).toContain('sl-checkbox {')
+    expect(css).toContain('sl-checkbox[checked]::part(control) {')
+    expect(out.files.get('html/checkbox.html')!).toContain('<sl-checkbox>')
+    const tsx = out.files.get('react/Checkbox.tsx')!
+    expect(tsx).toContain('<sl-checkbox ref={ref}')
+    expect(tsx).toContain(`useElementEvent(ref, 'sl-change', onChange)`)
+    expect(out.diagnostics).toEqual([])
+  })
+
+  it('spells props and element states the way the profile says', () => {
+    const page = parseOrThrow(`---
+id: toggle
+---
+
+A toggle over a class-driven library.
+
+## Visual Contract
+
+<Page>
+  <Component name="Toggle" status="stable" implements="x-toggle" layoutMode="HORIZONTAL">
+    <Frame name="knob" part="knob" width={10} height={10} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="on" root:opacity={1} />
+  <Style state="busy" root:opacity={0.5} />
+  <Style tone="warm" root:opacity={0.9} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="on" type="boolean" default={false} visual>Whether it is on.</Prop>
+  <Prop name="tone" type="'cool' | 'warm'" default="cool" visual>Colour.</Prop>
+</Props>
+<States><State name="busy">Working.</State></States>
+`)
+    const dataDriven = generate({
+      pages: [{ file: 'toggle.uidx', doc: page }],
+      library: {
+        profile: { props: 'data-attribute', customStates: 'data-attribute', parts: 'data-part' },
+      },
+    })
+    const css = dataDriven.files.get('html/toggle.css')!
+    expect(css).toContain('x-toggle[data-on] {')
+    expect(css).toContain('x-toggle[data-busy] {')
+    expect(css).toContain('x-toggle[data-tone="warm"] {')
+    expect(css).toContain('x-toggle [data-part="knob"] {')
+    expect(dataDriven.files.get('html/toggle.html')!).toContain('<span data-part="knob">')
+    expect(dataDriven.files.get('react/Toggle.tsx')!).toContain('data-on={on || undefined}')
+
+    const classDriven = generate({
+      pages: [{ file: 'toggle.uidx', doc: page }],
+      library: { profile: { props: 'class', customStates: 'class' } },
+    })
+    const classCss = classDriven.files.get('html/toggle.css')!
+    expect(classCss).toContain('x-toggle.on {')
+    expect(classCss).toContain('x-toggle.busy {')
+    expect(classCss).toContain('x-toggle.tone-warm {')
+    expect(classDriven.files.get('react/Toggle.tsx')!).toContain(
+      "className={[className, on ? 'on' : undefined, tone !== undefined ? `tone-${tone}` : undefined].filter(Boolean).join(' ')}",
+    )
+  })
+})
+
 describe('the React target', () => {
   it('types props and events from the contract and wraps the headless root', () => {
     const tsx = file('react/Checkbox.tsx')

@@ -75,7 +75,63 @@ export function pascal(name: string): string {
  * tag that ends with the part name and shares the longest prefix with the
  * root — `hwc-breadcrumbs` owns `hwc-breadcrumb-item`.
  */
-export type PartKind = 'element' | 'shadow'
+export type PartKind = 'element' | 'shadow' | 'data-part'
+
+/**
+ * How a library spells what the identity declares (ADR 0013 §3). The
+ * identity never changes with the library; this does.
+ */
+export interface LibraryProfile {
+  /** A boolean prop: reflected as `[checked]`, `[data-checked]`, or `.checked`. */
+  props: 'attribute' | 'data-attribute' | 'class'
+  /** A state the element produces itself: `:state(x)`, `[data-x]`, or `.x`. */
+  customStates: 'state' | 'data-attribute' | 'class'
+  /** Parts: elements of their own (or `cssParts`), or light-DOM `[data-part="x"]`. */
+  parts: 'element' | 'data-part'
+}
+
+export const DEFAULT_PROFILE: LibraryProfile = {
+  props: 'attribute',
+  customStates: 'state',
+  parts: 'element',
+}
+
+/** The library's names for one component's identity names. Absent entries keep the identity's. */
+export interface ComponentBinding {
+  tag?: string
+  parts?: Record<string, string>
+  events?: Record<string, string>
+  attributes?: Record<string, string>
+}
+
+/** `uidx.json`'s `headless.profile` and `headless.bindings`, as the code target reads them. */
+export interface LibraryBindings {
+  profile?: Partial<Record<keyof LibraryProfile, string>>
+  components?: Record<string, ComponentBinding>
+}
+
+/** The profile with every field valid: an unknown or absent value takes the default. */
+export function libraryProfile(library?: LibraryBindings): LibraryProfile {
+  const pick = <K extends keyof LibraryProfile>(key: K, allowed: readonly LibraryProfile[K][]) => {
+    const value = library?.profile?.[key]
+    return (allowed as readonly string[]).includes(value ?? '')
+      ? (value as LibraryProfile[K])
+      : DEFAULT_PROFILE[key]
+  }
+  return {
+    props: pick('props', ['attribute', 'data-attribute', 'class']),
+    customStates: pick('customStates', ['state', 'data-attribute', 'class']),
+    parts: pick('parts', ['element', 'data-part']),
+  }
+}
+
+/** The library's attribute for a prop, and its event for an event. */
+export function attributeName(model: ComponentModel, prop: string): string {
+  return model.binding.attributes?.[prop] ?? prop
+}
+export function eventName(model: ComponentModel, event: string): string {
+  return model.binding.events?.[event] ?? event
+}
 
 /**
  * Which kind of part the library offers under this name (ADR 0017 §3).
@@ -121,6 +177,8 @@ export interface PartInfo {
    * or a shadow part styled through `::part()` and drawn by the library.
    */
   kind: PartKind
+  /** What the library calls it, from the bindings; the identity's name when unbound. */
+  libraryName: string
 }
 
 export interface SlotInfo {
@@ -167,6 +225,10 @@ export interface ComponentModel {
   composes: UidxNode | undefined
   /** The models a prop's type may name, across the document (ADR 0015 §1). */
   models: ModelIndex
+  /** How the library spells props, parts and states. */
+  profile: LibraryProfile
+  /** The library's names for this component's, from `uidx.json`; empty when unbound. */
+  binding: ComponentBinding
 }
 
 /** The prop a bare `{name}` alias names, if the contract declares it. */
@@ -201,14 +263,19 @@ export function componentModel(
   manifest?: Manifest,
   /** Every model the document set declares; this page's alone when absent. */
   models?: ModelIndex,
+  /** How the library spells things, and its names for this document's (ADR 0013 §3). */
+  library?: LibraryBindings,
 ): ComponentModel {
   const tags = manifest ? new Set(manifestTags(manifest).keys()) : undefined
   const spec = component.spec ?? doc.spec
   const contract = spec?.contract
-  const tag =
+  const profile = libraryProfile(library)
+  const binding = library?.components?.[component.name] ?? {}
+  const implemented =
     typeof component.attrs.implements?.value === 'string'
       ? component.attrs.implements.value
       : undefined
+  const tag = implemented === undefined ? undefined : (binding.tag ?? implemented)
   const parts: PartInfo[] = []
   const slots: SlotInfo[] = []
   const repeats: RepeatInfo[] = []
@@ -216,11 +283,18 @@ export function componentModel(
   const walk = (node: UidxNode): void => {
     const part = node.attrs.part?.value
     if (typeof part === 'string') {
+      const libraryName = binding.parts?.[part] ?? part
       parts.push({
         name: part,
+        libraryName,
         node,
-        tag: tag ? partTag(tag, part, tags) : `x-${part}`,
-        kind: tag ? partKind(tag, part, manifest) : 'element',
+        tag: tag ? partTag(tag, libraryName, tags) : `x-${part}`,
+        kind:
+          profile.parts === 'data-part'
+            ? 'data-part'
+            : tag
+              ? partKind(tag, libraryName, manifest)
+              : 'element',
       })
       partOf.set(node, part)
     }
@@ -258,6 +332,8 @@ export function componentModel(
     spec,
     contract,
     models: models ?? modelIndex([doc]),
+    profile,
+    binding,
     parts,
     slots,
     repeats,

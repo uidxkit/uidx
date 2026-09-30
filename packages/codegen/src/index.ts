@@ -2,10 +2,14 @@ export { generate, type GenerateInput, type GenerateOutput, type Target } from '
 export {
   componentModel,
   kebab,
+  libraryProfile,
   manifestTags,
   partTag,
   pascal,
+  type ComponentBinding,
   type ComponentModel,
+  type LibraryBindings,
+  type LibraryProfile,
   type Manifest,
 } from './model.js'
 export {

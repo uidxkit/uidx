@@ -21,12 +21,27 @@ export interface Manifest {
    */
   assets: string[]
   /**
-   * The headless library's `custom-elements.json`, relative to `uidx.json`
-   * (ADR 0013 §3). Optional: a document with no code render has none. When
-   * present the viewer offers its elements and parts as choices in the
-   * Contract tab, and `uidx codegen` checks contracts against it by default.
+   * The headless library (ADR 0013 §3). Optional: a document with no code
+   * render has none. Written as a path to its `custom-elements.json` or as an
+   * object that also says how the library spells things; normalised to the
+   * object here. When present the viewer offers its elements and parts as
+   * choices in the Contract tab, and `uidx codegen` reads it by default.
    */
-  headless?: string
+  headless?: HeadlessConfig
+}
+
+/**
+ * How a design binds to one library without the design changing (ADR 0013
+ * §3). `manifest` is the `custom-elements.json`, relative to `uidx.json`.
+ * `profile` says how the library exposes props, parts and its own states;
+ * `bindings` translates the identity's names to the library's, per
+ * component. Both are optional and default to the conventions the example
+ * library follows; their shapes are validated where they are read.
+ */
+export interface HeadlessConfig {
+  manifest: string
+  profile?: Record<string, string>
+  bindings?: Record<string, unknown>
 }
 
 export interface FoundManifest {
@@ -115,9 +130,39 @@ export async function readManifest(path: string): Promise<Manifest> {
     }
   }
 
-  const headless = record.headless
-  if (headless !== undefined && (typeof headless !== 'string' || headless === '')) {
-    problems.push(`${path}: "headless" must be a path to a custom-elements.json`)
+  let headless: HeadlessConfig | undefined
+  const declared = record.headless
+  if (typeof declared === 'string' && declared !== '') headless = { manifest: declared }
+  else if (declared !== undefined) {
+    const config =
+      typeof declared === 'object' && declared !== null && !Array.isArray(declared)
+        ? (declared as Record<string, unknown>)
+        : undefined
+    const manifest = config?.manifest
+    if (typeof manifest !== 'string' || manifest === '') {
+      problems.push(
+        `${path}: "headless" must be a path to a custom-elements.json, or { "manifest": path, "profile"?, "bindings"? }`,
+      )
+    } else {
+      headless = { manifest }
+      const profile = config!.profile
+      if (profile !== undefined) {
+        if (
+          typeof profile !== 'object' ||
+          profile === null ||
+          Array.isArray(profile) ||
+          Object.values(profile).some((value) => typeof value !== 'string')
+        )
+          problems.push(`${path}: "headless.profile" must be an object of strings`)
+        else headless.profile = profile as Record<string, string>
+      }
+      const bindings = config!.bindings
+      if (bindings !== undefined) {
+        if (typeof bindings !== 'object' || bindings === null || Array.isArray(bindings))
+          problems.push(`${path}: "headless.bindings" must be an object keyed by component name`)
+        else headless.bindings = bindings as Record<string, unknown>
+      }
+    }
   }
 
   if (problems.length) throw new ManifestError(problems)
@@ -127,7 +172,7 @@ export async function readManifest(path: string): Promise<Manifest> {
     // Absent means the conventional folders, all of them. An empty array is a
     // different statement — "this document has no assets" — and is honoured.
     assets: assets === undefined ? [...DEFAULT_ASSET_GLOBS] : (assets as string[]),
-    ...(headless === undefined ? {} : { headless: headless as string }),
+    ...(headless === undefined ? {} : { headless }),
   }
 }
 

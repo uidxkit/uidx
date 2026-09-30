@@ -1,5 +1,12 @@
 import { CODES, diagnostic, type Diagnostic } from '@uidx/format'
-import { manifestTags, partTag, type ComponentModel, type Manifest } from './model.js'
+import {
+  attributeName,
+  eventName,
+  manifestTags,
+  partTag,
+  type ComponentModel,
+  type Manifest,
+} from './model.js'
 
 /**
  * The declared contract against the headless implementation (ADR 0013 §4).
@@ -22,7 +29,9 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     report(`"${model.name}" implements ${model.tag}, which the manifest does not declare`)
     return out
   }
-  const props = new Set(model.contract.props.map((prop) => prop.name))
+  // Compared in the library's spelling: a binding may rename an attribute
+  // or an event, and the contract still has to cover what the element does.
+  const props = new Set(model.contract.props.map((prop) => attributeName(model, prop.name)))
   for (const attribute of root.attributes ?? []) {
     if (!props.has(attribute.name)) {
       report(
@@ -30,7 +39,7 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
       )
     }
   }
-  const events = new Set(model.contract.events.map((event) => event.name))
+  const events = new Set(model.contract.events.map((event) => eventName(model, event.name)))
   for (const event of root.events ?? []) {
     if (!events.has(event.name)) {
       report(
@@ -39,7 +48,7 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     }
   }
   for (const event of model.contract.events) {
-    if (!(root.events ?? []).some((entry) => entry.name === event.name)) {
+    if (!(root.events ?? []).some((entry) => entry.name === eventName(model, event.name))) {
       report(
         `the contract declares the event "${event.name}", which ${model.tag} does not dispatch`,
       )
@@ -47,15 +56,20 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
   }
   const tagSet = new Set(tags.keys())
   // The tree's bindings are the parts this component uses (ADR 0013 §3).
-  for (const { name: part } of model.parts) {
-    if (part === 'root') continue
+  // Light-DOM parts marked by `data-part` are the consumer's markup; the
+  // manifest has nothing to say about them.
+  if (model.profile.parts === 'data-part') return out
+  for (const { name, libraryName: part } of model.parts) {
+    if (name === 'root') continue
     const tag = partTag(model.tag, part, tagSet)
     if (tagSet.has(tag)) continue
     // A shadow part is as declared as an element part. That the library
     // draws it, and the design's own drawing under it is for the canvas and
     // Figma, is how such a library works — not a finding.
     if ((root.cssParts ?? []).some((entry) => entry.name === part)) continue
-    report(`part "${part}" has no element in the manifest (looked for ${tag})`)
+    report(
+      `part "${name}"${part === name ? '' : ` (bound to "${part}")`} has no element in the manifest (looked for ${tag})`,
+    )
   }
   return out
 }

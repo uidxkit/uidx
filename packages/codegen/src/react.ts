@@ -1,6 +1,13 @@
 import type { FieldSpec, JsonValue, PropSpec, UidxNode } from '@uidx/format'
 import { modelOfType, slotModel, type ModelIndex } from '@uidx/schema/design-system'
-import { boundPath, boundProp, pascal, type ComponentModel } from './model.js'
+import {
+  attributeName,
+  boundPath,
+  boundProp,
+  eventName,
+  pascal,
+  type ComponentModel,
+} from './model.js'
 
 /**
  * The React target (ADR 0017 §3): one component per identity, wrapping the
@@ -339,6 +346,8 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       }
       default: {
         if (node === model.node) return children()
+        if (info?.kind === 'data-part')
+          return [`${pad}<span data-part="${info.libraryName}">`, ...children(), `${pad}</span>`]
         if (info) return [`${pad}<${info.tag}>`, ...children(), `${pad}</${info.tag}>`]
         return [`${pad}<div data-node="${node.name}">`, ...children(), `${pad}</div>`]
       }
@@ -350,14 +359,28 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
   // A composition renders as the instance it holds, className and style
   // handed to it, so the pattern adds no element of its own.
   const composed = model.composes ? render(model.composes, 2) : null
-  const attributes = attributeProps
+  // Props reach the element the way the library reflects them (ADR 0013 §3):
+  // as attributes, as data attributes, or as classes joined onto className.
+  const classed = model.profile.props === 'class' ? attributeProps : []
+  const attributes = (model.profile.props === 'class' ? [] : attributeProps)
     .map((prop) => {
       const isBoolean = prop.type === 'boolean'
-      return `${prop.name}={${isBoolean ? `${prop.name} || undefined` : prop.name}}`
+      const name = attributeName(model, prop.name)
+      const attr = model.profile.props === 'data-attribute' ? `data-${name}` : name
+      return `${attr}={${isBoolean ? `${prop.name} || undefined` : prop.name}}`
     })
     .join(' ')
+  const classNameExpr = classed.length
+    ? `{[className, ${classed
+        .map((prop) =>
+          prop.type === 'boolean'
+            ? `${prop.name} ? '${attributeName(model, prop.name)}' : undefined`
+            : `${prop.name} !== undefined ? \`${attributeName(model, prop.name)}-\${${prop.name}}\` : undefined`,
+        )
+        .join(', ')}].filter(Boolean).join(' ')}`
+    : '{className}'
   const events = (contract?.events ?? []).map(
-    (event) => `  useElementEvent(ref, '${event.name}', on${pascal(event.name)})`,
+    (event) => `  useElementEvent(ref, '${eventName(model, event.name)}', on${pascal(event.name)})`,
   )
   const destructure = props
     .map((prop) => {
@@ -406,7 +429,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
           `  const ref = useRef<HTMLElement>(null)`,
           ...events,
           `  return (`,
-          `    <${rootTag} ref={ref} className={className} style={style}${attributes ? ` ${attributes}` : ''}>`,
+          `    <${rootTag} ref={ref} className=${classNameExpr} style={style}${attributes ? ` ${attributes}` : ''}>`,
           ...body,
           `    </${rootTag}>`,
           `  )`,

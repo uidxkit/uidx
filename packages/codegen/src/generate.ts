@@ -3,7 +3,12 @@ import { contractJson } from '@uidx/schema/design-system'
 import { tokensCss } from './css.js'
 import { checkConformance } from './conformance.js'
 import { emitCss, emitHtml } from './html.js'
-import { componentModel, type ComponentModel, type Manifest } from './model.js'
+import {
+  componentModel,
+  type ComponentModel,
+  type LibraryBindings,
+  type Manifest,
+} from './model.js'
 import { modelIndex } from '@uidx/schema/design-system'
 import { emitElementTypes, emitIndex, emitModels, emitReact, emitRuntime } from './react.js'
 
@@ -16,6 +21,8 @@ export interface GenerateInput {
   tokens?: readonly UidxDocument[]
   /** The headless library's `custom-elements.json`, for part tags and conformance. */
   manifest?: Manifest
+  /** How the library spells things and its names for this document's (`uidx.json` `headless`). */
+  library?: LibraryBindings
   targets?: readonly Target[]
 }
 
@@ -45,7 +52,7 @@ export function generate(input: GenerateInput): GenerateOutput {
     if (doc.tree.element === 'Tokens') continue
     for (const node of doc.tree.children) {
       if (node.element !== 'Component') continue
-      const model = componentModel(node, doc, input.manifest, index)
+      const model = componentModel(node, doc, input.manifest, index, input.library)
       models.push(model)
       owner.set(model, file)
     }

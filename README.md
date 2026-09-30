@@ -108,6 +108,31 @@ The separate `.uidx/uidx.json` manifest controls which files belong to the docum
 `headless` is optional. It names the headless library's `custom-elements.json`,
 relative to `uidx.json`; with it, the viewer's Contract tab offers the library's
 elements and parts as choices, and `uidx codegen` checks contracts against it.
+Leave it out and the Contract tab offers the libraries your dependencies ship
+(any package whose `package.json` has a `customElements` field) and writes your
+choice here. The object form binds the same designs to a library that spells
+things differently, without editing a design:
+
+```json
+{
+  "headless": {
+    "manifest": "node_modules/@shoelace-style/shoelace/dist/custom-elements.json",
+    "profile": { "props": "attribute", "customStates": "state", "parts": "element" },
+    "bindings": {
+      "Checkbox": {
+        "tag": "sl-checkbox",
+        "parts": { "checked-indicator": "control" },
+        "events": { "change": "sl-change" }
+      }
+    }
+  }
+}
+```
+
+`profile` says how the library reflects props (`attribute`, `data-attribute`,
+`class`), its own states (`state`, `data-attribute`, `class`) and parts
+(`element`, `data-part`). `bindings` maps a component's identity names to the
+library's. Both default to the conventions `@hwc/components` follows.
 
 ### CLI and MCP
 

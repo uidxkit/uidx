@@ -49,7 +49,13 @@ import EditToolbar from './EditToolbar.vue'
 import WorkspaceNav from './WorkspaceNav.vue'
 import FontsPane from './FontsPane.vue'
 import { fontGeneration, fontsInFileKey, openFontsKey } from './font-library'
-import { headlessError, headlessLibrary, refreshHeadless } from './headless'
+import {
+  chooseHeadless,
+  headlessCandidates,
+  headlessError,
+  headlessLibrary,
+  refreshHeadless,
+} from './headless'
 import WorkspaceStatus from './WorkspaceStatus.vue'
 import { canRemove, componentFrom, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
@@ -1722,7 +1728,9 @@ onUnmounted(() => socket.close())
             :can-make-component="componentSource !== null"
             :headless="headlessLibrary"
             :headless-error="headlessError"
+            :headless-candidates="headlessCandidates"
             @select="selection = [$event]"
+            @choose-library="chooseHeadless($event)"
             @edit-vector="editVector"
             @finish-vector="canvasPane?.finishDrawing()"
             @vector-action="canvasPane?.vectorAction($event)"

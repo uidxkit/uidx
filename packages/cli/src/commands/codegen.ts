@@ -3,7 +3,7 @@ import { dirname, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
 import { formatDiagnostic, parse, type UidxDocument } from '@uidx/format'
-import { generate, type Manifest, type Target } from '@uidx/codegen'
+import { generate, type LibraryBindings, type Manifest, type Target } from '@uidx/codegen'
 import { findManifest } from '@uidx/server/document'
 import type { Io } from '../cli.js'
 
@@ -68,9 +68,15 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
   // the library, so a checked-in config and the viewer's Contract tab read the
   // same file this command checks against.
   let manifestPath = parsed.values.manifest ? resolve(cwd, parsed.values.manifest) : undefined
-  if (!manifestPath) {
-    const found = await findManifest(cwd)
-    if (found?.manifest.headless) manifestPath = resolve(found.dir, found.manifest.headless)
+  let library: LibraryBindings | undefined
+  const found = await findManifest(cwd)
+  const headless = found?.manifest.headless
+  if (headless) {
+    manifestPath ??= resolve(found!.dir, headless.manifest)
+    library = {
+      profile: headless.profile as LibraryBindings['profile'],
+      components: headless.bindings as LibraryBindings['components'],
+    }
   }
   let manifest: Manifest | undefined
   if (manifestPath) {
@@ -84,7 +90,7 @@ export async function runCodegen(argv: string[], io: Io): Promise<number> {
     }
   }
 
-  const result = generate({ pages, tokens, manifest, targets })
+  const result = generate({ pages, tokens, manifest, library, targets })
   for (const d of result.diagnostics) io.err(`${formatDiagnostic(d, d.file)}\n`)
   if (result.diagnostics.some((d) => d.severity === 'error')) return 1
 

@@ -12,7 +12,7 @@ import {
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import { contractIssues, contractView } from './contract-edits'
-import type { HeadlessLibrary } from './headless'
+import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 
 import { computed, ref, shallowRef, watch } from 'vue'
 import { vectorEndpoints } from '@open-pencil/core/vector'
@@ -124,6 +124,8 @@ const props = defineProps<{
   headless?: HeadlessLibrary | null
   /** Why the library could not be read, shown in the Contract tab. */
   headlessError?: string
+  /** Libraries the project's dependencies ship, offered while none is named. */
+  headlessCandidates?: HeadlessCandidate[]
   /** Token address -> literal, so a bound row can show what it resolves to. */
   tokens?: Map<string, JsonValue>
   /**
@@ -235,6 +237,8 @@ const emit = defineEmits<{
   makeComponent: []
   /** The Contract tab names layers; choosing one selects it, as the rail would. */
   select: [address: string]
+  /** The Contract tab chose a headless library; the shell has the server write it. */
+  chooseLibrary: [path: string]
 }>()
 
 /**
@@ -1323,9 +1327,11 @@ function onDetach(prop: string, value: JsonValue): void {
           :node="active"
           :library="headless ?? null"
           :library-error="headlessError"
+          :candidates="headlessCandidates"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"
+          @choose-library="emit('chooseLibrary', $event)"
         />
       </section>
     </template>

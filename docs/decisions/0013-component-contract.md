@@ -84,6 +84,18 @@ shorthand rule of the visual contract does not apply here.
   layer; binding it from a new layer unbinds the old one, since one node per
   part is the rule. A `<Repeat>` chooses among the contract's repeating slots.
   The tab never edits the contract's prose; it shows it beside the bindings.
+  When `uidx.json` names no library, the tab offers those the project's
+  dependencies ship — the Custom Elements Manifest convention of a
+  `customElements` field in `package.json` — and writes the choice.
+- The identity never spells a library. `implements`, `part`, prop and event
+  names are the design system's own words; `uidx.json`'s `headless` may carry
+  a `profile` (how the library reflects props, its own states and parts:
+  attributes, data attributes, classes, `::part()` or `data-part`) and
+  `bindings` (the library's tag, part, event and attribute names per
+  component). The code target and conformance read both, so moving to a
+  library that spells things differently is a new `headless` entry, not an
+  edit to any design. Absent, both default to the conventions the example
+  library follows.
 
 ### 4. Declaration in uidx, implementation in code
 

@@ -384,6 +384,41 @@ describe('the Contract section', () => {
   })
 })
 
+describe('choosing a library', () => {
+  it('offers the dependencies that ship one, or a path, and asks the shell to write it', async () => {
+    const doc = parseOrThrow(bare)
+    const section = mount(ContractSection, {
+      props: {
+        doc,
+        node: null,
+        library: null,
+        candidates: [{ package: '@acme/kit', path: 'node_modules/@acme/kit/custom-elements.json' }],
+        writable: true,
+      },
+    })
+    const pick = section.find('[data-field="choose-library"] select')
+    expect(pick.findAll('option').map((o) => o.text().trim())).toEqual(['Choose…', '@acme/kit'])
+    await pick.setValue('node_modules/@acme/kit/custom-elements.json')
+    expect(section.emitted('chooseLibrary')).toEqual([
+      ['node_modules/@acme/kit/custom-elements.json'],
+    ])
+    await section
+      .find('[data-field="choose-library"] input')
+      .setValue('../lib/custom-elements.json')
+    await section.find('[data-field="choose-library"] button').trigger('click')
+    expect(section.emitted('chooseLibrary')![1]).toEqual(['../lib/custom-elements.json'])
+  })
+
+  it('says which tag uidx.json binds a component to', () => {
+    const doc = parseOrThrow(CHECKBOX)
+    const bound = parseHeadless('lib.json', { modules: [] }, { Checkbox: { tag: 'sl-checkbox' } })
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Checkbox'), library: bound, writable: true },
+    })
+    expect(section.find('[data-field="bound"]').text()).toContain('sl-checkbox')
+  })
+})
+
 describe('the inspector tabs', () => {
   it('switches between Design and Contract, and counts parts to bind on the tab', async () => {
     const doc = parseOrThrow(CHECKBOX)
