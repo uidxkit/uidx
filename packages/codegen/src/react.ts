@@ -1,5 +1,6 @@
 import {
   aliasTarget,
+  listProps,
   type FieldSpec,
   type JsonValue,
   type PropSpec,
@@ -425,6 +426,13 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       return `${attr}={${isBoolean ? `${prop.name} || undefined` : prop.name}}`
     })
     .join(' ')
+  // The `empty` state (ADR 0017 §4) is the consumer's data, not a prop, so
+  // the wrapper computes it from the lists it was handed.
+  const lists = listProps(contract)
+  const emptyAttr = lists.length
+    ? `data-empty={(${lists.map((name) => `(${name}?.length ?? 0) === 0`).join(' && ')}) || undefined}`
+    : ''
+  const rootAttributes = [attributes, emptyAttr].filter(Boolean).join(' ')
   const classNameExpr = classed.length
     ? `{[className, ${classed
         .map((prop) =>
@@ -484,7 +492,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
           `  const ref = useRef<HTMLElement>(null)`,
           ...events,
           `  return (`,
-          `    <${rootTag} ref={ref} className=${classNameExpr} style={style}${attributes ? ` ${attributes}` : ''}>`,
+          `    <${rootTag} ref={ref} className=${classNameExpr} style={style}${rootAttributes ? ` ${rootAttributes}` : ''}>`,
           ...body,
           `    </${rootTag}>`,
           `  )`,

@@ -33,7 +33,7 @@ import {
  * never links them, and a gesture on one produces no patch (ADR 0016 §4).
  */
 
-import { axesOf } from '@uidx/format'
+import { axesOf, EMPTY_STATE, listProps, STATE_AXIS } from '@uidx/format'
 /** The styles-table name for the component's own frame (ADR 0016 §2). */
 export const ROOT_PART = 'root'
 
@@ -307,6 +307,15 @@ function synthAttr(
 }
 
 /** A deep copy of `node` re-addressed under `address`, marked synthetic and derived. */
+/** Drops, in place, every layer below `node` that repeats over one of `lists`. */
+function pruneRepeats(node: UidxNode, lists: ReadonlySet<string>): void {
+  node.children = node.children.filter((child) => {
+    const repeat = repeatOf(child)
+    return !(repeat && lists.has(repeat.list))
+  })
+  for (const child of node.children) pruneRepeats(child, lists)
+}
+
 function rebase(node: UidxNode, address: string): UidxNode {
   return {
     ...node,
@@ -413,6 +422,12 @@ export function deriveVariants(component: UidxNode): UidxNode {
       indent: component.indent,
       synthetic: true,
       derived: true,
+    }
+    // ADR 0017 §4: with no items, a repeat over the component's own list
+    // draws no rows, so the empty state shows what is left.
+    if (combination.get(STATE_AXIS) === EMPTY_STATE) {
+      const lists = new Set(listProps(spec.contract))
+      pruneRepeats(root, lists)
     }
     for (const row of rowsFor(rows, combination)) {
       for (const [part, props] of Object.entries(row.values)) {

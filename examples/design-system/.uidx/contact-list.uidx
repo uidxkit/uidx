@@ -14,13 +14,14 @@ Contact.
     <Slot name="option" repeat="{items}">
       <Instance name="row" component="ContactOption" layoutAlign="STRETCH" />
     </Slot>
-    <Slot name="empty">
+    <Slot name="empty" visible={false}>
       <Text name="nobody" characters="No contacts yet" fontSize={13} fills="{text#muted}" />
     </Slot>
   </Component>
 </Page>
 
 <Styles>
+  <Style state="empty" empty:visible={true} />
   <Style state="disabled" root:opacity="{opacity#disabled}" />
 </Styles>
 

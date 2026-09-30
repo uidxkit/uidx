@@ -143,9 +143,13 @@ id: contact-list
     <Slot name="item" repeat="{items}">
       <Instance name="row" component="ContactItem" />
     </Slot>
-    <Slot name="empty" />
+    <Slot name="empty" visible={false} />
   </Component>
 </Page>
+
+<Styles>
+  <Style state="empty" empty:visible={true} />
+</Styles>
 
 ## Contract
 

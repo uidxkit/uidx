@@ -12,12 +12,16 @@ hwc-radio-group [data-slot="option"] {
 }
 
 hwc-radio-group [data-slot="empty"] {
-  display: contents;
+  display: none;
 }
 
 hwc-radio-group [data-node="nobody"] {
   font-size: 13px;
   color: var(--text-muted);
+}
+
+hwc-radio-group[data-empty] [data-slot="empty"] {
+  display: contents;
 }
 
 hwc-radio-group[disabled] {

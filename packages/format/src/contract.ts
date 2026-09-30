@@ -47,6 +47,21 @@ export function visualAxes(contract: ContractSpec | undefined): Map<string, stri
 export const INTERACTION_STATES: readonly string[] = ['hover', 'focus', 'active']
 
 /**
+ * The state a component with a list prop is in while that list is empty
+ * (ADR 0017 §4). Like `hover` it needs no declaration: its cause is the data
+ * the consumer passes, so it is drawn and styled like any other state, and a
+ * repeat over the component's own list draws no rows in it.
+ */
+export const EMPTY_STATE = 'empty'
+
+/** The contract's list props: those typed `Something[]`. */
+export function listProps(contract: ContractSpec | undefined): string[] {
+  return (contract?.props ?? [])
+    .filter((prop) => typeof prop.type === 'string' && prop.type.trim().endsWith('[]'))
+    .map((prop) => prop.name)
+}
+
+/**
  * Where a state named in a style row comes from (ADR 0016 §1): a visual
  * boolean prop the consumer sets, an interaction the browser produces, or a
  * state the element declares itself. Undefined for a name that is none of
@@ -55,10 +70,11 @@ export const INTERACTION_STATES: readonly string[] = ['hover', 'focus', 'active'
 export function stateKind(
   name: string,
   contract: ContractSpec | undefined,
-): 'prop' | 'interaction' | 'declared' | undefined {
+): 'prop' | 'interaction' | 'declared' | 'collection' | undefined {
   if (contract?.props.some((prop) => prop.name === name && prop.visual && prop.type === 'boolean'))
     return 'prop'
   if (INTERACTION_STATES.includes(name)) return 'interaction'
+  if (name === EMPTY_STATE && listProps(contract).length > 0) return 'collection'
   if (contract?.states.some((state) => state.name === name)) return 'declared'
   return undefined
 }
@@ -66,7 +82,8 @@ export function stateKind(
 /**
  * The `state` axis, `default` first (ADR 0016 §1): the visual boolean props
  * in declaration order, then the interaction states in the order the styles
- * table first mentions them, then the states the element declares. A visual
+ * table first mentions them, then the states the element declares, then
+ * `empty` when a component with a list prop styles it. A visual
  * boolean no row styles is still drawn, so the set shows honestly that it
  * looks like the default.
  */
@@ -85,6 +102,9 @@ export function stateAxis(
     if (named !== undefined && stateKind(named, contract) === 'interaction') add(named)
   }
   for (const state of contract?.states ?? []) add(state.name)
+  // Like an interaction, `empty` is drawn once the styles table gives it a look.
+  if (styles.some((row) => row.keys[STATE_AXIS] === EMPTY_STATE) && listProps(contract).length)
+    add(EMPTY_STATE)
   return states
 }
 

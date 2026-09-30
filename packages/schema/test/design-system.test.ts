@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CODES, parseOrThrow, resolve, type JsonValue, type UidxNode } from '@uidx/format'
+import { deriveVariants } from '../src/design-system.js'
 import {
   auditDesignSystem,
   contractJson,
@@ -623,5 +624,51 @@ ${variants}
       page(`    <Variant state="off"><Frame name="track" width={40} height={24} /></Variant>
     <Variant state="on"><Frame name="track" width={40} height={24}><Frame name="knob" width={8} height={8} /></Frame></Variant>`)
     expect(codes(doc)).not.toContain('UIDX153')
+  })
+})
+
+describe('the empty state (ADR 0017 §4)', () => {
+  const doc = parseOrThrow(
+    page(
+      'list',
+      `  <Component name="List" status="draft" layoutMode="VERTICAL">
+    <Frame name="row" repeat="{items}" width={100} height={20} />
+    <Text name="nobody" characters="Nobody yet" visible={false} />
+  </Component>`,
+      `
+<Styles>
+  <Style state="empty" nobody:visible={true} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Row[]">The rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Row">
+  One row.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+</Model>
+`,
+    ),
+  )
+
+  it('joins the state axis of a component with a list prop', () => {
+    expect(contractJson(doc)).toMatchObject({
+      components: [{ axes: { state: ['default', 'empty'] } }],
+    })
+  })
+
+  it('draws no rows for the list in the empty state', () => {
+    const set = deriveVariants(doc.tree.children[0]!)
+    const rows = (variant: string) =>
+      set.children
+        .find((node) => node.name === variant)!
+        .children[0]!.children.map((node) => node.name)
+    expect(rows('state=default')).toEqual(['row', 'nobody'])
+    expect(rows('state=empty')).toEqual(['nobody'])
   })
 })

@@ -38,6 +38,9 @@ export function stateSelector(
   switch (stateKind(state, contract)) {
     case 'interaction':
       return state === 'hover' ? ':hover' : state === 'focus' ? ':focus-visible' : ':active'
+    // The list the consumer passed is empty: the React target sets it.
+    case 'collection':
+      return '[data-empty]'
     // A state the element produces itself: `:state()` through ElementInternals
     // unless the library spells it otherwise.
     case 'declared':
@@ -185,13 +188,16 @@ export function emitCss(model: ComponentModel): string {
       const info = part === 'root' ? undefined : model.parts.find((entry) => entry.name === part)
       // A row targets the root, a part, or one of the design's own nodes by name.
       const target = part === 'root' ? model.node : (info?.node ?? styleTarget(model.node, part))
-      const selector =
-        part === 'root'
-          ? scoped
-          : info
-            ? partSelector(scoped, info)
-            : `${scoped} [data-node="${part}"]`
-      rules.push(cssRule(selector, cssDeclarations(props, target ? kindOf(target) : 'container')))
+      const selector = target
+        ? selectorFor(model, target, scoped)
+        : info
+          ? partSelector(scoped, info)
+          : `${scoped} [data-node="${part}"]`
+      const declarations = cssDeclarations(props, target ? kindOf(target) : 'container')
+      // A slot shown by a row keeps the display its base rule gives it.
+      if (target?.element === 'Slot' && declarations.display === 'inline-flex')
+        declarations.display = 'contents'
+      rules.push(cssRule(selector, declarations))
     }
   }
   return rules.filter(Boolean).join('\n')

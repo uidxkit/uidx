@@ -25,7 +25,7 @@ export interface ContactListProps {
 function ContactListBase({ items, name, disabled, empty, renderOption, className, style }: ContactListProps) {
   const ref = useRef<HTMLElement>(null)
   return (
-    <hwc-radio-group ref={ref} className={className} style={style} name={name} disabled={disabled || undefined}>
+    <hwc-radio-group ref={ref} className={className} style={style} name={name} disabled={disabled || undefined} data-empty={((items?.length ?? 0) === 0) || undefined}>
       {items.map((item, index) => (
         <Fragment key={String(item.id)}>
           {renderOption ? renderOption(item, index) : (

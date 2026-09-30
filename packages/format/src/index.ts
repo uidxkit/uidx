@@ -137,8 +137,10 @@ export * from './lengths.js'
 export {
   axesOf,
   DEFAULT_STATE,
+  EMPTY_STATE,
   enumValues,
   INTERACTION_STATES,
+  listProps,
   STATE_AXIS,
   stateAxis,
   stateKind,

@@ -561,3 +561,17 @@ describe('types', () => {
     expect(tsType(model, "'a' | 'b'")).toBe("'a' | 'b'")
   })
 })
+
+describe('the empty state of a list (ADR 0017 §4)', () => {
+  it('keys the empty rows on data-empty and keeps a slot a slot', () => {
+    const css = file('html/contact-list.css')
+    expect(css).toContain('hwc-radio-group [data-slot="empty"] {\n  display: none;')
+    expect(css).toContain('hwc-radio-group[data-empty] [data-slot="empty"] {\n  display: contents;')
+  })
+
+  it('has the React wrapper say when its list is empty', () => {
+    expect(file('react/ContactList.tsx')).toContain(
+      'data-empty={((items?.length ?? 0) === 0) || undefined}',
+    )
+  })
+})
