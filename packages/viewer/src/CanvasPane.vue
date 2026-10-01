@@ -9,6 +9,7 @@ import {
   getWorldMatrix,
   transformVectorNetwork,
   TransformMatrix,
+  type SceneNode,
   type VectorNetwork,
 } from '@open-pencil/scene-graph'
 import { vectorNetworkToSVGPaths } from '@open-pencil/core'
@@ -45,7 +46,15 @@ import { positioningWrites } from './position-writes'
 import { resolvePins, withStrokeEndpoints, type ModelIndex } from '@uidx/schema'
 import { strokeEdit } from './stroke-edits'
 import { declaredComponents, definitionsMoved, instancedComponents } from './definitions-moved'
-import { authoredSizing, resizeWrites, sizingFlipFor } from './resize-writes'
+import {
+  authoredSizing,
+  instanceResizeWrites,
+  instanceSizing,
+  releasedFills,
+  resizedBox,
+  resizeWrites,
+  sizingFlipFor,
+} from './resize-writes'
 import type { PinFrame } from './pin-writes'
 import { provideEditor, useCanvas } from '@open-pencil/vue'
 import {
@@ -148,6 +157,20 @@ const resolveComponent = (name: string): UidxNode | undefined => props.component
  */
 const assets = createAssetStore()
 const resolveAsset = (src: string): string | undefined => assets.hashOf(src)
+
+/**
+ * What the scene is built with. One place, because a full build, the
+ * incremental update and a resize asking how an instance sizes must all
+ * resolve the same component the same way.
+ */
+const sceneOptions = () => ({
+  resolveAlias,
+  resolveAsset,
+  resolveComponent,
+  tokens: props.sceneTokens,
+  models: props.models,
+  sampleIndex: props.previewSample ?? 0,
+})
 
 // Before mount, deliberately: `useCanvas` asks the font manager for Inter as
 // soon as it mounts, and seeding after that is too late for the first paint.
@@ -1425,14 +1448,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     ) {
       const changes = diffDocuments(current, doc, resolveAlias, props.sceneTokens)
       if (changes) {
-        const applied = applyChanges(scene.value, changes, {
-          resolveAlias,
-          resolveAsset,
-          resolveComponent,
-          tokens: props.sceneTokens,
-          models: props.models,
-          sampleIndex: props.previewSample ?? 0,
-        })
+        const applied = applyChanges(scene.value, changes, sceneOptions())
         // The renderer re-records only the chunks holding these (viewer-at-scale
         // spec §4); an unexplained version bump re-records the whole page.
         markDirty(applied.touched)
@@ -1470,14 +1486,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // as already drawn, and the rebuild that the definition needed never ran.
     renderedWith = props.components
 
-    const next = toSceneGraph(doc, {
-      resolveAlias,
-      resolveAsset,
-      resolveComponent,
-      tokens: props.sceneTokens,
-      models: props.models,
-      sampleIndex: props.previewSample ?? 0,
-    })
+    const next = toSceneGraph(doc, sceneOptions())
     // Text the fonts could not measure yet is a build that will be wrong until
     // it is done again, once the demand this build just raised settles.
     lastBuildEstimated = next.unmeasuredText > 0
@@ -1826,6 +1835,17 @@ function vectorSizeFields(
   return fields
 }
 
+/** The layout of the node a scene node sits in, which says which axis an authored stretch fills. */
+function layoutAbove(node: { parentId: string | null }): SceneNode['layoutMode'] | undefined {
+  return node.parentId ? editor.graph.getNode(node.parentId)?.layoutMode : undefined
+}
+
+/**
+ * The box a resize started from: its first frame remembers it, because after
+ * that the preview has already moved the node, and its last lets it go.
+ */
+let resizeFrom: { id: string; rect: Rect } | null = null
+
 function resizeNode(
   id: string,
   rect: Rect,
@@ -1834,38 +1854,85 @@ function resizeNode(
 ): void {
   const node = editor.graph.getNode(id)
   const saved = current ? resolve(current.tree, id) : null
+  const from =
+    resizeFrom?.id === id
+      ? resizeFrom.rect
+      : node
+        ? { x: node.x, y: node.y, width: node.width, height: node.height }
+        : rect
+  resizeFrom = mode === 'preview' ? { id, rect: from } : null
   if (!node || !saved || props.writable === false) return
   const geometry = vectorSizeFields(id, rect.width, rect.height)
-  const sizing = authoredSizing(saved)
-  const fields: Record<string, unknown> = {
-    ...resizeWrites(sizing, rect, { widthOnly }),
-    ...geometry,
-  }
+  // An instance states its size and nothing about how it is decided, so the
+  // file takes the box alone, on the axes the handle moved; the flip that
+  // keeps the preview from snapping back to the component's hug stays on the
+  // canvas (`instanceResizeWrites`).
+  const instance = saved.element === 'Instance'
+  const placed = instance ? instanceSizing(saved, sceneOptions(), layoutAbove(node)) : null
+  const sizing = placed ?? authoredSizing(saved)
+  // The controller says when an east or west handle is held; a north or south
+  // one is read off the box, and a cancel puts all of it back.
+  const moved =
+    mode === 'cancel'
+      ? { x: true, y: true, width: true, height: true }
+      : resizedBox(from, rect, widthOnly)
+  // A size dragged onto a dimension the instance fills turns it from Fill to
+  // Fixed (`releasedFills`); a cancel puts the fill back with the modes below.
+  const released =
+    placed && mode !== 'cancel'
+      ? releasedFills(
+          placed.fills,
+          (['width', 'height'] as const).filter((dimension) => moved[dimension]),
+        )
+      : null
+  const fields: Record<string, unknown> = placed
+    ? { ...instanceResizeWrites(sizing, rect, moved), ...released?.fields }
+    : { ...resizeWrites(sizing, rect, { widthOnly }), ...geometry }
   if (mode === 'cancel') {
-    // The preview may have pinned an automatic size. Restore the saved modes
-    // as well as the original box when the browser interrupts the gesture.
-    for (const key of ['primaryAxisSizing', 'counterAxisSizing', 'textAutoResize'] as const) {
-      if (sizing[key] !== undefined) fields[key] = sizing[key]
+    // The preview may have pinned an automatic size, or let an instance's
+    // fill go. Restore the saved modes as well as the original box when the
+    // browser interrupts the gesture.
+    const before: Record<string, unknown> = { ...sizing }
+    for (const key of [
+      'primaryAxisSizing',
+      'counterAxisSizing',
+      'textAutoResize',
+      'layoutGrow',
+      'layoutAlignSelf',
+    ]) {
+      if (before[key] !== undefined) fields[key] = before[key]
     }
   }
   authoredWrite = {
     address: id,
-    props: new Set([
-      'x',
-      'y',
-      'width',
-      'height',
-      'primaryAxisSizingMode',
-      'counterAxisSizingMode',
-      'textAutoResize',
-      ...(geometry ? ['vectorPaths'] : []),
-    ]),
+    props: new Set(
+      instance
+        ? Object.keys(fields).filter((key) => key in rect)
+        : [
+            'x',
+            'y',
+            'width',
+            'height',
+            'primaryAxisSizingMode',
+            'counterAxisSizingMode',
+            'textAutoResize',
+            ...(geometry ? ['vectorPaths'] : []),
+          ],
+    ),
   }
   try {
     if (mode !== 'commit') editor.graph.runPreviewUpdates(() => editor.updateNode(id, fields))
     else {
       editor.updateNode(id, fields)
       recordSceneWrite(id, fields)
+      // In the resize's own envelope, after the scene's write of the same
+      // attribute, so `collapseBurst` folds the two into the removal.
+      if (released?.removals.length) {
+        if (!burst.length) queueMicrotask(flushBurst)
+        burst.push(
+          ...released.removals.map((prop) => ({ op: 'remove' as const, address: id, prop })),
+        )
+      }
     }
   } finally {
     authoredWrite = null
@@ -2118,9 +2185,23 @@ function applyProp(
    */
   const node = graph.getNode(address)
   const docNode = current ? resolve(current.tree, address) : null
+  // An instance's sizing is its component's until it states a size, so it is
+  // asked the way the build answers it; the flip it gets is the canvas's alone
+  // (see `resizeNode`), which is why it is never vouched below.
+  const instance = docNode?.element === 'Instance'
+  const placed =
+    docNode && instance && node ? instanceSizing(docNode, sceneOptions(), layoutAbove(node)) : null
+  // A size typed onto a dimension the instance fills turns it from Fill to
+  // Fixed, as a drag does (`releasedFills`); the fill leaves with `removals`.
+  const released =
+    placed && (prop === 'width' || prop === 'height') ? releasedFills(placed.fills, [prop]) : null
   let sized =
     docNode && (prop === 'width' || prop === 'height')
-      ? { ...fields, ...sizingFlipFor(authoredSizing(docNode), prop) }
+      ? {
+          ...fields,
+          ...sizingFlipFor(placed ?? authoredSizing(docNode), prop),
+          ...released?.fields,
+        }
       : fields
 
   /*
@@ -2129,7 +2210,7 @@ function applyProp(
    * land at 0,0 on the next load; AUTO hands position back to the layout and
    * takes the pinned numbers out of the file with it (`position-writes.ts`).
    */
-  let removals: ('x' | 'y')[] = []
+  let removals: string[] = released?.removals ?? []
   if (node && prop === 'layoutPositioning' && (value === 'ABSOLUTE' || value === 'AUTO')) {
     const writes = positioningWrites({ x: node.x, y: node.y }, value, docNode)
     sized = writes.fields
@@ -2156,7 +2237,7 @@ function applyProp(
       prop,
       ...(vectorGeometry ? ['vectorPaths'] : []),
       ...Object.keys(sized)
-        .filter((key) => key.endsWith('Sizing'))
+        .filter((key) => key.endsWith('Sizing') && !instance)
         .map((key) => `${key}Mode`),
       ...(prop === 'layoutPositioning' ? ['x', 'y'] : []),
     ]),

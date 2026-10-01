@@ -1,12 +1,15 @@
 export {
   toSceneGraph,
   layOutEntity,
+  instanceFills,
+  instanceSceneProps,
   scenePropsFor,
   scenePropFor,
   slotOfSceneNode,
   variantFor,
   NODE_TYPE,
   type AddressMap,
+  type InstanceFills,
   type MutableAddressMap,
   type SceneResult,
 } from './to-scene.js'

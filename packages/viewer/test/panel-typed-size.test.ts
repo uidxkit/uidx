@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { parseOrThrow, resolve } from '@uidx/format'
-import { fromSceneChange, toSceneGraph } from '@uidx/schema'
-import { authoredSizing, sizingFlipFor } from '../src/resize-writes'
+import { mount } from '@vue/test-utils'
+import { applyPatches, parseOrThrow, resolve } from '@uidx/format'
+import { fromSceneChange, layOutEntity, toSceneGraph } from '@uidx/schema'
+import { collapseBurst } from '../src/patch-burst'
+import { authoredSizing, instanceSizing, releasedFills, sizingFlipFor } from '../src/resize-writes'
+import PropertiesPane from '../src/PropertiesPane.vue'
 
 /**
  * C7's hug-flip criterion, at the altitude the gesture actually runs.
@@ -173,5 +176,174 @@ describe('authoredSizing reads the file, and the engine where the file is silent
     expect(sizingFlipFor(authoredSizing(docNode), 'width')).toEqual({
       counterAxisSizing: 'FIXED',
     })
+  })
+})
+
+/**
+ * The same typed width on an `<Instance>`, which the file states no sizing for
+ * at all: `authoredSizing` answered "nothing hugs", the flip never happened,
+ * and the number previewed as nothing while the component's hug held. The
+ * instance is asked as the build answers it (`instanceSizing`), and the file
+ * still takes the width alone — a stated width *is* Fixed on an instance.
+ */
+const BUTTON1 = parseOrThrow(`---
+id: button1
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button1" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8}>
+    <Text name="label" characters="{label}" fontSize={14} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="hover" root:opacity={0.8} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Button1">The words it shows.</Prop>
+</Props>
+`)
+const components = new Map([['Button1', BUTTON1.tree.children[0]!]])
+const scope = { resolveComponent: (name: string) => components.get(name) }
+const PAGE = (attrs = '') => `---
+id: page1
+---
+
+## Visual Contract
+
+<Page>
+  <Instance name="button1-1" component="Button1" x={10} y={10} props={{ label: 'Click Me' }}${attrs} />
+</Page>
+`
+
+describe('a width typed into an instance', () => {
+  it('previews at the width instead of the component’s hug', () => {
+    const doc = parseOrThrow(PAGE())
+    const scene = toSceneGraph(doc, scope)
+    const docNode = resolve(doc.tree, 'button1-1')!
+    const write = { width: 160, ...sizingFlipFor(instanceSizing(docNode, scope), 'width') }
+    expect(write).toEqual({ width: 160, counterAxisSizing: 'FIXED' })
+    scene.graph.updateNode('button1-1', write as never)
+    layOutEntity(scene.graph, 'button1-1', scene.pins)
+    expect(scene.graph.getNode('button1-1')!.width).toBe(160)
+  })
+
+  it('lands as the width alone, even if the flip were vouched, and renders at it', () => {
+    const doc = parseOrThrow(PAGE())
+    const scene = toSceneGraph(doc, scope)
+    const docNode = resolve(doc.tree, 'button1-1')!
+    const write = { width: 160, ...sizingFlipFor(instanceSizing(docNode, scope), 'width') }
+    scene.graph.updateNode('button1-1', write as never)
+    const patches = fromSceneChange('button1-1', write as never, {
+      doc,
+      graph: scene.graph,
+      addresses: scene.addresses,
+      authored: new Set(['width', 'counterAxisSizingMode']),
+      authoredFor: 'button1-1',
+    })
+    expect(patches).toEqual([{ op: 'add', address: 'button1-1', prop: 'width', value: 160 }])
+
+    const echoed = toSceneGraph(parseOrThrow(applyPatches(doc.source, patches).source), scope)
+    expect(echoed.graph.getNode('button1-1')!.width).toBe(160)
+    expect(echoed.graph.getNode('button1-1#root')!.width).toBe(160)
+  })
+})
+
+describe('a width typed into an instance that stretches across its parent', () => {
+  // The build lets the stretch outrank a stated width, so a width typed on
+  // its own landed in the file and drew nothing. Typing the size turns Fill
+  // into Fixed, as a drag does: the stretch goes in the same commit.
+  const CARD = `---
+id: page1
+---
+
+## Visual Contract
+
+<Page>
+  <Frame name="card" x={0} y={0} width={520} height={200} layoutMode="VERTICAL" primaryAxisSizingMode="FIXED" counterAxisSizingMode="FIXED">
+    <Instance name="b" component="Button1" layoutAlign="STRETCH" props={{ label: 'Go' }} />
+  </Frame>
+</Page>
+`
+
+  it('lets the stretch go, and renders at the width', () => {
+    const doc = parseOrThrow(CARD)
+    const scene = toSceneGraph(doc, scope)
+    const sizing = instanceSizing(resolve(doc.tree, 'card#b')!, scope, 'VERTICAL')
+    const released = releasedFills(sizing.fills, ['width'])
+    const write = { width: 160, ...sizingFlipFor(sizing, 'width'), ...released.fields }
+    scene.graph.updateNode('card#b', write as never)
+    layOutEntity(scene.graph, 'card#b', scene.pins)
+    expect(scene.graph.getNode('card#b')!.width).toBe(160)
+
+    const patches = collapseBurst([
+      ...fromSceneChange('card#b', write as never, {
+        doc,
+        graph: scene.graph,
+        addresses: scene.addresses,
+        authored: new Set(['width']),
+        authoredFor: 'card#b',
+      }),
+      ...released.removals.map((prop) => ({ op: 'remove' as const, address: 'card#b', prop })),
+    ])
+    expect(patches).toEqual([
+      { op: 'add', address: 'card#b', prop: 'width', value: 160 },
+      { op: 'remove', address: 'card#b', prop: 'layoutAlign' },
+    ])
+    const echoed = toSceneGraph(parseOrThrow(applyPatches(doc.source, patches).source), scope)
+    expect(echoed.graph.getNode('card#b')!.width).toBe(160)
+  })
+})
+
+describe('the Fixed/Hug choice on an instance', () => {
+  const pane = (attrs: string) =>
+    mount(PropertiesPane, {
+      props: {
+        doc: parseOrThrow(PAGE(attrs)),
+        selection: ['button1-1'],
+        writable: true,
+        pinFrame: {
+          box: { x: 10, y: 10, width: 199, height: 36 },
+          parent: { width: 0, height: 0 },
+        },
+      },
+    })
+  const box = (wrapper: ReturnType<typeof pane>, dimension: 'width' | 'height') =>
+    wrapper.get(`.size-field[data-dimension="${dimension}"]`)
+
+  it('is offered, and reads Fixed where the instance states the size and Hug where it does not', () => {
+    const wrapper = pane(' width={199}')
+    const dimensions = wrapper.findComponent({ name: 'DimensionsField' })
+    expect(dimensions.props('modes')).toEqual([
+      { value: 'FIXED', label: 'Fixed' },
+      { value: 'AUTO', label: 'Hug' },
+    ])
+    expect((box(wrapper, 'width').get('select.size-mode').element as HTMLSelectElement).value).toBe(
+      'FIXED',
+    )
+    expect(
+      (box(wrapper, 'height').get('select.size-mode').element as HTMLSelectElement).value,
+    ).toBe('AUTO')
+  })
+
+  it('takes the size out of the file for Hug — the reset to the component', async () => {
+    const wrapper = pane(' width={199}')
+    await box(wrapper, 'width').get('select.size-mode').setValue('AUTO')
+    expect(wrapper.emitted('patches')).toEqual([
+      [[{ op: 'remove', address: 'button1-1', prop: 'width' }]],
+    ])
+  })
+
+  it('states the size the canvas draws for Fixed', async () => {
+    const wrapper = pane(' width={199}')
+    await box(wrapper, 'height').get('select.size-mode').setValue('FIXED')
+    expect(wrapper.emitted('commit')).toEqual([['button1-1', 'height', 36]])
   })
 })

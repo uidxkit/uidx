@@ -13,7 +13,13 @@ import {
   completedTutorials,
   tourRun,
 } from '../src/tour'
-import { snapshot, TUTORIALS, type TourState, type Tutorial } from '../src/tutorials'
+import {
+  awaitingDocument,
+  snapshot,
+  TUTORIALS,
+  type TourState,
+  type Tutorial,
+} from '../src/tutorials'
 
 /**
  * The tutorials' steps, judged against the files a designer actually ends up
@@ -146,6 +152,31 @@ describe('the tutorials', () => {
     )
     expect(step(tour, 'bind').done!(unbound, START)).toBe(false)
     expect(step(tour, 'repeat').done!(unbound, START)).toBe(true)
+  })
+
+  it('nothing is done in an editor still waiting for its pages', () => {
+    // A reload: the canvas already names the page, but no page has arrived. A
+    // step that is only "not the starter" would pass for want of a component.
+    const arriving = stateOf({}, { view: 'page', file: 'button.uidx' })
+    for (const tour of TUTORIALS)
+      for (const s of tour.steps)
+        if (s.done) expect(s.done(arriving, START), `${tour.id}:${s.id}`).toBe(false)
+  })
+
+  it('a run that began with pages, or has made one, waits for them after a reload', () => {
+    const button = tutorial('button')
+    const at = (id: string) => button.steps.findIndex((s) => s.id === id)
+    const made = stateOf({ 'button.uidx': fixture('button') })
+    const begunWith = { tutorial: button, index: at('overview'), memory: snapshot(made) }
+    expect(awaitingDocument(EMPTY, begunWith)).toBe(true)
+    expect(awaitingDocument(made, begunWith)).toBe(false)
+    // Begun on an empty document: nothing to wait for until Create has made a page.
+    expect(awaitingDocument(EMPTY, { tutorial: button, index: at('create'), memory: START })).toBe(
+      false,
+    )
+    const after = { tutorial: button, index: at('overview-2'), memory: START }
+    expect(awaitingDocument(EMPTY, after)).toBe(true)
+    expect(awaitingDocument(made, after)).toBe(false)
   })
 
   it('the Overview step reads the face; the Contract step reads the tab', () => {

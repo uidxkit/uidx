@@ -2241,6 +2241,16 @@ rule are all D1's, unchanged. A click is the only gesture offered because it is
 the only one that means anything: an instance has no size of its own to sweep,
 it hugs whatever the component is.
 
+*Corrected later (instance resize, 2026-10-01): an instance placed this way
+still states no size and still follows its component, but it can be given one.
+An `<Instance>` that states a `width` or `height` is Fixed on that axis — a
+resize on the canvas writes one, and so does a typed W/H — and the panel's Hug
+removes it again. The file holds only the dimensions, never sizing modes, and
+an authored stretch or grow keeps winning on its own axis — so sizing that axis
+by hand (a drag, a typed W/H, Fixed) takes the `layoutAlign`/`layoutGrow` out in
+the same commit, Figma's Fill → Fixed. Placing is still a click: the size
+arrives with the first resize, not the sweep.*
+
 **`placing` is a sibling of `tool`, not a value inside it.** §3.3's creation
 whitelist is the five elements a person *draws*, and widening it to carry a
 component name would have made "creatable" mean two different things. The two

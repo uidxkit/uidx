@@ -387,7 +387,7 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
       node.address,
       nodeTypeFor(node),
       parentId,
-      instanceProps(node, warnings, inner),
+      instanceProps(node, warnings, inner, graph.getNode(parentId)?.layoutMode),
     )
 
     if (node.element === 'Instance') {
@@ -898,11 +898,16 @@ function matchesSpecType(prop: PropSpec, value: JsonValue): boolean {
  *
  * Everything that is not an instance is unchanged, which is why this wraps
  * `scenePropsFor` rather than replacing it.
+ *
+ * `parentLayout` is the layout of the node this one is placed in. Only an
+ * instance's size reads it (`fixedDimensions`), and only to tell which of its
+ * width and height an authored stretch or grow fills.
  */
 function instanceProps(
   node: UidxNode,
   warnings: string[],
   options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
 ): Partial<SceneNode> {
   const own = scenePropsFor(
     node,
@@ -915,23 +920,7 @@ function instanceProps(
 
   const definition = componentFor(node, warnings, options)
   if (!definition) return own
-  // A component with states *is* whichever state this use asked for (ADR 0005
-  // §4), so the base is the chosen variant rather than the set — the set is a
-  // container for four looks and has none of its own.
-  const source = variantFor(definition, node, options.resolveAlias) ?? definition
-  return {
-    ...scenePropsFor(
-      source,
-      warnings,
-      options.resolveAlias,
-      options.resolveAsset,
-      options.rootFontSize,
-    ),
-    // The instance's own name and geometry win: `scenePropsFor` on the
-    // definition brought the component's name with it, and a use is not called
-    // by the definition's name.
-    ...own,
-  }
+  return placedProps(node, own, definition, options, parentLayout, warnings)
 }
 
 /**
@@ -945,10 +934,33 @@ export function instanceRootProps(
   instance: UidxNode,
   definition: UidxNode,
   options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
   warnings: string[] = [],
 ): Partial<SceneNode> {
+  const own = scenePropsFor(
+    instance,
+    warnings,
+    options.resolveAlias,
+    options.resolveAsset,
+    options.rootFontSize,
+  )
+  return placedProps(instance, own, definition, options, parentLayout, warnings)
+}
+
+/** The two above, once the instance's own props are in hand. */
+function placedProps(
+  instance: UidxNode,
+  own: Partial<SceneNode>,
+  definition: UidxNode,
+  options: SceneOptions,
+  parentLayout: SceneNode['layoutMode'] | undefined,
+  warnings: string[],
+): Partial<SceneNode> {
+  // A component with states *is* whichever state this use asked for (ADR 0005
+  // §4), so the base is the chosen variant rather than the set — the set is a
+  // container for four looks and has none of its own.
   const source = variantFor(definition, instance, options.resolveAlias) ?? definition
-  return {
+  const merged = {
     ...scenePropsFor(
       source,
       warnings,
@@ -956,14 +968,125 @@ export function instanceRootProps(
       options.resolveAsset,
       options.rootFontSize,
     ),
-    ...scenePropsFor(
-      instance,
-      warnings,
-      options.resolveAlias,
-      options.resolveAsset,
-      options.rootFontSize,
-    ),
+    // The instance's own name and geometry win: `scenePropsFor` on the
+    // definition brought the component's name with it, and a use is not called
+    // by the definition's name.
+    ...own,
   }
+  return { ...merged, ...instanceSizing(instance, merged.layoutMode, parentLayout) }
+}
+
+/**
+ * What an `<Instance>`'s own scene node is made of, resolved exactly as the
+ * build resolves it: the component found by name (or by the property that
+ * names it), its styles table expanded, the chosen variant, and the
+ * instance's own attributes and size laid over. For a caller holding the
+ * document rather than the build — the viewer asks it how an instance sizes
+ * before a resize says otherwise, because the scene node a preview has
+ * already moved cannot answer that.
+ */
+export function instanceSceneProps(
+  instance: UidxNode,
+  options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
+): Partial<SceneNode> {
+  return instanceProps(instance, [], options, parentLayout)
+}
+
+type Dimension = 'width' | 'height'
+const DIMENSIONS: readonly Dimension[] = ['width', 'height']
+
+/** The scene field that sizes `dimension` on a node laying out along `layoutMode`. */
+const sizingFieldFor = (
+  layoutMode: SceneNode['layoutMode'] | undefined,
+  dimension: Dimension,
+): 'primaryAxisSizing' | 'counterAxisSizing' =>
+  (layoutMode === 'HORIZONTAL') === (dimension === 'width')
+    ? 'primaryAxisSizing'
+    : 'counterAxisSizing'
+
+/**
+ * The dimensions an `<Instance>` fixes for itself: the ones it states, less
+ * any it told its parent to compute.
+ *
+ * An instance that states a width has said what its width is — a resize on
+ * the canvas writes one, so does a number typed into the panel — and that
+ * axis is Fixed whatever its component does. One that states none follows its
+ * component: hug, fixed or fill. That is Figma's rule as well, where dragging
+ * an instance's handle switches only the axis it moved.
+ *
+ * A fill the instance authors still wins on its own axis, so a width left
+ * over from before a stretch cannot undo the stretch (`instanceFills`).
+ */
+function fixedDimensions(
+  instance: UidxNode,
+  parentLayout: SceneNode['layoutMode'] | undefined,
+): Dimension[] {
+  const fills = instanceFills(instance, parentLayout)
+  return DIMENSIONS.filter(
+    (dimension) => instance.attrs[dimension] !== undefined && !fills[dimension],
+  )
+}
+
+/** The attribute that tells an instance's parent to compute one of its dimensions. */
+export type InstanceFills = Partial<Record<Dimension, 'layoutGrow' | 'layoutAlign'>>
+
+/**
+ * The dimensions an `<Instance>` tells its parent to compute, each with the
+ * attribute that says so.
+ *
+ * `layoutAlign` and `layoutGrow` name the *parent's* axes —
+ * `isStretchedByParent` reads them the same way — so the parent's layout has
+ * to be known to say whether a stretch fills the width or the height. The
+ * viewer asks too: a size chosen on a filled dimension has to let the fill go,
+ * or the fill outranks it.
+ */
+export function instanceFills(
+  instance: UidxNode,
+  parentLayout: SceneNode['layoutMode'] | undefined,
+): InstanceFills {
+  const flows =
+    (parentLayout === 'HORIZONTAL' || parentLayout === 'VERTICAL') &&
+    instance.attrs.layoutPositioning?.value !== 'ABSOLUTE'
+  if (!flows) return {}
+  const along: Dimension = parentLayout === 'HORIZONTAL' ? 'width' : 'height'
+  const across: Dimension = along === 'width' ? 'height' : 'width'
+  const grow = instance.attrs.layoutGrow?.value
+  return {
+    ...(typeof grow === 'number' && grow > 0 ? { [along]: 'layoutGrow' as const } : {}),
+    ...(instance.attrs.layoutAlign?.value === 'STRETCH'
+      ? { [across]: 'layoutAlign' as const }
+      : {}),
+  }
+}
+
+/**
+ * An instance's root, Fixed on each dimension it fixes.
+ *
+ * Laid over everything else because what it replaces is the component's
+ * sizing — `HUG` from a hugging definition, or from the variant a styles table
+ * wraps it in — and layout overwrites every hugging axis with the content
+ * size, which is how `width={199}` on page1's Button1 came to draw 92 wide. A
+ * sizing mode the instance states itself still wins: the author answered that
+ * axis in so many words.
+ *
+ * Nothing here reaches the file. The modes are relative to whatever layout the
+ * root is drawn with, which for a styled component is the derived variant's
+ * and not the one the author wrote, so the file says it with the size alone
+ * (`fromSceneChange` holds the other end of that).
+ */
+function instanceSizing(
+  instance: UidxNode,
+  layoutMode: SceneNode['layoutMode'] | undefined,
+  parentLayout: SceneNode['layoutMode'] | undefined,
+): Partial<SceneNode> {
+  if (layoutMode !== 'HORIZONTAL' && layoutMode !== 'VERTICAL') return {}
+  const out: Partial<SceneNode> = {}
+  for (const dimension of fixedDimensions(instance, parentLayout)) {
+    const field = sizingFieldFor(layoutMode, dimension)
+    if (instance.attrs[`${field}Mode`] === undefined) out[field] = 'FIXED'
+  }
+  return out
 }
 
 /** The `<Component>` an instance names, or undefined with a warning. */
@@ -1111,7 +1234,7 @@ function expandInstance(
       sceneId,
       nodeTypeFor(source),
       parentSceneId,
-      instanceProps(source, warnings, within),
+      instanceProps(source, warnings, within, graph.getNode(parentSceneId)?.layoutMode),
     )
     // An instance inside a fill expands with the consuming page's scope and
     // this instance's own chain, so a cycle that runs through a fill still
@@ -1137,6 +1260,8 @@ function expandInstance(
   /**
    * `source` is a node of the definition; `relative` is its path inside the
    * component, which is exactly the key an override uses (ADR 0004 §3).
+   * `inherited` sits under the node's own props and `pinned` over them — the
+   * sizing the instance passes to the frame its component wraps.
    */
   const clone = (
     source: UidxNode,
@@ -1144,6 +1269,7 @@ function expandInstance(
     relative: string,
     inherited: Partial<SceneNode> = {},
     local: SceneOptions = scope,
+    pinned: Partial<SceneNode> = {},
   ): void => {
     // ADR 0017 §2 inside a definition being instanced: the same expansion
     // the top-level build does, in the definition's local at each sample
@@ -1167,12 +1293,12 @@ function expandInstance(
         }
         const echo = { ...row, name: index === 0 ? source.name : `${source.name}-${index + 1}` }
         authoredName.set(echo, source.name)
-        clone(echo, parentId, relative, inherited, indexed)
+        clone(echo, parentId, relative, inherited, indexed, pinned)
       }
       return
     }
     const id = addressOf(parentId, source.name)
-    const props = instanceProps(source, warnings, local)
+    const props = instanceProps(source, warnings, local, graph.getNode(parentId)?.layoutMode)
     const changed = overrides.get(relative)
 
     // A generated child has no address to look the document up by, so its pin
@@ -1184,6 +1310,8 @@ function expandInstance(
       // what the instance passes down.
       ...inherited,
       ...props,
+      // Except a size the instance states, which is the use deciding.
+      ...pinned,
       // An override is written by the *consumer*, so it resolves in the
       // consumer's local rather than the definition's — a token in an override
       // is the consuming page's token, and `{label}` there is not the
@@ -1250,7 +1378,10 @@ function expandInstance(
   }
   const source = chosen ?? definition
   const sizing = frameSizing(node, source)
-  for (const child of source.children) clone(child, node.address, child.name, sizing)
+  // The instance's own node was built just before this, from `instanceProps`
+  // — so it already says which dimensions the instance fixes, and at what.
+  const pinned = pinnedFrame(node, source, graph.getNode(node.address) ?? {})
+  for (const child of source.children) clone(child, node.address, child.name, sizing, scope, pinned)
 }
 
 /**
@@ -1302,6 +1433,7 @@ export function generatedChildProps(
   source: UidxNode,
   relative: string,
   options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
   warnings: string[] = [],
 ): Partial<SceneNode> {
   const scope: SceneOptions = {
@@ -1315,30 +1447,91 @@ export function generatedChildProps(
     ),
   }
   const root = variantFor(definition, instance, options.resolveAlias) ?? definition
-  const inherited = relative.includes('/') ? {} : frameSizing(instance, root)
+  const first = !relative.includes('/')
+  const placed = first ? instanceRootProps(instance, definition, options, parentLayout) : {}
   const changed = overrideMap(instance).get(relative)
   return {
-    ...inherited,
-    ...instanceProps(source, warnings, scope),
+    ...(first ? frameSizing(instance, root) : {}),
+    ...instanceProps(source, warnings, scope, placed.layoutMode),
+    ...(first ? pinnedFrame(instance, root, placed) : {}),
     ...(changed ? overrideProps(changed, relative, warnings, options) : {}),
   }
+}
+
+/**
+ * The one frame a component wraps, when the component is only a wrapper
+ * around it — or undefined for a component that lays itself out (ADR 0008),
+ * whose children are its content.
+ */
+function wrappedFrame(source: UidxNode): UidxNode | undefined {
+  if (source.attrs.layoutMode || source.attrs.width || source.attrs.height) return undefined
+  return source.children.length === 1 ? source.children[0] : undefined
 }
 
 function frameSizing(instance: UidxNode, source: UidxNode): Partial<SceneNode> {
   // A component that lays itself out (ADR 0008) has no wrapper: its children
   // are its content, and stretching each of them would be a different thing.
-  if (source.attrs.layoutMode || source.attrs.width || source.attrs.height) return {}
-  if (source.children.length !== 1) return {}
-
-  const frame = source.children[0]!
+  const frame = wrappedFrame(source)
   // Only a frame that lays itself out can pass a size on to what it holds.
-  if (!frame.attrs.layoutMode) return {}
+  if (!frame?.attrs.layoutMode) return {}
 
   const grow = instance.attrs.layoutGrow?.value
   return {
     ...(frame.attrs.width ? {} : { layoutAlignSelf: 'STRETCH' as const }),
     ...(typeof grow === 'number' && grow > 0 && !frame.attrs.height ? { layoutGrow: grow } : {}),
   }
+}
+
+/**
+ * The frame `pinnedFrame` hands an instance's size to, if the component has
+ * one: a plain frame it wraps. A repeat is a template for many rows rather
+ * than the component's frame — each row pinned to the instance's height drew
+ * three 200-tall rows in a 200-tall instance — so its rows keep
+ * `frameSizing`'s stretch and the size stays on the wrapper.
+ */
+function pinnableFrame(source: UidxNode): UidxNode | undefined {
+  const frame = wrappedFrame(source)
+  return frame?.element === 'Frame' && !repeatOf(frame) ? frame : undefined
+}
+
+/**
+ * The size an instance fixes, carried onto the frame its component wraps.
+ *
+ * `frameSizing`'s argument one step further: a wrapper nobody wrote must not
+ * change how the thing behaves, and a stated size is behaviour too. The
+ * wrapper takes the instance's number (`instanceSizing`), and unless the frame
+ * the author laid out takes it as well, the instance is a box at the new size
+ * with the old drawing in its corner — measured on page1, where the pill
+ * stayed 92 wide inside a 199-wide instance.
+ *
+ * So on each dimension the instance fixes, the frame is that size and Fixed,
+ * and the stretch or grow `frameSizing` gave it on that axis is withdrawn.
+ * Laid *over* the frame's own props, unlike `frameSizing`: a width on the
+ * frame is the component's default, and the use decides what it changes.
+ * `placed` is the instance's own scene props, which already say what it fixes.
+ */
+function pinnedFrame(
+  instance: UidxNode,
+  source: UidxNode,
+  placed: Partial<SceneNode>,
+): Partial<SceneNode> {
+  const frame = pinnableFrame(source)
+  if (!frame) return {}
+  const layout = frame.attrs.layoutMode?.value
+  const out: Partial<SceneNode> = {}
+  for (const dimension of DIMENSIONS) {
+    const field = sizingFieldFor(placed.layoutMode, dimension)
+    const size = placed[dimension]
+    if (instance.attrs[dimension] === undefined || placed[field] !== 'FIXED') continue
+    if (typeof size !== 'number') continue
+    out[dimension] = size
+    if (layout === 'HORIZONTAL' || layout === 'VERTICAL')
+      out[sizingFieldFor(layout, dimension)] = 'FIXED'
+    // Along the wrapper's main axis the frame was grown, across it stretched.
+    if (field === 'primaryAxisSizing') out.layoutGrow = 0
+    else out.layoutAlignSelf = 'AUTO'
+  }
+  return out
 }
 
 /** The overrides an instance declares, keyed by path inside the component. */

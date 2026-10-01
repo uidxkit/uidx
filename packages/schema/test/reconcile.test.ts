@@ -738,9 +738,37 @@ describe('an instance’s own attributes, and a definition root’s, update with
     const sized = doc(LIB(' width={200}'))
     const live = scene(plain)
     applyChanges(live, diffDocuments(plain, sized)!, optionsFor(sized))
-    same(live, scene(sized), ['doc#one'])
+    // The frame the component wraps is drawn at the instance's size too, so
+    // it is compared as well — comparing the instance alone passed while both
+    // sides dropped the 200.
+    expect(live.graph.getNode('doc#one/root')!.width).toBe(200)
+    same(live, scene(sized), ['doc#one', 'doc#one/root', 'doc#two/root'])
     applyChanges(live, diffDocuments(sized, plain)!, optionsFor(plain))
-    same(live, scene(plain), ['doc#one'])
+    expect(live.graph.getNode('doc#one/root')!.width).toBe(80)
+    same(live, scene(plain), ['doc#one', 'doc#one/root', 'doc#two/root'])
+  })
+
+  it('a size on an instance of a component with states lands where a rebuild would', () => {
+    const STATES = (extra = '') => `<Page>
+<Component name="Pill" status="draft" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO" paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8}>
+  <Text name="label" characters="Go" />
+</Component>
+<Instance name="one" component="Pill"${extra} />
+</Page>
+
+<Styles>
+  <Style state="hover" root:opacity={0.5} />
+</Styles>`
+    const plain = doc(STATES())
+    const sized = doc(STATES(' width={150} height={44}'))
+    const live = scene(plain)
+    const changes = diffDocuments(plain, sized)
+    expect(changes).not.toBeNull()
+    applyChanges(live, changes!, optionsFor(sized))
+    expect(live.graph.getNode('one#root')!.width).toBe(150)
+    same(live, scene(sized), ['one', 'one#root'])
+    applyChanges(live, diffDocuments(sized, plain)!, optionsFor(plain))
+    same(live, scene(plain), ['one', 'one#root'])
   })
 
   it('an attribute on the component itself reaches every instance root', () => {

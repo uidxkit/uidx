@@ -74,6 +74,9 @@ const SIZE_PROPS = new Set(['width', 'height'])
  */
 const VOUCHED_ONLY = new Set(['vectorPaths', 'strokeStartCap', 'strokeEndCap'])
 
+/** What an `<Instance>` never gains from the canvas (see `fromSceneChange`). */
+const INSTANCE_SIZING_MODES = ['primaryAxisSizingMode', 'counterAxisSizingMode']
+
 /** Reverse index: SceneNode field -> UIDX prop names that read it. */
 const BY_SCENE_FIELD = new Map<string, Set<string>>()
 for (const mapping of PROP_TABLE) {
@@ -129,6 +132,18 @@ export function fromSceneChange(
   const candidates = new Set<string>()
   for (const field of Object.keys(changes)) {
     for (const prop of BY_SCENE_FIELD.get(field) ?? []) candidates.add(prop)
+  }
+
+  // An instance's sizing modes are relative to the layout its root is drawn
+  // with — for a styled component the derived variant's, not the one the
+  // author wrote — so the file says it with the size alone: a stated width is
+  // Fixed (`instanceSizing` in to-scene). The canvas flips the mode to show a
+  // resize live; that flip stays on the canvas, vouched or not. A mode the
+  // file already states is the author's, and is kept current like any other.
+  if (node.element === 'Instance') {
+    for (const prop of INSTANCE_SIZING_MODES) {
+      if (node.attrs[prop] === undefined) candidates.delete(prop)
+    }
   }
 
   const patches: UidxPatch[] = []

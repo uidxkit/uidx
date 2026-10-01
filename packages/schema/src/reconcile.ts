@@ -17,6 +17,7 @@ import type { MutablePinMap } from './pin-index.js'
 import { defaultTuple, mergeModes, type ModeTuple } from './resolve-modes.js'
 import {
   generatedChildProps,
+  instanceFills,
   instanceRootProps,
   layOutAround,
   nodeTypeFor,
@@ -404,6 +405,27 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
     if (!after.has(address) && composed(before, address)) return null
   }
 
+  // Which dimensions an instance fixes depends on the layout it sits in
+  // (`instanceFills`): a stretch fills the width of a column and the height of
+  // a row. A parent that turns between the two re-decides that for an
+  // instance stating a size beside a fill, and the parent's own update says
+  // nothing to the instance's root. (A move to another parent is another
+  // address, so a remove and an insert — already a rebuild.)
+  for (const [address, entry] of after) {
+    const previous = before.get(address)
+    if (!previous || entry.node.element !== 'Instance') continue
+    const was = layoutOf(before, previous.parent)
+    const now = layoutOf(after, entry.parent)
+    if (was === now) continue
+    const refixed = (node: UidxNode): boolean =>
+      (['width', 'height'] as const).some(
+        (dimension) =>
+          node.attrs[dimension] !== undefined &&
+          instanceFills(node, was)[dimension] !== instanceFills(node, now)[dimension],
+      )
+    if (refixed(previous.node) || refixed(entry.node)) return null
+  }
+
   const instances: { node: UidxNode; previous: UidxNode; address: string }[] = []
   /** Components instanced from *inside* another component — copies this pass cannot enumerate. */
   const nestedInstanced = new Set<string>()
@@ -520,6 +542,12 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
     }
   }
   return out
+}
+
+/** The layout a node lays its children out on, as the file states it. */
+function layoutOf(index: NodeIndex, address: string | null): SceneNode['layoutMode'] | undefined {
+  const value = address === null ? undefined : index.get(address)?.node.attrs.layoutMode?.value
+  return typeof value === 'string' ? (value as SceneNode['layoutMode']) : undefined
 }
 
 /** Same element, same attribute names, same source text for each — offsets aside. */
@@ -650,55 +678,77 @@ export function applyChanges(
         // exist; nothing to update then.
         if (!graph.getNode(change.id)) break
         touched.push(change.id)
+        const parentLayout = layoutAbove(graph, change.instance.address)
         const was = generatedChildProps(
           change.instance,
           change.definition,
           change.prev,
           change.relative,
           options,
-        ) as Record<string, unknown>
+          parentLayout,
+        )
         const now = generatedChildProps(
           change.instance,
           change.definition,
           change.next,
           change.relative,
           options,
-        ) as Record<string, unknown>
-        const props: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(now)) {
-          if (!deepEqual(was[key], value)) props[key] = value
-        }
-        const defaults = defaultsFor(NODE_TYPE[change.next.element as SceneElement])
-        for (const key of Object.keys(was)) {
-          if (key in now || !(key in defaults)) continue
-          if (!deepEqual(was[key], defaults[key])) props[key] = defaults[key]
-        }
-        if (Object.keys(props).length) graph.updateNode(change.id, props as Partial<SceneNode>)
+          parentLayout,
+        )
+        const props = movedProps(was, now, NODE_TYPE[change.next.element as SceneElement])
+        if (props) graph.updateNode(change.id, props)
         break
       }
       case 'update-instance-root': {
         if (!graph.getNode(change.id)) break
         touched.push(change.id)
-        const was = instanceRootProps(
-          change.prevInstance,
-          change.prevDefinition,
-          options,
-        ) as Record<string, unknown>
-        const now = instanceRootProps(
-          change.nextInstance,
-          change.nextDefinition,
-          options,
-        ) as Record<string, unknown>
-        const props: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(now)) {
-          if (!deepEqual(was[key], value)) props[key] = value
-        }
-        const defaults = defaultsFor(NODE_TYPE.Instance)
-        for (const key of Object.keys(was)) {
-          if (key in now || !(key in defaults)) continue
-          if (!deepEqual(was[key], defaults[key])) props[key] = defaults[key]
-        }
-        if (Object.keys(props).length) graph.updateNode(change.id, props as Partial<SceneNode>)
+        const parentLayout = layoutAbove(graph, change.id)
+        const props = movedProps(
+          instanceRootProps(change.prevInstance, change.prevDefinition, options, parentLayout),
+          instanceRootProps(change.nextInstance, change.nextDefinition, options, parentLayout),
+          NODE_TYPE.Instance,
+          // The canvas flips an instance's sizing to draw a resize live, and
+          // `fromSceneChange` keeps that flip out of the file — so the sizing
+          // the file implies is measured against the node, not the old file.
+          graph.getNode(change.id),
+        )
+        if (props) graph.updateNode(change.id, props)
+        // The frame a wrapper-shaped component lays itself out on is drawn at
+        // the size the instance states (`pinnedFrame`), so a size on the
+        // instance reaches one level down as well — where a rebuild puts it.
+        const prevRoot =
+          variantFor(change.prevDefinition, change.prevInstance, options.resolveAlias) ??
+          change.prevDefinition
+        const nextRoot =
+          variantFor(change.nextDefinition, change.nextInstance, options.resolveAlias) ??
+          change.nextDefinition
+        // Not a repeat's: its first row is one of many, and none of them is
+        // pinned (`pinnableFrame`).
+        const only = nextRoot.children.length === 1 ? nextRoot.children[0]! : undefined
+        const frame = only && !repeatOf(only) ? only : undefined
+        const before = prevRoot.children.find((child) => child.name === frame?.name)
+        const frameId = frame ? addressOf(change.id, frame.name) : ''
+        if (!frame || !before || !graph.getNode(frameId)) break
+        const framed = movedProps(
+          generatedChildProps(
+            change.prevInstance,
+            change.prevDefinition,
+            before,
+            before.name,
+            options,
+            parentLayout,
+          ),
+          generatedChildProps(
+            change.nextInstance,
+            change.nextDefinition,
+            frame,
+            frame.name,
+            options,
+            parentLayout,
+          ),
+          NODE_TYPE[frame.element as SceneElement],
+        )
+        if (framed) graph.updateNode(frameId, framed)
         break
       }
       case 'pin':
@@ -729,6 +779,59 @@ export function applyChanges(
 /** Addresses are scene ids, except the root `<Page>`, which is the graph's page. */
 function sceneIdOf(address: string, rootId: string): string {
   return address === '' ? rootId : address
+}
+
+/** The fields that say whether layout computes a dimension or keeps the one it is given. */
+const SIZING_FIELDS = ['primaryAxisSizing', 'counterAxisSizing'] as const
+
+/**
+ * What changed between a node's props before and after, as a scene update,
+ * or null for nothing. A prop that stopped being computed goes back to the
+ * engine's default for the type, which is what a rebuild would leave there.
+ *
+ * `live`, when given, is the node as the scene holds it, and its sizing is
+ * compared against `now` directly rather than against `was`.
+ */
+function movedProps(
+  was: Partial<SceneNode>,
+  now: Partial<SceneNode>,
+  type: NodeType,
+  live?: SceneNode,
+): Partial<SceneNode> | null {
+  const before = was as Record<string, unknown>
+  const after = now as Record<string, unknown>
+  const props: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(after)) {
+    if (!deepEqual(before[key], value)) props[key] = value
+  }
+  const defaults = defaultsFor(type)
+  for (const key of Object.keys(before)) {
+    if (key in after || !(key in defaults)) continue
+    if (!deepEqual(before[key], defaults[key])) props[key] = defaults[key]
+  }
+  if (live) {
+    for (const field of SIZING_FIELDS) {
+      const value = after[field] ?? defaults[field]
+      if (!deepEqual(live[field], value)) props[field] = value
+    }
+  }
+  // Layout writes a computed dimension over the node's own, so while an axis
+  // hugged or filled, the node held layout's number and not the one either
+  // side states. An axis that changes how it is decided gets the stated number
+  // back — what a rebuild starts from — or a stretch's 504 stays standing on
+  // an axis just made Fixed at 50.
+  if (SIZING_FIELDS.some((field) => field in props)) {
+    for (const dimension of ['width', 'height']) {
+      props[dimension] = after[dimension] ?? defaults[dimension]
+    }
+  }
+  return Object.keys(props).length ? (props as Partial<SceneNode>) : null
+}
+
+/** The layout of the node a scene node sits in — what an instance's stretch is measured against. */
+function layoutAbove(graph: SceneGraph, id: string): SceneNode['layoutMode'] | undefined {
+  const parentId = graph.getNode(id)?.parentId
+  return parentId ? graph.getNode(parentId)?.layoutMode : undefined
 }
 
 /**

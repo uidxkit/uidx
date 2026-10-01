@@ -1186,6 +1186,9 @@ away. Everything after the arming is D1's gesture unchanged.
 does nothing different, because an instance has no size of its own to set. There
 is no reordering or grouping in the picker beyond alphabetical, and no preview
 of what you are about to place; both are worth having and neither is this story.
+(Since 2026-10-01 an instance *can* carry a size: one that states `width` or
+`height` is Fixed on that axis, a resize writes exactly that, and Hug in the
+panel removes it. Placing still writes none, so the click stays the gesture.)
 
 **Where it lives.** `PickComponentDialog.vue`, the `placing` prop through
 `App.vue` → `EditToolbar.vue` / `CanvasPane.vue`, and the `Instance` branch of

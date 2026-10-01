@@ -171,15 +171,22 @@ const button: Tutorial = {
       title: 'Pick its color',
       body: 'In **Fill** on the right, click the color swatch or the token button and choose a color.',
       target: '[aria-label="Fill"]',
-      done: (state, memory) =>
-        JSON.stringify(attr(madeComponent(state, memory), 'fills')) !== STARTER_FILL,
+      done: (state, memory) => {
+        // "Not the starter" only counts on a Button that is there: before a
+        // reload's pages arrive there is none, and that is not a colour picked.
+        const component = madeComponent(state, memory)
+        return component !== null && JSON.stringify(attr(component, 'fills')) !== STARTER_FILL
+      },
     },
     {
       id: 'radius',
       title: 'Round the corners',
       body: 'In **Appearance**, change **Corner radius** — try 999 for a pill.',
       target: '[aria-label="Appearance"]',
-      done: (state, memory) => attr(madeComponent(state, memory), 'cornerRadius') !== 6,
+      done: (state, memory) => {
+        const component = madeComponent(state, memory)
+        return component !== null && attr(component, 'cornerRadius') !== 6
+      },
     },
     {
       id: 'contract',
@@ -215,11 +222,17 @@ const button: Tutorial = {
       title: 'Make a page to use it on',
       body: 'Click **New page**, keep **Page**, name it `Screen`, and click **Create page**.',
       target: (state) => (dialogOpen(state) ? 'dialog[open]' : '[data-tour="new-page"]'),
-      done: (state, memory) =>
-        state.view === 'page' &&
-        state.file !== null &&
-        !memory.pages.has(state.file) &&
-        !state.pages.get(state.file)?.tree.children.some((c) => c.element === 'Component'),
+      done: (state, memory) => {
+        // The page itself, arrived: a page not here yet declares no component
+        // either, and is not a page made to use the Button on.
+        const doc = state.file ? state.pages.get(state.file) : undefined
+        return (
+          state.view === 'page' &&
+          doc !== undefined &&
+          !memory.pages.has(state.file!) &&
+          !doc.tree.children.some((c) => c.element === 'Component')
+        )
+      },
     },
     {
       id: 'place',
@@ -497,6 +510,21 @@ const list: Tutorial = {
 }
 
 export const TUTORIALS: readonly Tutorial[] = [button, switchTutorial, list]
+
+/**
+ * No pages are here, though the run began with some or is past Create, which
+ * made one: a reload, before the document has arrived. The editor opens on
+ * the Overview until then, so a step judged now — "Go to the Overview", say —
+ * would pass for nothing the designer did.
+ */
+export function awaitingDocument(
+  state: TourState,
+  run: { tutorial: Tutorial; index: number; memory: TourMemory },
+): boolean {
+  if (state.pages.size > 0) return false
+  const create = run.tutorial.steps.findIndex((step) => step.id === 'create')
+  return run.memory.pages.size > 0 || (create >= 0 && run.index > create)
+}
 
 /** What exists now — taken when a run starts. */
 export function snapshot(state: TourState): TourMemory {

@@ -1399,7 +1399,9 @@ const textResize = computed(() => valueOf('textAutoResize', 'NONE'))
  */
 const CONTAINERS = new Set(['Frame', 'Component', 'Slot'])
 const sizeModes = computed<Array<{ value: 'FIXED' | 'AUTO'; label: string }> | null>(() => {
-  if (hasAutoLayout.value || isText.value) {
+  // An instance states its own layout nowhere, but it can always hug: it is
+  // its component until it states a size (`DimensionsField` spells that).
+  if (hasAutoLayout.value || isText.value || active.value?.element === 'Instance') {
     return [
       { value: 'FIXED', label: 'Fixed' },
       { value: 'AUTO', label: 'Hug' },
@@ -1610,6 +1612,17 @@ function onCommit(prop: string, value: JsonValue): void {
   // is still a beat behind, and catches up when the write echoes back.
   preview.value = null
   emit('commit', address, prop, value)
+}
+
+/**
+ * An attribute taken out of the file — an instance's size, when Hug hands
+ * the axis back to its component. Straight to the file, like a pin's
+ * removals: the scene has no write that means "stop stating this".
+ */
+function onRemove(prop: string): void {
+  if (!active.value || active.value.attrs[prop] === undefined) return
+  preview.value = null
+  emit('patches', [{ op: 'remove', address: active.value.address, prop }])
 }
 
 /**
@@ -2195,12 +2208,14 @@ function onDetach(prop: string, value: JsonValue): void {
               :width="authoredNumber('width')"
               :height="authoredNumber('height')"
               :modes="sizeModes"
+              :drawn="pinFrame?.box ?? null"
               :editable="writable !== false"
               :token-source="tokenSource"
               @bind="onBindVariables"
               @detach="onDetachVariables"
               @preview="onPreview"
               @commit="onCommit"
+              @remove="onRemove"
               @hover="onHover"
             />
 
