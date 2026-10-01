@@ -33,6 +33,7 @@ import type { ModelIndex } from '@uidx/schema'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
 import { renameContractProp } from './contract-rename'
+import SlotSettingsSection from './SlotSettingsSection.vue'
 
 /**
  * The Contract tab: where the visual tree is bound to its code render
@@ -1498,29 +1499,23 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
     </template>
 
     <template v-else-if="view.kind === 'slot'">
-      <header class="head">
-        <span class="title">Slot</span>
-        <span v-if="view.component" class="of">of {{ view.component.name }}</span>
-      </header>
-      <p v-if="view.declared" class="hint">
-        “{{ view.node.name }}” is declared by the contract<template v-if="view.declared.accepts">
-          ; each filling is an {{ view.declared.accepts }}</template
-        >. Consumers fill it; what is inside is the placeholder<template v-if="view.repeat">
-          , drawn once per item</template
-        >.
-      </p>
-      <p v-else class="stale" role="status">
-        The contract does not declare a slot called “{{ view.node.name }}” yet, so consumers cannot
-        fill it.
-        <button
-          type="button"
-          class="stale-name"
-          :disabled="!writable"
-          title="Declare it in the contract, so instances can fill it and code exposes it"
-          @click="declareSlot(view.node.name)"
-        >
-          Declare slot
-        </button>
+      <!-- The same panel the Design tab shows: one place that sets a slot up. -->
+      <SlotSettingsSection
+        v-if="view.component"
+        :doc="doc"
+        :node="view.node"
+        :components="components"
+        :models="models"
+        :pages="pages"
+        :library="library"
+        :writable="writable"
+        @patches="emit('patches', $event)"
+        @open-model="emit('openModel', $event)"
+        @select="emit('select', $event)"
+      />
+      <p v-else class="hint">
+        A slot outside a component is a hole nothing declares. Make the frame around it a component
+        to give it a contract.
       </p>
     </template>
 
@@ -1627,7 +1622,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       once per item of a list, and its parent is the outer structure. So the
       rows sit below whichever view the layer has, not in a view of their own.
     -->
-    <template v-if="repeatable && repeatable.component">
+    <template v-if="repeatable && repeatable.component && view.kind !== 'slot'">
       <header class="head">
         <span class="title">Repeat</span>
         <span
@@ -1711,9 +1706,8 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             :title="`Open ${repeatable.repeat.model} on the Models face`"
             @click="emit('openModel', repeatable.repeat.model)"
           >
-            {{ repeatable.repeat.model }}
-          </button>
-          ; bind text below to <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
+            {{ repeatable.repeat.model }}</button
+          >; bind text below to <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
           >.
         </p>
         <p v-else-if="repeatable.repeat.model" class="stale" role="status">

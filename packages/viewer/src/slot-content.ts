@@ -143,15 +143,12 @@ export function slotCards(
       component: described.kind === 'component' ? described.component : null,
     }
     const content: SlotContent = fill ? describe(fill.children) : fallback
-    const accepted = accepts.get(name)
-    const allowed = accepted
-      ? new Set(accepted.split(/[|,]/).map((part) => part.trim().replace(/\[\]$/, '')))
-      : null
+    const allowed = acceptedSet(accepts.get(name))
     const suggested: SlotChoice[] = []
     const others: SlotChoice[] = []
     for (const candidate of [...(components?.keys() ?? [])].sort()) {
       if (candidate === definition.name) continue
-      if (allowed && !allowed.has(candidate)) continue
+      if (allowed && !fitsAccepts(components?.get(candidate), allowed)) continue
       const receives = repeat?.model
         ? receivingProp(components?.get(candidate), repeat.model)
         : null
@@ -167,6 +164,29 @@ export function slotCards(
         : null
     return { name, fill, content, fallback, repeat, suggested, others, warning }
   })
+}
+
+/** `accepts="hwc-radio"` as a set; `a|b` names several. Null when the slot takes anything. */
+export function acceptedSet(accepts: string | undefined): Set<string> | null {
+  return accepts
+    ? new Set(accepts.split(/[|,]/).map((part) => part.trim().replace(/\[\]$/, '')))
+    : null
+}
+
+/**
+ * Whether a component may fill a slot that `accepts` (ADR 0017 §1): it
+ * implements the headless element the slot names — what the audit checks —
+ * or, for a slot that names components outright, it is one of them.
+ */
+export function fitsAccepts(
+  component: UidxNode | undefined,
+  allowed: ReadonlySet<string>,
+): boolean {
+  if (!component) return false
+  const implemented = component.attrs.implements?.value
+  return (
+    allowed.has(component.name) || (typeof implemented === 'string' && allowed.has(implemented))
+  )
 }
 
 /** What the picker hands back: a component, plain text, explicitly nothing, or the default. */
@@ -263,4 +283,65 @@ function pathTo(node: UidxNode, address: string): UidxNode[] | null {
     if (found) return [node, ...found]
   }
   return null
+}
+
+/* ------------------------------------------- a slot in its own component */
+
+/**
+ * The slot as its component's author sees it: what it draws by default and
+ * what could go there — the same card a use shows, with the definition's own
+ * content as the content, so the one picker serves both.
+ */
+export function definitionSlotCard(
+  definition: UidxNode,
+  slot: UidxNode,
+  components: ReadonlyMap<string, UidxNode> | undefined,
+  models?: ModelIndex,
+  pages?: ReadonlyMap<string, UidxDocument>,
+): SlotCard {
+  const host: UidxNode = { ...slot, element: 'Instance', children: [] }
+  const card = slotCards(host, definition, components, models, pages).find(
+    (candidate) => candidate.name === slot.name,
+  )
+  const content = describe(slot.children)
+  const base: SlotCard = card ?? {
+    name: slot.name,
+    fill: null,
+    content,
+    fallback: { kind: 'default', label: content.label, component: null },
+    repeat: repeatOf(definition, slot, models),
+    suggested: [],
+    others: [],
+    warning: null,
+  }
+  return { ...base, content }
+}
+
+/** The definition's own default content replaced by a pick: one undoable edit on the slot. */
+export function defaultContentPatches(slot: UidxNode, pick: SlotPick): UidxPatch[] {
+  if (pick.kind === 'default') return []
+  const node = contentFor(pick)
+  return [
+    ...slot.children.map((child): UidxPatch => ({ op: 'remove-node', address: child.address })),
+    ...(node ? [{ op: 'insert-node' as const, parent: slot.address, index: 0, node }] : []),
+  ]
+}
+
+/** Every headless element a slot could require, with the components that implement each. */
+export function acceptOptions(
+  components: ReadonlyMap<string, UidxNode> | undefined,
+  libraryRoots: readonly string[],
+  current: string | undefined,
+): { tag: string; fits: string[] }[] {
+  const byTag = new Map<string, string[]>()
+  for (const tag of libraryRoots) byTag.set(tag, [])
+  for (const component of components?.values() ?? []) {
+    const implemented = component.attrs.implements?.value
+    if (typeof implemented !== 'string') continue
+    byTag.set(implemented, [...(byTag.get(implemented) ?? []), component.name])
+  }
+  if (current && !byTag.has(current)) byTag.set(current, [])
+  return [...byTag]
+    .map(([tag, fits]) => ({ tag, fits: fits.sort() }))
+    .sort((a, b) => b.fits.length - a.fits.length || a.tag.localeCompare(b.tag))
 }

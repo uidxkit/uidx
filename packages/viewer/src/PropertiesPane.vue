@@ -122,6 +122,7 @@ import ComponentVariantsSection from './ComponentVariantsSection.vue'
 import InstancePropsSection from './InstancePropsSection.vue'
 import PreviewDataSection from './PreviewDataSection.vue'
 import SlotCardField from './SlotCardField.vue'
+import SlotSettingsSection from './SlotSettingsSection.vue'
 import { slotCards } from './slot-content'
 import { FieldIcon } from './field-icons'
 import type { SideValues } from './edit-models'
@@ -1900,6 +1901,25 @@ function onDetach(prop: string, value: JsonValue): void {
         its content, and the geometry below is the only other thing an instance
         lets anyone change.
       -->
+        <!--
+          A slot inside a component, set up by the component's author: what it
+          repeats over, what it draws, what it takes. A fill is the other side
+          of the same slot and has its own card below.
+        -->
+        <SlotSettingsSection
+          v-if="active.element === 'Slot' && !fillSlot"
+          :doc="doc"
+          :node="active"
+          :components="components"
+          :models="models"
+          :pages="pages"
+          :library="headless ?? null"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @open-model="emit('openModel', $event)"
+          @select="emit('select', $event)"
+        />
+
         <InstancePropsSection
           v-if="active.element === 'Instance'"
           :doc="doc"

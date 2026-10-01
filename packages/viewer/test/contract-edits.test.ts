@@ -757,10 +757,14 @@ describe('the Contract section', () => {
     expect(section.emitted('patches')).toEqual([
       [[{ op: 'add', address: 'List#option', prop: 'as', value: 'person' }]],
     ])
-    expect(section.findAll('.head .of').map((e) => e.text())).toContain('× 3')
-    const over = section.find('[data-field="repeat"] select')
-    expect(over.findAll('option').map((o) => o.text().trim())).toEqual(['Once', '{items}'])
-    await over.setValue('')
+    expect(section.find('[data-field="model"]').text()).toContain('3 sample rows')
+    const over = section.find('[data-field="list"] select')
+    expect(over.findAll('option').map((o) => o.text().trim())).toEqual([
+      'items · Item[]',
+      '＋ New list…',
+    ])
+    // "Filled once" is the segmented choice beside "For each item".
+    await section.find('[data-field="repeat"] [role="radio"]').trigger('click')
     expect(section.emitted('patches')!.at(-1)).toEqual([
       [{ op: 'remove', address: 'List#option', prop: 'repeat' }],
     ])

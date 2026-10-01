@@ -16,11 +16,16 @@ import type { SlotCard, SlotChoice, SlotPick } from './slot-content'
  * one that shows a different item on every row; anything else draws the same
  * thing on each.
  */
-const props = defineProps<{
-  card: SlotCard
-  /** The trigger the popup hangs from, exempted from the outside-click close. */
-  trigger: Element | null
-}>()
+const props = withDefaults(
+  defineProps<{
+    card: SlotCard
+    /** The trigger the popup hangs from, exempted from the outside-click close. */
+    trigger: Element | null
+    /** False where there is no default to go back to: the component's own content. */
+    allowDefault?: boolean
+  }>(),
+  { allowDefault: true },
+)
 
 const emit = defineEmits<{ pick: [pick: SlotPick]; close: [] }>()
 
@@ -211,6 +216,7 @@ onBeforeUnmount(() => {
     </div>
 
     <button
+      v-if="allowDefault"
       type="button"
       class="popup-row popup-default"
       :class="{ current: card.content.kind === 'default' }"
