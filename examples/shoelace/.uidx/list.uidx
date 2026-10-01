@@ -25,6 +25,7 @@ A vertical list of people that draws one item per person. Swap the item componen
       <Instance
         name="row"
         component="PersonRow"
+        props={{ item: '{item}' }}
         layoutAlign="STRETCH"
       />
     </Slot>

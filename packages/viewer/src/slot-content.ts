@@ -156,12 +156,7 @@ export function slotCards(
       if (receives || allowed) suggested.push(choice)
       else others.push(choice)
     }
-    const shown = content.kind === 'default' ? fallback.component : null
-    const chosen = content.kind === 'component' ? content.component : shown
-    const warning =
-      repeat?.model && chosen && !receivingProp(components?.get(chosen), repeat.model)
-        ? `${chosen} has no ${repeat.model} property, so every row draws the same thing.`
-        : null
+    const warning = null
     return { name, fill, content, fallback, repeat, suggested, others, warning }
   })
 }

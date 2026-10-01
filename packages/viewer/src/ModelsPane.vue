@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
-import type { FieldSpec, UidxPatch } from '@uidx/format'
+import type { FieldSpec, JsonValue, ModelSpec, UidxPatch } from '@uidx/format'
 import {
+  addItem,
   addModel,
   fieldWith,
+  itemFields,
+  itemsOf,
+  removeItem,
+  setItemCell,
   isIdentifier,
   newField,
   parseSample,
-  printSample,
   removeField,
   removeModel,
   setModelDescription,
@@ -109,6 +113,45 @@ function rename(card: ModelCard, field: FieldSpec, to: string): void {
 
 const isPlaceholder = (text: string): boolean => text.startsWith(PLACEHOLDER)
 
+/**
+ * Which half of a model is open: its items (the content a repeat draws) or
+ * its fields (the shape every item has). Items first once there are fields,
+ * since filling in content is the everyday task; a new model starts on fields.
+ */
+const tabs = ref<Record<string, 'items' | 'fields'>>({})
+const tabOf = (card: ModelCard): 'items' | 'fields' =>
+  tabs.value[card.name] ?? (card.fields.length ? 'items' : 'fields')
+
+const specOf = (card: ModelCard): ModelSpec => ({
+  name: card.name,
+  description: card.description,
+  fields: card.fields,
+  loc: { start: 0, end: 0 },
+})
+
+/** A cell as the input shows it: text as is, anything else as JSON, absent as empty. */
+const showCell = (value: JsonValue | undefined): string =>
+  value === undefined || value === null
+    ? ''
+    : typeof value === 'string'
+      ? value
+      : JSON.stringify(value)
+
+/** A cell as typed, by its field's type: a number for a number, text otherwise. */
+function readCell(field: FieldSpec, text: string): JsonValue {
+  const type = field.type.trim()
+  if (type === 'number') {
+    const number = Number(text)
+    return text.trim() === '' || Number.isNaN(number) ? null : number
+  }
+  if (type === 'string' || type === 'image' || type === 'date') return text
+  return parseSample(text) ?? null
+}
+
+function cell(card: ModelCard, field: FieldSpec, index: number, value: JsonValue): void {
+  send(card, setItemCell(specOf(card), field.name, index, value))
+}
+
 /* --------------------------------------------------- arriving at a model */
 const marked = ref<string | null>(null)
 watch(
@@ -139,8 +182,9 @@ watch(
             Models <span>{{ cards.length }}</span>
           </h1>
           <p>
-            The data your components show. Declare a model once, give each field sample values, and
-            every list that repeats over it draws those samples on the canvas.
+            The data your components show. A model has fields — the shape of one item — and items,
+            its content. Repeat a layer for each item of a model, then bind its texts and component
+            properties to the item's fields.
           </p>
         </div>
       </header>
@@ -197,7 +241,7 @@ watch(
 
       <p v-if="!cards.length" class="empty">
         No models yet. Name one above — a list of contacts is a <code>Contact</code> model — then
-        add its fields with sample values, and the canvas draws the rows.
+        add its fields and items, and repeat a layer over it.
       </p>
 
       <section
@@ -276,7 +320,106 @@ watch(
           aria-label="Description"
           @change="describe(card, ($event.target as HTMLInputElement).value)"
         />
-        <div class="table-scroll">
+        <div class="tabs" role="tablist" :aria-label="`${card.name} content or shape`">
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="tabOf(card) === 'items'"
+            data-tab="items"
+            @click="tabs[card.name] = 'items'"
+          >
+            Items <span class="count">{{ itemsOf(card).length }}</span>
+          </button>
+          <button
+            type="button"
+            role="tab"
+            :aria-selected="tabOf(card) === 'fields'"
+            data-tab="fields"
+            @click="tabs[card.name] = 'fields'"
+          >
+            Fields <span class="count">{{ card.fields.length }}</span>
+          </button>
+        </div>
+
+        <!--
+          The content: one row per item, one column per field — what a list that
+          repeats this model draws, row for row, on the canvas.
+        -->
+        <template v-if="tabOf(card) === 'items'">
+          <p v-if="!itemFields(card).length" class="empty">
+            Add fields first: an item is a value for each field.
+            <button type="button" class="inline-link" @click="tabs[card.name] = 'fields'">
+              Go to fields
+            </button>
+          </p>
+          <div v-else class="table-scroll">
+            <table class="items" :aria-label="`${card.name} items`">
+              <thead>
+                <tr>
+                  <th class="index">#</th>
+                  <th v-for="field in itemFields(card)" :key="field.name" :title="field.type">
+                    {{ field.name }}
+                  </th>
+                  <th class="tools"><span class="sr-only">Remove</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(item, index) in itemsOf(card)" :key="index" :data-item="index">
+                  <td class="index">{{ index + 1 }}</td>
+                  <td v-for="field in itemFields(card)" :key="field.name">
+                    <input
+                      v-if="field.type.trim() === 'boolean'"
+                      type="checkbox"
+                      :checked="item[field.name] === true"
+                      :disabled="!writable"
+                      :aria-label="`${field.name} of item ${index + 1}`"
+                      @change="
+                        cell(card, field, index, ($event.target as HTMLInputElement).checked)
+                      "
+                    />
+                    <input
+                      v-else
+                      class="text cell"
+                      :value="showCell(item[field.name])"
+                      :disabled="!writable"
+                      :aria-label="`${field.name} of item ${index + 1}`"
+                      @change="
+                        cell(
+                          card,
+                          field,
+                          index,
+                          readCell(field, ($event.target as HTMLInputElement).value),
+                        )
+                      "
+                    />
+                  </td>
+                  <td class="tools">
+                    <button
+                      type="button"
+                      class="remove"
+                      :disabled="!writable"
+                      :aria-label="`Remove item ${index + 1}`"
+                      @click="send(card, removeItem(specOf(card), index))"
+                    >
+                      ×
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button
+            v-if="itemFields(card).length"
+            type="button"
+            class="add"
+            :disabled="!writable"
+            @click="send(card, addItem(specOf(card)))"
+          >
+            + Add item
+          </button>
+        </template>
+
+        <div v-if="tabOf(card) === 'fields'" class="table-scroll">
           <table class="fields">
             <thead>
               <tr>
@@ -286,7 +429,6 @@ watch(
                 <th class="flag" title="May be absent; a null sample shows that layout">
                   Optional
                 </th>
-                <th>Sample</th>
                 <th>Description</th>
                 <th class="tools"><span class="sr-only">Remove</span></th>
               </tr>
@@ -340,21 +482,6 @@ watch(
                 </td>
                 <td>
                   <input
-                    class="text sample"
-                    :value="printSample(field.sample)"
-                    :disabled="!writable"
-                    aria-label="Sample"
-                    placeholder='Ada, or ["Ada", "Grace"]'
-                    title="One value, or a JSON list for varied rows; null shows the absent layout"
-                    @change="
-                      change(card, field, {
-                        sample: parseSample(($event.target as HTMLInputElement).value),
-                      })
-                    "
-                  />
-                </td>
-                <td>
-                  <input
                     class="text words"
                     :value="isPlaceholder(field.description) ? '' : field.description"
                     :placeholder="field.description"
@@ -384,6 +511,7 @@ watch(
           </table>
         </div>
         <button
+          v-if="tabOf(card) === 'fields'"
           type="button"
           class="add"
           :disabled="!writable"
@@ -416,6 +544,50 @@ watch(
 </template>
 
 <style scoped>
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin: 10px 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+.tabs button {
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+}
+.tabs button[aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--text);
+}
+.tabs .count {
+  margin-left: 4px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+}
+.items th.index,
+.items td.index {
+  width: 32px;
+  color: var(--text-faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.items .cell {
+  width: 100%;
+  min-width: 120px;
+}
+.inline-link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
 .rename-model {
   padding: 0 4px;
   font: inherit;
@@ -658,12 +830,14 @@ code {
 .table-scroll {
   overflow-x: auto;
 }
-.fields {
+.fields,
+.items {
   width: 100%;
   border-collapse: collapse;
   font-size: 12px;
 }
-.fields th {
+.fields th,
+.items th {
   padding: 4px 6px;
   text-align: left;
   font-size: 10px;
@@ -672,9 +846,13 @@ code {
   color: var(--text-faint);
   border-bottom: 1px solid var(--line);
 }
-.fields td {
+.fields td,
+.items td {
   padding: 4px 6px;
   vertical-align: middle;
+}
+.items tbody tr:hover {
+  background: color-mix(in srgb, var(--raised) 50%, transparent);
 }
 .fields td .text {
   width: 100%;
@@ -686,9 +864,6 @@ code {
 }
 .fields .type {
   min-width: 90px;
-}
-.fields .sample {
-  min-width: 140px;
 }
 .fields td.words,
 .fields td .words {

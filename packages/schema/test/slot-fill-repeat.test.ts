@@ -51,7 +51,7 @@ const LIST = page(
   'list',
   `  <Component name="List" status="draft" layoutMode="VERTICAL">
     <Slot name="item" repeat="{items}">
-      <Instance name="row" component="Row" />
+      <Instance name="row" component="Row" props={{ item: '{item}' }} />
     </Slot>
   </Component>`,
   `
@@ -67,7 +67,7 @@ const TEAM = page(
   `  <Instance name="plain" component="List" />
   <Instance name="cards" component="List">
     <Slot name="item">
-      <Instance name="card" component="Card" />
+      <Instance name="card" component="Card" props={{ item: '{item}' }} />
     </Slot>
   </Instance>`,
 )
@@ -149,5 +149,20 @@ describe('the editor reading the scene', () => {
       'Grace',
       'Linus',
     ])
+  })
+})
+
+describe('the item reaches a component only when bound', () => {
+  it('draws an unbound item component with the preview sample on every row', () => {
+    const unbound = page(
+      'unbound',
+      `  <Instance name="cards" component="List">
+    <Slot name="item">
+      <Instance name="card" component="Card" />
+    </Slot>
+  </Instance>`,
+    )
+    expect(texts(unbound).out.map(([, text]) => text)).toEqual(['Ada', 'Ada', 'Ada'])
+    expect(texts(unbound, 1).out.map(([, text]) => text)).toEqual(['Grace', 'Grace', 'Grace'])
   })
 })

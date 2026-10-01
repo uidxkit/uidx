@@ -72,14 +72,26 @@ other, and the rows after it (`row-2`, `row-3`) are generated echoes that
 follow it. Figma export renders instances with an instance-swap property.
 Code uses the contract.
 
-An instance inside a repeat receives the item. A contract prop of its
-definition typed by an enclosing item's model receives that item, nearest
-first; failing a match by type, the definition's first model prop receives
-the innermost item. The use may say otherwise in `props={{ … }}` — another
-item, or a field of one (`{child.owner}`). The Contract tab shows what each
-prop receives, marks what was inferred, and writes the choice; the code
-target passes the same. A repeat on a container holding one row repeats the
-container; the tab says so and offers to move the repeat onto the row.
+An instance inside a repeat receives the item only when the use binds it:
+`props={{ item: '{item}' }}`, or a field of it (`{child.owner}`), exactly
+as a token is applied. Nothing is inferred from types — an unbound instance
+draws its own preview sample on every row, and code passes nothing — so what
+the file says is all that happens.
+
+> **Amended 2026-10-01.** This replaces the inference first written here (a
+> prop typed by the item's model received it automatically). Inference made
+> results depend on type matching a designer never sees; explicit binding
+> keeps the canvas, the code and the file in step.
+
+The editor keeps the designer's side to choices, not syntax. On any layer
+inside a component, the Repeat section is a switch and a model picker
+("Person · 5 items"): picking a model reuses a list of it the layer can
+reach — an enclosing item's list field, then a list prop — or declares one
+named after the model (`people: Person[]`) in the same edit, and names the
+item so it hides nothing. Inside, the bind button on a text's content and on
+a component's properties lists the item and its fields of the right type.
+A model's content is managed on the Models face as items — rows of a table,
+stored as each field's sample list (ADR 0015 §2).
 
 ### 3. Code targets
 

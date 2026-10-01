@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 import type { ModelIndex } from '@uidx/schema'
-import { declare, moveRepeatOnto, PLACEHOLDER, setRepeat, setRepeatAs } from './contract-edits'
+import { setRepeat } from './contract-edits'
 import { REPEAT_ICON } from './layer-icons'
-import { itemNameFor } from './repeat-edits'
+import { itemCount } from './model-edits'
+import ModelPickerPopup from './ModelPickerPopup.vue'
+import { repeatOverModel } from './repeat-edits'
 import { repeatView } from './repeat-view'
 
 /**
- * Repeat, for any layer inside a component (ADR 0017 §2) — Builder's
- * "Repeat for each", Plasmic's "repeat element", Vue's `v-for`.
+ * Repeat, kept to the two choices a designer makes (ADR 0017 §2):
  *
- * The layer and everything in it becomes the template, drawn once per item:
- * texts bind to the item's fields, a nested component receives the item, and
- * a list field of the item repeats again inside. So besides choosing the list
- * the section says what the template can bind to, what in it already does,
- * and which repeats this layer is itself part of.
+ * 1. this layer repeats — a switch;
+ * 2. for each item of which model — picked like a token.
+ *
+ * The layer and everything in it is then drawn once per item of the model,
+ * and its texts and component properties are bound to the item's fields with
+ * the same bind button tokens use. Which list prop carries the items is
+ * bookkeeping for code, done here without asking.
  */
 const props = defineProps<{
   doc: UidxDocument | null
@@ -23,7 +26,7 @@ const props = defineProps<{
   components?: ReadonlyMap<string, UidxNode>
   models?: ModelIndex
   writable: boolean
-  /** Inside the Slot panel: the slot's own words, "Filled once" / "For each item". */
+  /** Inside the Slot panel, which has its own heading. */
   forSlot?: boolean
 }>()
 
@@ -37,88 +40,39 @@ const send = (patches: UidxPatch[]): void => {
   if (props.writable && patches.length) emit('patches', patches)
 }
 
-/**
- * A first repeat names its item so it hides nothing (`tag` inside a row of
- * `item`s, `entry` in a component whose prop is `item`); changing the list of
- * an existing repeat keeps the name the author has.
- */
-function repeatOver(list: string): UidxPatch[] {
-  const component = view.value?.component
-  if (own.value || !component) return setRepeat(props.node, list)
-  const as = itemNameFor(component, props.node, list)
-  return [...setRepeat(props.node, list), ...(as === 'item' ? [] : setRepeatAs(props.node, as))]
-}
-
 const view = computed(() => repeatView(props.doc, props.node, props.components, props.models))
 const own = computed(() => view.value?.own ?? null)
-const nestedLists = computed(() => view.value?.lists.filter((list) => list.nested) ?? [])
-const propLists = computed(() => view.value?.lists.filter((list) => !list.nested) ?? [])
-const modelNames = computed(() => [...(props.models?.keys() ?? [])].sort())
-
-/* -------------------------------------------- a new list, declared here */
-
-const creating = ref(false)
-const newName = ref('items')
-const newModel = ref('')
-watch(creating, (open) => {
-  if (!open) return
-  newModel.value = newModel.value || modelNames.value[0] || ''
-  const taken = new Set((view.value?.component.spec?.contract?.props ?? []).map((p) => p.name))
-  let name = 'items'
-  for (let n = 2; taken.has(name); n++) name = `items${n}`
-  newName.value = name
-})
-watch(
-  () => props.node.address,
-  () => (creating.value = false),
+const allModels = computed(() =>
+  [...(props.models?.values() ?? [])].sort((a, b) => a.name.localeCompare(b.name)),
 )
+const currentModel = computed(() =>
+  own.value?.model ? (props.models?.get(own.value.model) ?? null) : null,
+)
+/** The enclosing repeat this layer is drawn inside, nearest — it is part of that template. */
+const inside = computed(() => view.value?.enclosing.at(-1) ?? null)
 
-function chooseMode(mode: 'once' | 'each'): void {
-  if (mode === 'once') {
-    creating.value = false
+/** The switch is on while the layer repeats, or while a model is being chosen for it. */
+const choosing = ref(false)
+const on = computed(() => own.value !== null || choosing.value)
+const trigger = ref<Element | null>(null)
+const picking = ref(false)
+
+function toggle(): void {
+  if (own.value) {
+    choosing.value = false
     send(setRepeat(props.node, null))
-    return
-  }
-  // The nearest list first: an enclosing item's list field before the
-  // contract's own, so a layer inside a row walks the row (a tree).
-  const first = view.value?.lists[0]
-  if (first) send(repeatOver(first.list))
-  else creating.value = true
-}
-
-function chooseList(value: string): void {
-  if (value === ':new') creating.value = true
-  else {
-    creating.value = false
-    send(repeatOver(value))
+  } else {
+    choosing.value = !choosing.value
+    picking.value = choosing.value
   }
 }
 
-function createList(): void {
-  const name = newName.value.trim()
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || !newModel.value) return
-  send([
-    ...declare('prop', name, {
-      attrs: { type: `${newModel.value}[]` },
-      description: `${PLACEHOLDER}the prop "${name}".`,
-    }),
-    ...repeatOver(name),
-  ])
-  creating.value = false
+function pick(model: string): void {
+  const current = view.value
+  if (!current) return
+  choosing.value = false
+  send(repeatOverModel(current.component, props.node, model, current.lists))
 }
-
-function repeatRowInstead(): void {
-  const wraps = view.value?.wrapsOne
-  if (!wraps || !props.doc) return
-  const row = props.node.children.find((child) => child.address === wraps.address)
-  if (!row) return
-  send(moveRepeatOnto(props.node, row))
-  emit('select', row.address)
-}
-
-const nestOffer = computed(() =>
-  !own.value && view.value?.scope ? view.value.scope.fields.filter((field) => field.list) : [],
-)
 </script>
 
 <template>
@@ -129,192 +83,67 @@ const nestOffer = computed(() =>
     data-field="repeat"
     :data-set="own !== null"
   >
-    <header v-if="!forSlot" class="head">
+    <div class="head">
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
         <path :d="REPEAT_ICON" fill="none" stroke="currentColor" stroke-width="1" />
       </svg>
-      <span class="title">Repeat</span>
-      <span v-if="own" class="of">× {{ own.rows }}</span>
-    </header>
-
-    <!-- The templates this layer is already part of, outermost first. -->
-    <p v-if="view.enclosing.length" class="context" data-field="inside-repeat">
-      <template v-for="(outer, index) in view.enclosing" :key="outer.address">
-        <span v-if="index > 0" class="sep">›</span>
-        Part of
-        <button type="button" class="link" @click="emit('select', outer.address)">
-          {{ outer.name }}</button
-        >, drawn for each <code>{{ outer.as }}</code
-        ><template v-if="outer.model"> ({{ outer.model }})</template> of
-        <code>{{ outer.list }}</code>
-      </template>
-    </p>
-
-    <div class="segmented" role="radiogroup" :aria-label="`How often ${node.name} is drawn`">
+      <span class="title">{{ forSlot ? 'Repeat for each item' : 'Repeat' }}</span>
       <button
         type="button"
-        role="radio"
-        :aria-checked="!own && !creating"
+        role="switch"
+        class="switch"
+        :aria-checked="on"
         :disabled="!writable"
-        @click="chooseMode('once')"
+        :aria-label="`Repeat ${node.name}`"
+        @click="toggle"
       >
-        {{ forSlot ? 'Filled once' : 'Once' }}
-      </button>
-      <button
-        type="button"
-        role="radio"
-        :aria-checked="!!own || creating"
-        :disabled="!writable"
-        @click="chooseMode('each')"
-      >
-        For each item
+        <span class="knob" />
       </button>
     </div>
 
-    <template v-if="own || creating">
-      <div class="row" data-field="list">
-        <span class="label">List</span>
-        <select
-          class="field"
-          :value="creating ? ':new' : (own?.list ?? '')"
-          :disabled="!writable"
-          aria-label="Repeat over"
-          @change="chooseList(($event.target as HTMLSelectElement).value)"
-        >
-          <option
-            v-if="own && !view.lists.some((entry) => entry.list === own!.list)"
-            :value="own.list"
-          >
-            {{ own.list }} · not a list here
-          </option>
-          <optgroup v-if="nestedLists.length" label="From the item it is inside">
-            <option v-for="entry in nestedLists" :key="entry.list" :value="entry.list">
-              {{ entry.list }}{{ entry.type ? ` · ${entry.type}` : '' }}
-            </option>
-          </optgroup>
-          <optgroup v-if="propLists.length" :label="`Properties of ${view.component.name}`">
-            <option v-for="entry in propLists" :key="entry.list" :value="entry.list">
-              {{ entry.list }}{{ entry.type ? ` · ${entry.type}` : '' }}
-            </option>
-          </optgroup>
-          <option value=":new">＋ New list property…</option>
-        </select>
-      </div>
-
-      <div v-if="creating" class="create" data-field="new-list">
-        <p class="create-title">New list property of {{ view.component.name }}</p>
-        <div class="create-row">
-          <input
-            v-model="newName"
-            class="field"
-            aria-label="List name"
-            placeholder="items"
-            spellcheck="false"
-            @keydown.enter="createList"
-          />
-          <span class="faint">of</span>
-          <select v-if="modelNames.length" v-model="newModel" class="field" aria-label="Item model">
-            <option v-for="model in modelNames" :key="model" :value="model">{{ model }}</option>
-          </select>
-        </div>
-        <p v-if="!modelNames.length" class="hint">
-          A list holds items of a model, and this project has none yet.
-          <button type="button" class="link" @click="emit('openModel', '')">Create a model</button>
-        </p>
-        <div class="create-actions">
-          <button type="button" class="ghost" @click="creating = false">Cancel</button>
-          <button
-            type="button"
-            class="primary"
-            :disabled="!writable || !newModel || !newName.trim()"
-            @click="createList"
-          >
-            Create and repeat
-          </button>
-        </div>
-      </div>
-
-      <template v-if="own && !creating">
-        <div class="row" data-field="as">
-          <span class="label" title="The item's name in bindings, like {item.name}">Item name</span>
-          <input
-            class="field"
-            :value="own.as"
-            :disabled="!writable"
-            aria-label="Item name"
-            spellcheck="false"
-            @change="send(setRepeatAs(node, ($event.target as HTMLInputElement).value))"
-          />
-        </div>
-        <div class="row" data-field="model">
-          <span class="label">Each item</span>
-          <span class="model-line">
-            <button
-              v-if="own.model"
-              type="button"
-              class="chip"
-              :title="`Open ${own.model} on the Models face`"
-              @click="emit('openModel', own.model)"
-            >
-              {{ own.model }} ↗
-            </button>
-            <span v-else class="warn">no model</span>
-            <span class="faint">{{ own.rows }} sample rows on the canvas</span>
-          </span>
-        </div>
-        <p v-if="own.unknownModel" class="warn-line" role="status">
-          No page declares {{ own.model }}.
-          <button type="button" class="link" @click="emit('openModel', own.model ?? '')">
-            Declare it
-          </button>
-        </p>
-        <p v-if="view.wrapsOne" class="warn-line" role="status">
-          This repeats the whole {{ node.name }} with {{ view.wrapsOne.name }} inside each copy.
-          <button type="button" class="link" :disabled="!writable" @click="repeatRowInstead">
-            Repeat {{ view.wrapsOne.name }} instead
-          </button>
-        </p>
-      </template>
+    <template v-if="on">
+      <button
+        ref="trigger"
+        type="button"
+        class="model-trigger"
+        data-popup-trigger
+        data-field="model"
+        :disabled="!writable"
+        :aria-expanded="picking"
+        @click="picking = !picking"
+      >
+        <span class="glyph" aria-hidden="true">{ }</span>
+        <span v-if="own?.model" class="model-name">{{ own.model }}</span>
+        <span v-else-if="own" class="warn">{{ own.list }} · no model</span>
+        <span v-else class="placeholder">Choose a model…</span>
+        <span v-if="currentModel" class="count">{{ itemCount(currentModel) }} items</span>
+        <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+          <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
+        </svg>
+      </button>
+      <p v-if="own?.model" class="hint">
+        Drawn once per {{ own.model }}. Bind texts and component properties inside to its fields
+        with the bind button.
+        <button type="button" class="link" @click="emit('openModel', own.model)">Edit items</button>
+      </p>
+      <ModelPickerPopup
+        v-if="picking"
+        :models="allModels"
+        :current="own?.model ?? null"
+        :trigger="trigger"
+        @pick="pick"
+        @manage="emit('openModel', own?.model ?? '')"
+        @close="picking = false"
+      />
     </template>
 
-    <!--
-      The template: what a layer inside can bind to, and what already does.
-      Shown for the item in scope here — this layer's own, else the nearest
-      repeat it sits inside — because a child of a repeat is part of it too.
-    -->
-    <div v-if="view.scope && !creating && !forSlot" class="template" data-field="template">
-      <p class="template-title">
-        {{ own ? 'Inside each copy' : 'From the item' }}
-        <code>{{ view.scope.as }}</code>
-      </p>
-      <div class="chips">
-        <span
-          v-for="field in view.scope.fields"
-          :key="field.path"
-          class="chip"
-          :data-list="field.list || undefined"
-          :title="field.list ? 'A list: repeat a layer inside over it' : `Bind as {${field.path}}`"
-          >{{ field.path }}: {{ field.type }}</span
-        >
-      </div>
-      <ul v-if="view.uses.length" class="uses">
-        <li v-for="use in view.uses" :key="use.address + use.detail">
-          <button type="button" class="link" @click="emit('select', use.address)">
-            {{ use.name }}</button
-          ><span class="faint"> · {{ use.detail }}</span>
-        </li>
-      </ul>
-      <p v-else-if="own" class="hint">
-        Nothing inside reads <code>{{ own.as }}</code> yet: bind a text to
-        <code>{{ '{' + own.as + '.field}' }}</code
-        >, or put in a component that takes a {{ own.model ?? 'item' }}.
-      </p>
-      <p v-if="nestOffer.length" class="hint">
-        To nest, repeat this layer over
-        <code v-for="field in nestOffer" :key="field.path">{{ field.path }}</code
-        >.
-      </p>
-    </div>
+    <!-- A layer inside a repeated one is part of its template: say so, plainly. -->
+    <p v-else-if="inside" class="hint" data-field="inside-repeat">
+      Inside
+      <button type="button" class="link" @click="emit('select', inside.address)">
+        {{ inside.name }}</button
+      >, repeated for each {{ inside.model ?? 'item' }}.
+    </p>
   </section>
 </template>
 
@@ -332,194 +161,104 @@ const nestOffer = computed(() =>
   color: var(--bound);
 }
 .title {
+  flex: 1;
   color: var(--text);
   font-weight: 600;
 }
-.of {
-  color: var(--bound);
+.switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: var(--raised);
+  cursor: pointer;
+  transition: background 120ms;
 }
-.label {
-  color: var(--text-dim);
+.switch[aria-checked='true'] {
+  background: var(--accent);
 }
-.row {
-  display: grid;
-  grid-template-columns: 80px 1fr;
+.knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text);
+  transition: transform 120ms;
+}
+.switch[aria-checked='true'] .knob {
+  background: var(--on-accent);
+  transform: translateX(12px);
+}
+.model-trigger {
+  display: flex;
+  gap: var(--gap);
   align-items: center;
-  gap: var(--gap-sm);
-}
-.field {
-  min-width: 0;
   height: var(--field-h);
-  padding: 0 6px;
+  padding: 0 6px 0 4px;
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   background: var(--raised);
   color: var(--text);
   font: inherit;
-}
-.field:hover:not(:disabled) {
-  border-color: var(--line);
-}
-.segmented {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  padding: 2px;
-  border-radius: var(--radius-lg);
-  background: var(--raised);
-}
-.segmented button {
-  height: 24px;
-  border: 0;
-  border-radius: 4px;
-  background: none;
-  color: var(--text-dim);
-  font: inherit;
+  text-align: left;
   cursor: pointer;
 }
-.segmented button[aria-checked='true'] {
-  background: var(--panel);
-  color: var(--text);
-  box-shadow: var(--shadow-sm);
+.model-trigger:hover:not(:disabled),
+.model-trigger[aria-expanded='true'] {
+  border-color: var(--accent);
 }
-.context {
+.model-trigger svg {
+  flex: none;
+  color: var(--text-faint);
+}
+.glyph {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--bound) 16%, transparent);
+  color: var(--bound);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+}
+.model-name {
+  flex: 1;
+  font-weight: 500;
+}
+.placeholder {
+  flex: 1;
+  color: var(--text-faint);
+}
+.count {
+  color: var(--text-faint);
+  font-size: var(--ui-size-sm);
+}
+.hint {
   margin: 0;
-  padding: 6px 8px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bound) 12%, transparent);
-  color: var(--text-dim);
+  color: var(--text-faint);
   font-size: var(--ui-size-sm);
   line-height: 15px;
 }
-.sep {
-  margin: 0 4px;
-  color: var(--text-faint);
-}
-.create {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--pad);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  background: var(--bg);
-}
-.create-title,
-.template-title {
-  margin: 0;
-  color: var(--text);
-  font-weight: 600;
-}
-.create-row {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 6px;
-}
-.create-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.primary,
-.ghost {
-  height: 24px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: var(--radius-lg);
-  font: inherit;
-  cursor: pointer;
-}
-.primary {
-  background: var(--accent);
-  color: var(--on-accent);
-}
-.primary:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.ghost {
-  background: none;
-  color: var(--text-dim);
-}
-.model-line {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  min-width: 0;
-}
-.template {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  padding: var(--pad);
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--bound) 8%, transparent);
-}
-.chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-}
-.chip {
-  display: inline-flex;
-  align-items: center;
-  padding: 0 7px;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: none;
-  color: var(--bound);
-  font: inherit;
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: var(--ui-size-sm);
-  line-height: 18px;
-  white-space: nowrap;
-}
-.chip[data-list] {
-  border-style: dashed;
-}
-button.chip {
-  cursor: pointer;
-}
-button.chip:hover {
-  border-color: var(--bound);
-}
-.uses {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-  font-size: var(--ui-size-sm);
-}
-.hint,
-.faint {
-  margin: 0;
-  color: var(--text-faint);
-  font-size: var(--ui-size-sm);
-  line-height: 14px;
-}
-.warn-line,
 .warn {
-  margin: 0;
+  flex: 1;
   color: var(--warn);
-  font-size: var(--ui-size-sm);
-  line-height: 14px;
 }
 .link {
   padding: 0;
   border: 0;
   background: none;
-  color: var(--text);
+  color: var(--accent);
   font: inherit;
-  font-weight: 600;
   cursor: pointer;
 }
 .link:hover {
   text-decoration: underline;
-}
-code {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.95em;
 }
 </style>

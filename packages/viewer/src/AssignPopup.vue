@@ -81,7 +81,14 @@ function positionPopup(): void {
 const matches = (name: string): boolean =>
   name.toLowerCase().includes(query.value.trim().toLowerCase())
 
-const properties = computed(() => (props.candidates ?? []).filter((c) => matches(c.name)))
+/** A repeat's item and its fields (`item.name`) are not properties of the component: listed apart. */
+const isItem = (name: string): boolean => name.includes('.')
+const properties = computed(() =>
+  (props.candidates ?? []).filter((c) => matches(c.name) && !isItem(c.name)),
+)
+const itemFields = computed(() =>
+  (props.candidates ?? []).filter((c) => matches(c.name) && isItem(c.name)),
+)
 
 /** Collection name -> its matching variables, in declaration order. */
 const collections = computed(() => {
@@ -163,6 +170,26 @@ onBeforeUnmount(() => {
         <FieldIcon name="close" />
       </button>
     </div>
+
+    <template v-if="itemFields.length">
+      <p class="popup-heading">From the item</p>
+      <div
+        v-for="option in itemFields"
+        :key="option.name"
+        role="button"
+        tabindex="0"
+        class="popup-row"
+        :class="{ current: option.name === boundTo }"
+        :aria-label="option.name"
+        :data-item-field="option.name"
+        @click="emit('property', option.name)"
+        @keydown.enter="emit('property', option.name)"
+      >
+        <span class="item-glyph" aria-hidden="true">{ }</span>
+        <span class="row-name">{{ option.name }}</span>
+        <span class="row-preview">{{ previewOf(option.declaration.default) }}</span>
+      </div>
+    </template>
 
     <template v-if="candidates">
       <p class="popup-heading">Properties in {{ componentName ?? 'this component' }}</p>
@@ -327,6 +354,11 @@ onBeforeUnmount(() => {
 }
 .popup-row.current {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.item-glyph {
+  color: var(--bound);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
 }
 .prop-glyph {
   color: var(--bound);

@@ -12,7 +12,7 @@ Contact.
   <Component name="ContactList" status="stable" implements="hwc-radio-group"
     layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" itemSpacing="{space#xs}" width={280}>
     <Slot name="option" repeat="{items}">
-      <Instance name="row" component="ContactOption" layoutAlign="STRETCH" />
+      <Instance name="row" component="ContactOption" layoutAlign="STRETCH" props={{ item: '{item}' }} />
     </Slot>
     <Slot name="empty" visible={false}>
       <Text name="nobody" characters="No contacts yet" fontSize={13} fills="{text#muted}" />

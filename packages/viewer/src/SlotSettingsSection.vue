@@ -3,34 +3,23 @@ import { computed, ref } from 'vue'
 import { declarationOf, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
 import type { ModelIndex } from '@uidx/schema'
 import ComponentThumb from './ComponentThumb.vue'
-import { contractView, declare, isPlaceholder, PLACEHOLDER, receivesFor } from './contract-edits'
+import { contractView, declare, isPlaceholder, PLACEHOLDER } from './contract-edits'
 import type { HeadlessLibrary } from './headless'
 import { LAYER_ICONS } from './layer-icons'
 import RepeatSection from './RepeatSection.vue'
 import SlotContentPopup from './SlotContentPopup.vue'
-import {
-  acceptOptions,
-  defaultContentPatches,
-  definitionSlotCard,
-  fitsAccepts,
-  acceptedSet,
-  type SlotPick,
-} from './slot-content'
+import { defaultContentPatches, definitionSlotCard, type SlotPick } from './slot-content'
 
 /**
- * A slot, as the author of its component sets it up — Builder's
- * `canHaveChildren` + `defaultChildren` + `childRequirements` and its
- * "Repeat for each" binding, in one place and in that order:
+ * A slot, as the author of its component sets it up, in three choices:
  *
  * 1. what the slot is for (its contract declaration),
- * 2. whether it is filled once or once per item of a list, and which list —
- *    which is what ties it to a model (ADR 0017 §2),
- * 3. what each filling receives, said the way code will (`renderItem`),
- * 4. what it draws when a use says nothing (its default content),
- * 5. what a use may put there (`accepts`, ADR 0017 §1).
+ * 2. whether it repeats for each item of a model — the same switch and model
+ *    picker every layer has (ADR 0017 §2),
+ * 3. what it draws when a use says nothing (its default content).
  *
- * Every row writes the file the way the Contract tab's rows do; this is the
- * same document, gathered where a designer looks when the slot is selected.
+ * What may fill it (`accepts`) stays on the Contract tab with the rest of the
+ * contract; this panel is the everyday part.
  */
 const props = defineProps<{
   doc: UidxDocument | null
@@ -58,38 +47,20 @@ const view = computed(() =>
 const component = computed(() =>
   view.value.kind === 'slot' && view.value.component ? view.value.component : null,
 )
-const facet = computed(() => (view.value.kind === 'slot' ? view.value : null))
-const repeat = computed(() => facet.value?.repeat ?? null)
 
 /** The slot's declaration, read from the file rather than the view, so edits keep its other attributes. */
 const declaration = computed(() =>
   props.doc ? declarationOf(props.doc, 'slot', props.node.name) : null,
 )
-const accepts = computed(() => {
-  const value = declaration.value?.attrs.accepts
-  return typeof value === 'string' ? value : undefined
-})
 
-function redeclare(change: { accepts?: string | null; description?: string }): void {
+function redeclare(change: { description?: string }): void {
   const attrs = { ...(declaration.value?.attrs ?? {}) }
-  if (change.accepts !== undefined) {
-    if (change.accepts) attrs.accepts = change.accepts
-    else delete attrs.accepts
-  }
   const description =
     change.description !== undefined
       ? change.description || `${PLACEHOLDER}the slot "${props.node.name}".`
       : (declaration.value?.description ?? `${PLACEHOLDER}the slot "${props.node.name}".`)
   send(declare('slot', props.node.name, { attrs, description }))
 }
-
-/** What code hands each filling, and the prop a use passes it through. */
-const signature = computed(() => {
-  const pascal = props.node.name.replace(/(^|[-_ ])(\w)/g, (_, __, c: string) => c.toUpperCase())
-  if (!repeat.value) return `${props.node.name}?: ReactNode`
-  const item = repeat.value.model ?? 'unknown'
-  return `render${pascal}?: (${repeat.value.as}: ${item}, index: number) => ReactNode`
-})
 
 /* ---------------------------------------------------- default content */
 
@@ -104,44 +75,6 @@ const trigger = ref<Element | null>(null)
 function pickDefault(pick: SlotPick): void {
   send(defaultContentPatches(props.node, pick))
 }
-
-/** How the default content takes the item: the prop it lands on, or why it does not. */
-const defaultReceives = computed(() => {
-  const content = card.value?.content
-  if (!repeat.value || content?.kind !== 'component') return null
-  const child = props.node.children[0]
-  const definition = props.components?.get(content.component) ?? null
-  if (!child || !definition) return null
-  const rows = receivesFor(child, definition, component.value, props.models)
-  const row = rows.find((candidate) => candidate.from === repeat.value!.as)
-  return row
-    ? {
-        ok: true as const,
-        text: `${content.component} receives each ${repeat.value.model ?? 'item'} as`,
-        prop: row.prop,
-      }
-    : {
-        ok: false as const,
-        text: `${content.component} has no ${repeat.value.model ?? 'item'} property, so every row draws the same thing.`,
-        prop: '',
-      }
-})
-
-/* ------------------------------------------------------------- accepts */
-
-const acceptChoices = computed(() =>
-  // The library's elements nobody implements yet would be 50 dead options;
-  // a slot can only usefully require what some component already is.
-  acceptOptions(props.components, [], accepts.value),
-)
-const fitting = computed(() => acceptChoices.value.find((choice) => choice.tag === accepts.value))
-/** The default content breaking the slot's own rule — what `uidx check` reports. */
-const defaultRefused = computed(() => {
-  const allowed = acceptedSet(accepts.value)
-  const content = card.value?.content
-  if (!allowed || content?.kind !== 'component') return null
-  return fitsAccepts(props.components?.get(content.component), allowed) ? null : content.component
-})
 </script>
 
 <template>
@@ -174,9 +107,8 @@ const defaultRefused = computed(() => {
       />
     </label>
 
-    <!-- 2. Once, or once per item of a list: the same Repeat any layer has. -->
+    <!-- 2. Repeat for each item of a model: the same switch any layer has. -->
     <div class="group">
-      <span class="label">Content</span>
       <RepeatSection
         :doc="doc"
         :node="node"
@@ -188,18 +120,6 @@ const defaultRefused = computed(() => {
         @select="emit('select', $event)"
         @open-model="emit('openModel', $event)"
       />
-    </div>
-
-    <!-- 3. What each filling receives — the render prop, said as code will say it -->
-    <div class="receives" data-field="receives">
-      <span class="label">{{ repeat ? 'Each filling receives' : 'A use passes' }}</span>
-      <div v-if="repeat" class="chips">
-        <span class="chip">{{ repeat.as }}: {{ repeat.model ?? 'unknown' }}</span>
-        <span class="chip">index: number</span>
-      </div>
-      <code class="signature" :title="'The React prop a use fills this slot through'">{{
-        signature
-      }}</code>
     </div>
 
     <!-- 4. What it draws when a use says nothing -->
@@ -230,10 +150,6 @@ const defaultRefused = computed(() => {
           <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
         </svg>
       </button>
-      <p v-if="defaultReceives?.ok" class="ok-line" data-field="default-receives">
-        ✓ {{ defaultReceives.text }} <code>{{ defaultReceives.prop }}</code>
-      </p>
-      <p v-else-if="defaultReceives" class="warn-line" role="status">{{ defaultReceives.text }}</p>
       <SlotContentPopup
         v-if="picking"
         :card="card"
@@ -242,34 +158,6 @@ const defaultRefused = computed(() => {
         @pick="pickDefault"
         @close="picking = false"
       />
-    </div>
-
-    <!-- 5. What a use may put there -->
-    <div v-if="declaration" class="group" data-field="accepts">
-      <span class="label">Allowed content</span>
-      <select
-        class="field"
-        :value="accepts ?? ''"
-        :disabled="!writable"
-        aria-label="Allowed content"
-        @change="redeclare({ accepts: ($event.target as HTMLSelectElement).value || null })"
-      >
-        <option value="">Any component</option>
-        <option v-for="choice in acceptChoices" :key="choice.tag" :value="choice.tag">
-          Components implementing {{ choice.tag
-          }}{{ choice.fits.length ? ` (${choice.fits.length})` : '' }}
-        </option>
-      </select>
-      <p v-if="accepts" class="hint">
-        <template v-if="fitting?.fits.length">Fits: {{ fitting.fits.join(', ') }}.</template>
-        <template v-else>No component implements {{ accepts }} yet.</template>
-      </p>
-      <p v-else class="hint">
-        Uses may fill it with anything; the picker puts components that take the item first.
-      </p>
-      <p v-if="defaultRefused" class="warn-line" role="status">
-        The default, {{ defaultRefused }}, does not implement {{ accepts }}.
-      </p>
     </div>
   </section>
 </template>

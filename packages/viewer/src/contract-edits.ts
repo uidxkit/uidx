@@ -426,9 +426,6 @@ export function receivesFor(
     explicit && typeof explicit === 'object' && !Array.isArray(explicit)
       ? (explicit as Record<string, JsonValue>)
       : {}
-  const modelProps = (definition.spec?.contract?.props ?? []).filter(
-    (prop) => modelByRef(definition.spec, typeName(prop.type).name, models) !== undefined,
-  )
   return (definition.spec?.contract?.props ?? []).map((prop) => {
     const wanted = typeName(prop.type)
     const options: string[] = []
@@ -446,13 +443,9 @@ export function receivesFor(
       if (!options.includes(alias)) options.unshift(alias)
       return { prop: prop.name, type: prop.type, from: alias, explicit: true, options }
     }
-    // The code target's rule: the item lands on the definition's first model
-    // prop; a prop typed by the item's own model lands regardless of order.
-    const inner = enclosing[enclosing.length - 1]
-    const inferred =
-      options.find((option) => enclosing.some((scope) => scope.as === option)) ??
-      (inner && modelProps[0]?.name === prop.name ? inner.as : null)
-    return { prop: prop.name, type: prop.type, from: inferred, explicit: false, options }
+    // Nothing is inferred (ADR 0017 §2): a prop gets the item only when the
+    // use binds it, so an unbound prop receives nothing.
+    return { prop: prop.name, type: prop.type, from: null, explicit: false, options }
   })
 }
 

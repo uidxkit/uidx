@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { type JsonValue, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
 import type { ModelIndex } from '@uidx/schema'
 import ComponentThumb from './ComponentThumb.vue'
-import { setReceives, type ReceiveRow } from './contract-edits'
-import { dataRows } from './instance-data'
+import { setReceives } from './contract-edits'
+import { bindOptions, boundAlias, dataRows, itemScopes } from './instance-data'
+import ItemBindPopup from './ItemBindPopup.vue'
 import { LAYER_ICONS } from './layer-icons'
 import SlotCardField from './SlotCardField.vue'
 import { componentNote, fillContext, slotCards } from './slot-content'
@@ -80,15 +81,25 @@ function step(index: number, count: number, by: number): void {
   emit('preview', (index + by + count) % count)
 }
 
-/** An alias as the file writes it, `{item}`. */
-const braced = (alias: string): string => `{${alias}}`
-/** The empty choice: what the repeat implies, else nothing. */
-const inferredLabel = (row: ReceiveRow): string =>
-  row.from && !row.explicit ? `${braced(row.from)} · auto` : 'Nothing'
-
-function chooseReceives(prop: string, alias: string): void {
-  if (props.writable) send(setReceives(props.instance, prop, alias || null))
+/** The prop whose bind popup is open, and the buttons the popups hang from. */
+const binding = ref<string | null>(null)
+const bindTriggers = new Map<string, Element>()
+function setBindTrigger(prop: string, element: unknown): void {
+  if (element instanceof Element) bindTriggers.set(prop, element)
 }
+
+/** Binds a prop to the item or one of its fields — or unbinds it — as a token is applied. */
+function bind(prop: string, alias: string | null): void {
+  if (props.writable) send(setReceives(props.instance, prop, alias))
+}
+
+/** The items in scope here: a repeat around the instance, or the repeated slot it fills. */
+const scopes = computed(() => itemScopes(props.doc, props.instance, props.components, props.models))
+
+/** A text or flag property bound to the item: its alias, else null. */
+const rowBound = (name: string): string | null => boundAlias(props.instance, name)
+const rowOptions = (type: string) =>
+  bindOptions(scopes.value, type === 'BOOLEAN' ? 'boolean' : 'string')
 
 const note = computed(() => componentNote(props.pages, componentName.value))
 const summary = computed(() => {
@@ -217,8 +228,24 @@ function reset(name: string): void {
           control rather than two. An axis is a picker, because its values are
           stated (F8, ADR 0005 §2).
         -->
+        <!-- Bound to the item, like a token: the binding shows instead of a value. -->
+        <span v-if="rowBound(row.name)" class="control">
+          <button
+            :ref="(element) => setBindTrigger(row.name, element)"
+            type="button"
+            class="bind"
+            data-popup-trigger
+            data-bound
+            :disabled="!writable"
+            :aria-label="`Bind ${row.name}`"
+            @click="binding = binding === row.name ? null : row.name"
+          >
+            <span class="glyph" aria-hidden="true">{ }</span>
+            <span class="bound-name">{{ rowBound(row.name) }}</span>
+          </button>
+        </span>
         <select
-          v-if="row.domain"
+          v-else-if="row.domain"
           class="pick"
           :value="row.resolved"
           :disabled="!writable"
@@ -245,6 +272,29 @@ function reset(name: string): void {
           @change="assign(row.name, ($event.target as HTMLInputElement).value)"
         />
 
+        <!-- Inside a repeat, any of these can take a field of the item instead. -->
+        <button
+          v-if="scopes.length && !row.domain && !rowBound(row.name)"
+          :ref="(element) => setBindTrigger(row.name, element)"
+          type="button"
+          class="bind-glyph"
+          data-popup-trigger
+          :disabled="!writable"
+          :aria-label="`Bind ${row.name}`"
+          title="Bind to a field of the item"
+          @click="binding = binding === row.name ? null : row.name"
+        >
+          { }
+        </button>
+        <ItemBindPopup
+          v-if="binding === row.name"
+          :prop="row.name"
+          :options="rowOptions(row.declaration.type)"
+          :current="rowBound(row.name)"
+          :trigger="bindTriggers.get(row.name) ?? null"
+          @pick="bind(row.name, $event)"
+          @close="binding = null"
+        />
         <!-- Reset is only offered for a row that chose something. -->
         <button
           v-if="row.value !== undefined"
@@ -277,10 +327,42 @@ function reset(name: string): void {
       >
         <span class="name" :title="row.type">{{ row.prop }}</span>
         <span class="data-value">
-          <template v-if="row.source.kind === 'item'">
-            <span class="data-chip" :title="`Each copy receives its own ${row.type}`">
-              Each item of {{ row.source.owner }}
-            </span>
+          <template v-if="row.source.kind === 'bind'">
+            <button
+              :ref="(element) => setBindTrigger(row.prop, element)"
+              type="button"
+              class="bind"
+              data-popup-trigger
+              :data-bound="row.source.bound !== null || undefined"
+              :disabled="!writable"
+              :aria-label="`Bind ${row.prop}`"
+              :aria-expanded="binding === row.prop"
+              @click="binding = binding === row.prop ? null : row.prop"
+            >
+              <span class="glyph" aria-hidden="true">{ }</span>
+              <span v-if="row.source.bound" class="bound-name">{{ row.source.bound }}</span>
+              <span v-else class="unbound">Not bound</span>
+            </button>
+            <button
+              v-if="row.source.bound"
+              type="button"
+              class="unbind"
+              :disabled="!writable"
+              :aria-label="`Unbind ${row.prop}`"
+              title="Unbind"
+              @click="bind(row.prop, null)"
+            >
+              ×
+            </button>
+            <ItemBindPopup
+              v-if="binding === row.prop"
+              :prop="row.prop"
+              :options="row.source.options"
+              :current="row.source.bound"
+              :trigger="bindTriggers.get(row.prop) ?? null"
+              @pick="bind(row.prop, $event)"
+              @close="binding = null"
+            />
           </template>
           <template v-else-if="row.source.kind === 'samples'">
             <span
@@ -316,20 +398,6 @@ function reset(name: string): void {
                 ›
               </button>
             </span>
-          </template>
-          <template v-else-if="row.source.kind === 'receives'">
-            <select
-              class="pick"
-              :value="row.source.row.explicit ? row.source.row.from : ''"
-              :disabled="!writable || !row.source.row.options.length"
-              :aria-label="`${row.prop} receives`"
-              @change="chooseReceives(row.prop, ($event.target as HTMLSelectElement).value)"
-            >
-              <option value="">{{ inferredLabel(row.source.row) }}</option>
-              <option v-for="option in row.source.row.options" :key="option" :value="option">
-                {{ braced(option) }}
-              </option>
-            </select>
           </template>
           <span v-else class="data-chip faint">Not set</span>
         </span>
@@ -489,6 +557,71 @@ function reset(name: string): void {
 .context-slot {
   color: var(--text);
 }
+.control {
+  display: flex;
+  min-width: 0;
+}
+.bind {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  align-items: center;
+  min-width: 0;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px dashed var(--line);
+  border-radius: var(--radius-lg);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.bind[data-bound] {
+  border: 0;
+  background: color-mix(in srgb, var(--bound) 16%, transparent);
+  color: var(--text);
+}
+.bind:hover:not(:disabled) {
+  border-color: var(--bound);
+}
+.bind .glyph {
+  flex: none;
+  color: var(--bound);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+}
+.bound-name {
+  overflow: hidden;
+  font-family: ui-monospace, monospace;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.unbound {
+  color: var(--text-faint);
+}
+.unbind,
+.bind-glyph {
+  flex: none;
+  padding: 0 4px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
+  cursor: pointer;
+}
+.unbind {
+  font-family: inherit;
+  font-size: inherit;
+}
+.unbind:hover:not(:disabled),
+.bind-glyph:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--bound);
+}
 .data-row {
   display: grid;
   grid-template-columns: 72px 1fr auto;
@@ -588,7 +721,7 @@ function reset(name: string): void {
 }
 .row {
   display: grid;
-  grid-template-columns: 1fr 96px auto;
+  grid-template-columns: 1fr 112px auto auto;
   align-items: center;
   gap: var(--gap-sm);
   height: var(--row-h);

@@ -358,23 +358,9 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
             else if (typeof value !== 'string') passed.push(`${key}={${JSON.stringify(value)}}`)
           }
         }
-        // Inside a repeat, the row's item is what the instance is of (ADR 0017
-        // §2): a prop typed by an enclosing item's model receives that item,
-        // nearest first; failing a match by type, the target's first model
-        // prop receives the innermost item. A use that passed one is left be.
-        if (scopes.length) {
-          const modelProps = (target.contract?.props ?? []).filter(
-            (entry) => modelOfType(entry.type, target.spec, target.models)?.list === false,
-          )
-          for (const prop of modelProps) {
-            if (passed.some((entry) => entry.startsWith(`${prop.name}=`))) continue
-            const typed = [...scopes]
-              .reverse()
-              .find((scope) => scope.model?.name === prop.type.trim())
-            const from = typed ?? (prop === modelProps[0] ? scopes[scopes.length - 1] : undefined)
-            if (from) passed.push(`${prop.name}={${from.as}}`)
-          }
-        }
+        // The row's item reaches a nested component only as the use binds it
+        // (`props={{ item: '{item}' }}`, ADR 0017 §2) — passed above like any
+        // other bound prop. Nothing is inferred from types.
         const fills = node.children.filter((child) => child.element === 'Slot')
         if (fills.length === 0)
           return [`${pad}<${target.identifier}${passed.length ? ` ${passed.join(' ')}` : ''} />`]

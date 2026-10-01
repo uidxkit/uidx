@@ -121,12 +121,12 @@ describe('the slot model', () => {
     expect(card!.warning).toBeNull()
   })
 
-  it('warns when the injected component cannot receive the item', () => {
+  it('never second-guesses a choice: a component without the item is just unbound', () => {
     const doc = team(`  <Instance name="people" component="List">
     <Slot name="item"><Instance name="badge" component="Badge" /></Slot>
   </Instance>`)
     const [card] = slotCards(resolve(doc.tree, 'people')!, definition, components, models, pages)
-    expect(card!.warning).toBe('Badge has no Person property, so every row draws the same thing.')
+    expect(card!.warning).toBeNull()
   })
 
   it('empties a slot explicitly, and the default removes the fill', () => {
@@ -176,7 +176,7 @@ describe('the instance inspector', () => {
     const wrapper = section(doc, 'people')
     await wrapper.find('[data-slot="item"] .slot-trigger').trigger('click')
     const headings = wrapper.findAll('.popup-heading').map((h) => h.text())
-    expect(headings[0]).toContain('Receives a Person')
+    expect(headings[0]).toContain('Has a Person property')
     expect(headings[1]).toContain('Other components')
     expect(headings[2]).toBe('Basic')
     await wrapper.find('[data-choice="Card"]').trigger('click')
@@ -204,19 +204,37 @@ describe('the instance inspector', () => {
     ])
   })
 
-  it('says where injected content is drawn, and that each copy receives its own item', async () => {
+  it('says where injected content is drawn, and binds it to the item only when picked', async () => {
     const doc = team(`  <Instance name="people" component="List">
     <Slot name="item"><Instance name="card" component="Card" /></Slot>
   </Instance>`)
     const wrapper = section(doc, 'people#item/card')
     const context = wrapper.find('[data-field="fill-context"]')
     expect(context.text()).toContain('Fills people › item')
-    expect(context.text()).toContain('drawn for each of its items')
     const item = wrapper.find('[data-data="item"]')
-    expect(item.attributes('data-source')).toBe('item')
-    expect(item.text()).toContain('Each item of people')
+    expect(item.attributes('data-source')).toBe('bind')
+    expect(item.find('.bind').text()).toContain('Not bound')
+    await item.find('.bind').trigger('click')
+    await wrapper.find('.bind-popup [data-alias="item"]').trigger('click')
+    expect(wrapper.emitted('patches')).toEqual([
+      [[{ op: 'add', address: 'people#item/card', prop: 'props', value: { item: '{item}' } }]],
+    ])
     await context.find('.context-link').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['people']])
+  })
+
+  it('shows a bound prop as its binding, and unbinds it', async () => {
+    const doc = team(`  <Instance name="people" component="List">
+    <Slot name="item"><Instance name="card" component="Card" props={{ item: '{item}' }} /></Slot>
+  </Instance>`)
+    const wrapper = section(doc, 'people#item/card')
+    const item = wrapper.find('[data-data="item"]')
+    expect(item.find('.bind').attributes('data-bound')).toBeDefined()
+    expect(item.find('.bound-name').text()).toBe('item')
+    await item.find('[aria-label="Unbind item"]').trigger('click')
+    expect(wrapper.emitted('patches')).toEqual([
+      [[{ op: 'remove', address: 'people#item/card', prop: 'props' }]],
+    ])
   })
 
   it('previews a lone item component one sample at a time', async () => {
@@ -300,85 +318,28 @@ describe('setting a slot up in its own component', () => {
     })
   }
 
-  it('says what it repeats over, what each filling receives, and what the default does with it', () => {
+  it('shows the repeat as a switch and a model, like any layer', () => {
     const wrapper = settings(LIST, 'List#item')
-    expect((wrapper.find('[data-field="list"] select').element as HTMLInputElement).value).toBe(
-      'items',
-    )
-    expect((wrapper.find('[data-field="as"] input').element as HTMLInputElement).value).toBe('item')
+    expect(wrapper.find('[role="switch"]').attributes('aria-checked')).toBe('true')
     expect(wrapper.find('[data-field="model"]').text()).toContain('Person')
-    expect(wrapper.find('[data-field="model"]').text()).toContain('4 sample rows')
-    expect(wrapper.findAll('[data-field="receives"] .chip').map((c) => c.text())).toEqual([
-      'item: Person',
-      'index: number',
-    ])
-    expect(wrapper.find('.signature').text()).toBe(
-      'renderItem?: (item: Person, index: number) => ReactNode',
-    )
-    expect(wrapper.find('[data-field="default-receives"]').text()).toBe(
-      '✓ Row receives each Person as item',
-    )
+    expect(wrapper.find('[data-field="model"]').text()).toContain('4 items')
+    expect(wrapper.find('[data-field="receives"]').exists()).toBe(false)
+    expect(wrapper.find('[data-field="accepts"]').exists()).toBe(false)
   })
 
-  it('opens the model from the slot', async () => {
+  it('stops repeating with the switch', async () => {
     const wrapper = settings(LIST, 'List#item')
-    await wrapper.find('[data-field="model"] .chip').trigger('click')
-    expect(wrapper.emitted('openModel')).toEqual([['Person']])
-  })
-
-  it('goes back to filled once in one click', async () => {
-    const wrapper = settings(LIST, 'List#item')
-    await wrapper.find('[data-field="repeat"] [role="radio"]').trigger('click')
+    await wrapper.find('[role="switch"]').trigger('click')
     expect(wrapper.emitted('patches')).toEqual([
       [[{ op: 'remove', address: 'List#item', prop: 'repeat' }]],
     ])
   })
 
-  it('declares a list of a model and repeats over it, from the slot', async () => {
-    const GRID = page(
-      'grid',
-      `  <Component name="Grid" status="draft">
-    <Slot name="cell" />
-  </Component>`,
-      `
-## Contract
-
-<Slots>
-  <Slot name="cell">One cell.</Slot>
-</Slots>
-`,
-    )
-    const wrapper = settings(GRID, 'Grid#cell')
-    expect(wrapper.find('.signature').text()).toBe('cell?: ReactNode')
-    await wrapper.findAll('[data-field="repeat"] [role="radio"]')[1]!.trigger('click')
-    const form = wrapper.find('[data-field="new-list"]')
-    expect((form.find('input').element as HTMLInputElement).value).toBe('items')
-    expect(form.find('select').element.value).toBe('Person')
-    await form.find('input').setValue('people')
-    await form.find('.primary').trigger('click')
-    expect(wrapper.emitted('patches')).toEqual([
-      [
-        [
-          {
-            op: 'contract',
-            kind: 'prop',
-            name: 'people',
-            declaration: {
-              attrs: { type: 'Person[]' },
-              description: 'Describe the prop "people".',
-            },
-          },
-          { op: 'add', address: 'Grid#cell', prop: 'repeat', value: '{people}' },
-        ],
-      ],
-    ])
-  })
-
-  it('swaps the default content from the picker, receivers first', async () => {
+  it('swaps the default content from the picker', async () => {
     const wrapper = settings(LIST, 'List#item')
     await wrapper.find('[data-field="default"] .trigger').trigger('click')
     expect(wrapper.find('[data-choice=":default"]').exists()).toBe(false)
-    expect(wrapper.find('.popup-heading').text()).toContain('Receives a Person')
+    expect(wrapper.find('.popup-heading').text()).toContain('Has a Person property')
     await wrapper.find('[data-choice="Card"]').trigger('click')
     expect(wrapper.emitted('patches')).toEqual([
       [
@@ -438,38 +399,5 @@ describe('what a slot accepts', () => {
     const [card] = slotCards(resolve(doc.tree, 'p')!, all.get('Pick'), all)
     expect(card!.suggested.map((c) => c.name)).toEqual(['Option'])
     expect(card!.others).toEqual([])
-  })
-
-  it('chooses the element from what components implement, and flags a default that does not', async () => {
-    const wrapper = mount(SlotSettingsSection, {
-      props: {
-        doc: PICK,
-        node: resolve(PICK.tree, 'Pick#choice')!,
-        components: all,
-        writable: true,
-      },
-    })
-    const select = wrapper.find('[data-field="accepts"] select')
-    expect(select.findAll('option').map((o) => o.text().trim())).toEqual([
-      'Any component',
-      'Components implementing hwc-radio (1)',
-    ])
-    expect(wrapper.find('[data-field="accepts"]').text()).toContain('Fits: Option.')
-    expect(wrapper.find('[data-field="accepts"]').text()).toContain(
-      'The default, Plain, does not implement hwc-radio.',
-    )
-    await select.setValue('')
-    expect(wrapper.emitted('patches')).toEqual([
-      [
-        [
-          {
-            op: 'contract',
-            kind: 'slot',
-            name: 'choice',
-            declaration: { attrs: {}, description: 'One choice.' },
-          },
-        ],
-      ],
-    ])
   })
 })

@@ -196,7 +196,7 @@ const LIST_SOURCE = page(
   'contact-list',
   `  <Component name="ContactList" status="draft" implements="hwc-list" layoutMode="VERTICAL">
     <Slot name="item" repeat="{items}">
-      <Instance name="row" component="ContactItem" />
+      <Instance name="row" component="ContactItem" props={{ item: '{item}' }} />
     </Slot>
     <Slot name="empty" />
   </Component>`,

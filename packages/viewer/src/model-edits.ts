@@ -232,3 +232,94 @@ export function printSample(value: JsonValue | undefined): string {
   if (value === undefined) return ''
   return typeof value === 'string' ? value : JSON.stringify(value)
 }
+
+/* ---------------------------------------------------------------- items */
+
+/**
+ * A model's content as items — one row per item, one cell per field — the
+ * way a designer manages it, stored the way the file already holds it: one
+ * sample list per field, the n-th entries of every list being the n-th item
+ * (ADR 0015 §2). A field with a single value gives it to every item.
+ */
+export type Item = Record<string, JsonValue | undefined>
+
+/** Fields an item table shows: values, not other models (those are their own items). */
+export const itemFields = (model: { fields: readonly FieldSpec[] }): FieldSpec[] =>
+  model.fields.filter((field) => !/^[A-Z]/.test(field.type.trim()))
+
+/** How many items a model holds: its longest sample list; one for single values; none at all. */
+export function itemCount(model: { fields: readonly FieldSpec[] }): number {
+  let count = 0
+  for (const field of model.fields) {
+    if (Array.isArray(field.sample)) count = Math.max(count, field.sample.length)
+    else if (field.sample !== undefined) count = Math.max(count, 1)
+  }
+  return count
+}
+
+export function itemsOf(model: { fields: readonly FieldSpec[] }): Item[] {
+  const count = itemCount(model)
+  return Array.from({ length: count }, (_, index) => {
+    const item: Item = {}
+    for (const field of model.fields) item[field.name] = cellOf(field, index)
+    return item
+  })
+}
+
+function cellOf(field: FieldSpec, index: number): JsonValue | undefined {
+  if (Array.isArray(field.sample)) return field.sample[index]
+  return field.sample
+}
+
+/** A field's samples as a list of exactly `count` entries, so one item can change alone. */
+function column(field: FieldSpec, count: number): JsonValue[] {
+  return Array.from({ length: count }, (_, index) => cellOf(field, index) ?? null)
+}
+
+/** An empty cell of a field's type: text empty, numbers zero, flags off, the rest absent. */
+function blank(field: FieldSpec): JsonValue {
+  const type = field.type.trim()
+  if (type === 'number') return 0
+  if (type === 'boolean') return false
+  if (type === 'string' || type === 'image' || type === 'date') return ''
+  return null
+}
+
+const write = (model: ModelSpec, field: FieldSpec, sample: JsonValue[]): UidxPatch[] =>
+  setField(model.name, field.name, fieldWith(field, { sample }))
+
+/** One cell of one item, written as its field's list. */
+export function setItemCell(
+  model: ModelSpec,
+  fieldName: string,
+  index: number,
+  value: JsonValue,
+): UidxPatch[] {
+  const field = model.fields.find((candidate) => candidate.name === fieldName)
+  if (!field) return []
+  const count = Math.max(itemCount(model), index + 1)
+  const sample = column(field, count)
+  sample[index] = value
+  return write(model, field, sample)
+}
+
+/** A new item at the end: blank cells, and a fresh value in the key field so rows stay keyed. */
+export function addItem(model: ModelSpec): UidxPatch[] {
+  const count = itemCount(model)
+  const fields = itemFields(model)
+  return fields.flatMap((field) => {
+    const sample = column(field, count)
+    sample.push(field.key ? `${model.name.toLowerCase()}-${count + 1}` : blank(field))
+    return write(model, field, sample)
+  })
+}
+
+export function removeItem(model: ModelSpec, index: number): UidxPatch[] {
+  const count = itemCount(model)
+  if (index < 0 || index >= count) return []
+  return itemFields(model).flatMap((field) => {
+    const sample = column(field, count)
+    sample.splice(index, 1)
+    return write(model, field, sample)
+  })
+}

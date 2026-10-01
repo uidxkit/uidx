@@ -98,3 +98,55 @@ export function newRepeatFor(
     address: target.node.address,
   }
 }
+
+/** `Person` → `people`, `Category` → `categories`, `Tag` → `tags`: a list prop's name for a model. */
+export function pluralFor(model: string): string {
+  const base = model.charAt(0).toLowerCase() + model.slice(1)
+  if (base === 'person') return 'people'
+  if (/[^aeiou]y$/.test(base)) return `${base.slice(0, -1)}ies`
+  if (/(s|x|ch|sh)$/.test(base)) return `${base}es`
+  return `${base}s`
+}
+
+/**
+ * Repeat a layer for each item of a model — the one choice the designer
+ * makes. The file still says which list (ADR 0017 §2), so this picks it: a
+ * list of that model the layer can already reach — an enclosing item's list
+ * field, then a list prop of the component — or else a new list prop of the
+ * component named after the model, declared in the same edit.
+ */
+export function repeatOverModel(
+  component: UidxNode,
+  node: UidxNode,
+  model: string,
+  lists: readonly { list: string; type: string }[],
+): UidxPatch[] {
+  const wanted = `${model}[]`
+  const found = lists.find((entry) => entry.type.replace(/\s+/g, '') === wanted)
+  let list = found?.list
+  const patches: UidxPatch[] = []
+  if (!list) {
+    const taken = new Set((component.spec?.contract?.props ?? []).map((prop) => prop.name))
+    const base = pluralFor(model)
+    list = base
+    for (let n = 2; taken.has(list); n++) list = `${base}${n}`
+    patches.push({
+      op: 'contract',
+      kind: 'prop',
+      name: list,
+      declaration: { attrs: { type: wanted }, description: `The ${model} items to repeat.` },
+    })
+  }
+  const repeating = repeatOf(node) !== null
+  patches.push({
+    op: repeating ? 'set' : 'add',
+    address: node.address,
+    prop: 'repeat',
+    value: toAlias(list),
+  })
+  if (!repeating) {
+    const as = itemNameFor(component, node, list)
+    if (as !== 'item') patches.push({ op: 'add', address: node.address, prop: 'as', value: as })
+  }
+  return patches
+}

@@ -187,3 +187,33 @@ describe('a property binding', () => {
     expect(codes([self])).toEqual([])
   })
 })
+
+describe('a use binding a contract prop (ADR 0017 §2)', () => {
+  it('accepts props={{ item: "{item}" }} for a prop the contract declares, and names one it does not', () => {
+    const row = parseOrThrow(
+      `${page('row', `  <Component name="Row" status="draft"><Text name="n" characters="{item.name}" /></Component>`)}
+## Contract
+
+<Props>
+  <Prop name="item" type="Contact">The row.</Prop>
+</Props>
+`,
+    )
+    const list = (props: string) =>
+      src(
+        'list.uidx',
+        'list',
+        `  <Component name="List" status="draft">
+    <Frame name="rows" repeat="{items}">
+      <Instance name="row" component="Row" props={${props}} />
+    </Frame>
+  </Component>`,
+      )
+    expect(codes([{ file: 'row.uidx', doc: row }, list(`{ item: '{item}' }`)])).not.toContain(
+      WORKSPACE_CODES.UNDECLARED_PROPERTY_VALUE,
+    )
+    expect(codes([{ file: 'row.uidx', doc: row }, list(`{ person: '{item}' }`)])).toContain(
+      WORKSPACE_CODES.UNDECLARED_PROPERTY_VALUE,
+    )
+  })
+})

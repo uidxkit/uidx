@@ -1,24 +1,20 @@
-import type { ModelSpec, UidxDocument, UidxNode } from '@uidx/format'
-import { modelOfType, sampleAt, type ModelIndex } from '@uidx/schema'
-import { contractView, type ReceiveRow } from './contract-edits'
+import { aliasTarget, slots, type ModelSpec, type UidxDocument, type UidxNode } from '@uidx/format'
+import { modelOfType, repeatModel, repeatOf, sampleAt, type ModelIndex } from '@uidx/schema'
+import { enclosingComponent } from './component-prop-edits'
+import { enclosingRepeats } from './contract-edits'
 import { fillContext } from './slot-content'
 
 /**
  * The Data group of the instance inspector: what each contract prop of the
- * instance's component receives here (ADR 0013, ADR 0017 §2).
+ * instance's component is given here (ADR 0013, ADR 0017 §2).
  *
- * Builder's "Data" tab answers the same question for a block — where does
- * this value come from — and the answer differs by where the instance sits:
- *
- * - filling a list's repeated slot, the list hands each copy its own item;
- * - inside another component, an enclosing repeat's item or the component's
- *   own prop, which the use may choose (the Contract tab's Receives rows);
- * - on a page, the model's sample data, which the canvas previews one row
- *   of at a time.
+ * Inside a repeat — or filling a repeated slot — a prop is bound to the item
+ * or one of its fields the way a token is bound: by picking it. Nothing is
+ * passed until the designer picks. Outside any repeat there is no item to
+ * bind, and the canvas previews the model's items one at a time.
  */
 export type DataSource =
-  | { kind: 'item'; owner: string; ownerAddress: string; list: string }
-  | { kind: 'receives'; row: ReceiveRow }
+  | { kind: 'bind'; bound: string | null; options: BindOption[] }
   | { kind: 'samples'; count: number }
   | { kind: 'sample'; index: number; count: number; label: string }
   | { kind: 'none' }
@@ -48,6 +44,74 @@ export function sampleLabel(model: ModelSpec, index: number): string {
   return typeof value === 'string' && value ? value : `Row ${index + 1}`
 }
 
+/** An item in scope at an instance: a repeat it sits in, by the name bindings use. */
+export interface ItemScope {
+  as: string
+  model: ModelSpec | null
+}
+
+/** One thing a prop can be bound to: the item, or a field of it, with its type. */
+export interface BindOption {
+  alias: string
+  type: string
+}
+
+/**
+ * The items an instance can bind to, outermost first: the repeats around it
+ * in its component, its own repeat, or — filling a repeated slot on a page —
+ * the slot's item, which the list hands each copy.
+ */
+export function itemScopes(
+  doc: UidxDocument | null,
+  instance: UidxNode,
+  components: ReadonlyMap<string, UidxNode> | undefined,
+  models: ModelIndex | undefined,
+): ItemScope[] {
+  if (!doc) return []
+  const component = enclosingComponent(doc, instance.address)
+  if (component) {
+    const scopes = enclosingRepeats(component, instance, models)
+    const own = repeatOf(instance)
+    if (own) scopes.push({ as: own.as, model: repeatModel(own, component.spec, scopes, models) })
+    return scopes.map((scope) => ({ as: scope.as, model: scope.model ?? null }))
+  }
+  const filling = fillContext(doc.tree, instance.address, components, models)
+  if (!filling?.repeat) return []
+  const definition = components?.get(filling.component)
+  const slot = definition ? slots(definition).declared.get(filling.slot) : undefined
+  const repeat = slot ? repeatOf(slot) : null
+  if (!repeat) return []
+  return [
+    {
+      as: repeat.as,
+      model: filling.repeat.model ? (models?.get(filling.repeat.model) ?? null) : null,
+    },
+  ]
+}
+
+/** What a prop of `type` can be bound to, the nearest item first: the item itself, then its fields. */
+export function bindOptions(scopes: readonly ItemScope[], type: string): BindOption[] {
+  const wanted = type.replace(/\s+/g, '')
+  const out: BindOption[] = []
+  for (const scope of [...scopes].reverse()) {
+    if (scope.model?.name === wanted) out.push({ alias: scope.as, type: wanted })
+    for (const field of scope.model?.fields ?? [])
+      if (field.type.replace(/\s+/g, '') === wanted)
+        out.push({ alias: `${scope.as}.${field.name}`, type: field.type })
+  }
+  return out
+}
+
+/** The alias a use binds a prop to, `item.name` for `{item.name}`, or null. */
+export function boundAlias(instance: UidxNode, prop: string): string | null {
+  const props = instance.attrs.props?.value
+  const value =
+    props && typeof props === 'object' && !Array.isArray(props)
+      ? (props as Record<string, unknown>)[prop]
+      : undefined
+  return typeof value === 'string' ? aliasTarget(value) : null
+}
+
 export function dataRows(
   doc: UidxDocument | null,
   instance: UidxNode,
@@ -58,27 +122,20 @@ export function dataRows(
 ): DataRow[] {
   const props = definition?.spec?.contract?.props ?? []
   if (!definition || !props.length) return []
-  const filling = doc ? fillContext(doc.tree, instance.address, components, models) : null
-  const view = contractView(doc, instance, null, models, components)
-  const inside = view.kind === 'instance' && view.component !== null
+  const scopes = itemScopes(doc, instance, components, models)
   return props.map((prop) => {
     const found = modelOfType(prop.type, definition.spec, models)
     const model = found?.model.name ?? null
     const base = { prop: prop.name, type: prop.type, model }
-    if (filling?.repeat?.model && found && !found.list && model === filling.repeat.model)
+    if (scopes.length)
       return {
         ...base,
         source: {
-          kind: 'item' as const,
-          owner: filling.owner.name,
-          ownerAddress: filling.owner.address,
-          list: filling.repeat.list,
+          kind: 'bind' as const,
+          bound: boundAlias(instance, prop.name),
+          options: bindOptions(scopes, prop.type),
         },
       }
-    if (inside && view.kind === 'instance') {
-      const row = view.receives.find((candidate) => candidate.prop === prop.name)
-      if (row) return { ...base, source: { kind: 'receives' as const, row } }
-    }
     if (found?.list)
       return { ...base, source: { kind: 'samples', count: sampleCount(found.model) } }
     if (found) {

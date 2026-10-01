@@ -256,7 +256,7 @@ describe('what the tab shows', () => {
     expect(contractView(doc, root, LIBRARY).kind).toBe('component')
   })
 
-  it('for an instance inside a repeat: what each contract prop receives, inferred by type', () => {
+  it('for an instance inside a repeat: what each prop can take, and nothing until bound', () => {
     const doc = parseOrThrow(TREE)
     const row = parseOrThrow(ROW_PAGE)
     const components = new Map(
@@ -269,10 +269,10 @@ describe('what the tab shows', () => {
     if (view.kind !== 'instance') throw new Error(view.kind)
     expect(view.definition?.name).toBe('TreeItem')
     expect(view.receives).toEqual([
-      { prop: 'node', type: 'TreeNode', from: 'item', explicit: false, options: ['item'] },
+      { prop: 'node', type: 'TreeNode', from: null, explicit: false, options: ['item'] },
       { prop: 'depth', type: 'number', from: null, explicit: false, options: ['item.depth'] },
     ])
-    // Two levels down, the nearest item of the right type wins; a use may say otherwise.
+    // Two levels down, the nearest item of the right type is offered first.
     const nested = contractView(
       doc,
       resolve(doc.tree, 'Tree#node/children/child-row'),
@@ -281,7 +281,7 @@ describe('what the tab shows', () => {
       components,
     )
     if (nested.kind !== 'instance') throw new Error(nested.kind)
-    expect(nested.receives[0]).toMatchObject({ from: 'child', options: ['child', 'item'] })
+    expect(nested.receives[0]).toMatchObject({ from: null, options: ['child', 'item'] })
     const instance = resolve(doc.tree, 'Tree#node/children/child-row')!
     expect(setReceives(instance, 'node', 'item')).toEqual([
       {
@@ -753,18 +753,9 @@ describe('the Contract section', () => {
 
   it('edits a repeat from the layer it rides on', async () => {
     const section = mountFor(LIST, 'List#option')
-    await section.find('[data-field="as"] input').setValue('person')
-    expect(section.emitted('patches')).toEqual([
-      [[{ op: 'add', address: 'List#option', prop: 'as', value: 'person' }]],
-    ])
-    expect(section.find('[data-field="model"]').text()).toContain('3 sample rows')
-    const over = section.find('[data-field="list"] select')
-    expect(over.findAll('option').map((o) => o.text().trim())).toEqual([
-      'items · Item[]',
-      '＋ New list property…',
-    ])
-    // "Filled once" is the segmented choice beside "For each item".
-    await section.find('[data-field="repeat"] [role="radio"]').trigger('click')
+    // A slot repeats the way any layer does: a switch, and its model.
+    expect(section.find('[data-field="model"]').text()).toContain('Item')
+    await section.find('[data-field="repeat"] [role="switch"]').trigger('click')
     expect(section.emitted('patches')!.at(-1)).toEqual([
       [{ op: 'remove', address: 'List#option', prop: 'repeat' }],
     ])

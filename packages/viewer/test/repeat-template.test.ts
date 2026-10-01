@@ -3,12 +3,13 @@ import { mount } from '@vue/test-utils'
 import { parseOrThrow, resolve } from '@uidx/format'
 import { modelIndex } from '@uidx/schema'
 import RepeatSection from '../src/RepeatSection.vue'
-import { repeatView } from '../src/repeat-view'
+import InstancePropsSection from '../src/InstancePropsSection.vue'
 
 /**
- * Repeat on any layer, as a template (ADR 0017 §2): a repeated frame is drawn
- * once per item; inside it texts bind to the item, a nested component
- * receives it, and a list field of the item repeats again — a nested repeat.
+ * Repeat, kept simple (ADR 0017 §2): a switch on any layer, then a model.
+ * The layer is drawn once per item of the model; inside it, texts and
+ * component properties are bound to the item's fields by picking them, the
+ * way tokens are applied. Nothing is passed to a component until bound.
  */
 const CHIP = parseOrThrow(`---
 id: chip
@@ -72,75 +73,60 @@ const components = new Map([
   ['Chip', resolve(CHIP.tree, 'Chip')!],
   ['Team', resolve(TEAM.tree, 'Team')!],
 ])
-const at = (address: string) =>
+const at = (address: string, doc = TEAM) =>
   mount(RepeatSection, {
-    props: { doc: TEAM, node: resolve(TEAM.tree, address)!, components, models, writable: true },
+    props: { doc, node: resolve(doc.tree, address)!, components, models, writable: true },
+    attachTo: document.body,
+  })
+const choose = async (wrapper: ReturnType<typeof at>, model: string) => {
+  await wrapper.find('[role="switch"]').trigger('click')
+  await wrapper.find(`.model-popup [data-model="${model}"]`).trigger('click')
+}
+
+describe('repeating a layer: a switch, then a model', () => {
+  it('shows the model and how many items it holds for a repeated layer', () => {
+    const row = at('Team#row')
+    expect(row.find('[role="switch"]').attributes('aria-checked')).toBe('true')
+    expect(row.find('[data-field="model"]').text()).toContain('Person')
+    expect(row.find('[data-field="model"]').text()).toContain('3 items')
+    row.unmount()
   })
 
-describe('a repeated layer is a template', () => {
-  it('lists what in the template reads the item: texts, nested components, nested repeats', () => {
-    const view = repeatView(TEAM, resolve(TEAM.tree, 'Team#row')!, components, models)!
-    expect(view.own).toMatchObject({ list: 'items', as: 'item', model: 'Person', rows: 3 })
-    expect(view.uses.map((use) => `${use.name}: ${use.detail}`)).toEqual([
-      'name: characters ← item.name',
-      'chip: Chip receives item as person',
-      'tags: repeats over item.tags',
+  it('lists every model with its item count and fields when switched on', async () => {
+    const footer = at('Team#footer')
+    expect(footer.find('[role="switch"]').attributes('aria-checked')).toBe('false')
+    await footer.find('[role="switch"]').trigger('click')
+    const rows = footer.findAll('.model-popup [data-model]')
+    expect(rows.map((row) => row.attributes('data-model'))).toEqual(['Person', 'Tag'])
+    expect(rows[0]!.text()).toContain('id · name · tags')
+    expect(rows[0]!.text()).toContain('3 items')
+    footer.unmount()
+  })
+
+  it('repeats over the list of that model the component already has', async () => {
+    const footer = at('Team#footer')
+    await choose(footer, 'Person')
+    expect(footer.emitted('patches')).toEqual([
+      [[{ op: 'add', address: 'Team#footer', prop: 'repeat', value: '{items}' }]],
     ])
-    expect(view.scope!.fields.map((field) => `${field.path}: ${field.type}`)).toEqual([
-      'item.id: string',
-      'item.name: string',
-      'item.tags: Tag[]',
-    ])
+    footer.unmount()
   })
 
-  it('shows a layer inside the template which repeat it is part of, and what it can bind to', () => {
-    const wrapper = at('Team#row/extra')
-    expect(wrapper.find('[data-field="inside-repeat"]').text()).toContain(
-      'Part of row, drawn for each item (Person) of items',
-    )
-    expect(wrapper.find('[role="radio"][aria-checked="true"]').text()).toBe('Once')
-    expect(wrapper.find('[data-field="template"]').text()).toContain('From the item item')
-    expect(wrapper.find('[data-field="template"]').text()).toContain(
-      'To nest, repeat this layer over item.tags',
-    )
-  })
-
-  it("offers the item's own lists first for a nested repeat, and chooses the nearest", async () => {
-    const tags = at('Team#row/tags')
-    const groups = tags.findAll('[data-field="list"] optgroup').map((g) => g.attributes('label'))
-    expect(groups).toEqual(['From the item it is inside', 'Properties of Team'])
-    expect(tags.find('[data-field="list"] optgroup option').text().trim()).toBe('item.tags · Tag[]')
-    expect(tags.find('[data-field="inside-repeat"]').text()).toContain('Part of row')
-
+  it("inside a repeated layer, takes the item's own list of that model, and names the item after it", async () => {
     const extra = at('Team#row/extra')
-    await extra.findAll('[role="radio"]')[1]!.trigger('click')
+    await choose(extra, 'Tag')
     expect(extra.emitted('patches')).toEqual([
       [
         [
           { op: 'add', address: 'Team#row/extra', prop: 'repeat', value: '{item.tags}' },
-          // Named after the list, since `item` would hide the row's own item.
           { op: 'add', address: 'Team#row/extra', prop: 'as', value: 'tag' },
         ],
       ],
     ])
+    extra.unmount()
   })
 
-  it("repeats a layer outside any repeat over the component's list", async () => {
-    const footer = at('Team#footer')
-    expect(footer.find('[data-field="inside-repeat"]').exists()).toBe(false)
-    await footer.findAll('[role="radio"]')[1]!.trigger('click')
-    expect(footer.emitted('patches')).toEqual([
-      [[{ op: 'add', address: 'Team#footer', prop: 'repeat', value: '{items}' }]],
-    ])
-  })
-
-  it('selects what reads the item from the template list', async () => {
-    const row = at('Team#row')
-    await row.findAll('[data-field="template"] .link')[1]!.trigger('click')
-    expect(row.emitted('select')).toEqual([['Team#row/chip']])
-  })
-
-  it('creates a list when the component has none to repeat over', async () => {
+  it('adds a list of the model to the component when it has none, in the same edit', async () => {
     const BARE = parseOrThrow(`---
 id: bare
 ---
@@ -150,43 +136,150 @@ id: bare
 <Page>
   <Component name="Bare" status="draft"><Frame name="cell" /></Component>
 </Page>
+
+## Contract
+
+<Props>
+  <Prop name="item" type="Person">One person.</Prop>
+</Props>
 `)
-    const wrapper = mount(RepeatSection, {
-      props: { doc: BARE, node: resolve(BARE.tree, 'Bare#cell')!, models, writable: true },
-    })
-    await wrapper.findAll('[role="radio"]')[1]!.trigger('click')
-    expect(wrapper.find('[data-field="new-list"]').text()).toContain('New list property of Bare')
+    const cell = at('Bare#cell', BARE)
+    await choose(cell, 'Person')
+    expect(cell.emitted('patches')).toEqual([
+      [
+        [
+          {
+            op: 'contract',
+            kind: 'prop',
+            name: 'people',
+            declaration: {
+              attrs: { type: 'Person[]' },
+              description: 'The Person items to repeat.',
+            },
+          },
+          { op: 'add', address: 'Bare#cell', prop: 'repeat', value: '{people}' },
+          // `item` is the component's own prop, so the row's item is `person`.
+          { op: 'add', address: 'Bare#cell', prop: 'as', value: 'person' },
+        ],
+      ],
+    ])
+    cell.unmount()
+  })
+
+  it('stops repeating when switched off', async () => {
+    const row = at('Team#row')
+    await row.find('[role="switch"]').trigger('click')
+    expect(row.emitted('patches')).toEqual([
+      [[{ op: 'remove', address: 'Team#row', prop: 'repeat' }]],
+    ])
+    row.unmount()
+  })
+
+  it('says, on a layer inside a repeated one, which it is part of', async () => {
+    const title = at('Team#row/name')
+    expect(title.find('[data-field="inside-repeat"]').text()).toBe(
+      'Inside row, repeated for each Person.',
+    )
+    await title.find('[data-field="inside-repeat"] button').trigger('click')
+    expect(title.emitted('select')).toEqual([['Team#row']])
+    title.unmount()
   })
 })
 
-it('names the item so it does not hide a prop of the component', async () => {
-  const ROW = parseOrThrow(`---
-id: prow
+describe('binding a component inside a repeat, like a token', () => {
+  const props = (address: string) => {
+    const instance = resolve(TEAM.tree, address)!
+    return mount(InstancePropsSection, {
+      props: {
+        doc: TEAM,
+        instance,
+        definition: components.get('Chip'),
+        components,
+        models,
+        writable: true,
+      },
+      attachTo: document.body,
+    })
+  }
+
+  it('leaves the prop unbound until the designer picks the item', async () => {
+    const chip = props('Team#row/chip')
+    const row = chip.find('[data-data="person"]')
+    expect(row.attributes('data-source')).toBe('bind')
+    expect(row.find('.bind').text()).toContain('Not bound')
+    await row.find('.bind').trigger('click')
+    expect(chip.findAll('.bind-popup [data-alias]').map((o) => o.attributes('data-alias'))).toEqual(
+      ['item'],
+    )
+    await chip.find('.bind-popup [data-alias="item"]').trigger('click')
+    expect(chip.emitted('patches')).toEqual([
+      [[{ op: 'add', address: 'Team#row/chip', prop: 'props', value: { person: '{item}' } }]],
+    ])
+    chip.unmount()
+  })
+})
+
+describe("binding a component's text property to a field of the item", () => {
+  const PILL = parseOrThrow(`---
+id: pill
 ---
 
 ## Visual Contract
 
 <Page>
-  <Component name="PRow" status="draft"><Frame name="who" /></Component>
+  <Component name="Pill" status="draft" props={{ label: { type: 'TEXT', default: 'Tag' } }}>
+    <Text name="t" characters="{label}" />
+  </Component>
+  <Component name="Crew" status="draft">
+    <Frame name="row" repeat="{items}">
+      <Instance name="pill" component="Pill" />
+      <Instance name="bound" component="Pill" props={{ label: '{item.name}' }} />
+    </Frame>
+  </Component>
 </Page>
 
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">The person.</Prop>
-  <Prop name="people" type="Person[]">Others.</Prop>
+  <Prop name="items" type="Person[]">People.</Prop>
 </Props>
 `)
-  const wrapper = mount(RepeatSection, {
-    props: { doc: ROW, node: resolve(ROW.tree, 'PRow#who')!, models, writable: true },
-  })
-  await wrapper.findAll('[role="radio"]')[1]!.trigger('click')
-  expect(wrapper.emitted('patches')).toEqual([
-    [
-      [
-        { op: 'add', address: 'PRow#who', prop: 'repeat', value: '{people}' },
-        { op: 'add', address: 'PRow#who', prop: 'as', value: 'person' },
-      ],
-    ],
+  const all = new Map([
+    ...components,
+    ['Pill', resolve(PILL.tree, 'Pill')!],
+    ['Crew', resolve(PILL.tree, 'Crew')!],
   ])
+  const pill = (address: string) =>
+    mount(InstancePropsSection, {
+      props: {
+        doc: PILL,
+        instance: resolve(PILL.tree, address)!,
+        definition: all.get('Pill'),
+        components: all,
+        models,
+        writable: true,
+      },
+      attachTo: document.body,
+    })
+
+  it('offers the text fields of the item from the row', async () => {
+    const wrapper = pill('Crew#row/pill')
+    const row = wrapper.find('[data-prop="label"]')
+    await row.find('.bind-glyph').trigger('click')
+    expect(
+      wrapper.findAll('.bind-popup [data-alias]').map((option) => option.attributes('data-alias')),
+    ).toEqual(['item.id', 'item.name'])
+    await wrapper.find('.bind-popup [data-alias="item.name"]').trigger('click')
+    expect(wrapper.emitted('patches')).toEqual([
+      [[{ op: 'add', address: 'Crew#row/pill', prop: 'props', value: { label: '{item.name}' } }]],
+    ])
+    wrapper.unmount()
+  })
+
+  it('shows a bound text property as its binding', () => {
+    const wrapper = pill('Crew#row/bound')
+    expect(wrapper.find('[data-prop="label"] .bound-name').text()).toBe('item.name')
+    expect(wrapper.find('[data-prop="label"] input.text').exists()).toBe(false)
+    wrapper.unmount()
+  })
 })

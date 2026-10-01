@@ -141,7 +141,7 @@ id: contact-list
 <Page>
   <Component name="ContactList" status="draft" implements="hwc-radio-group" layoutMode="VERTICAL">
     <Slot name="item" repeat="{items}">
-      <Instance name="row" component="ContactItem" />
+      <Instance name="row" component="ContactItem" props={{ item: '{item}' }} />
     </Slot>
     <Slot name="empty" visible={false} />
   </Component>

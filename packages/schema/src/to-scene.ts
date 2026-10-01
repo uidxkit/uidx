@@ -201,6 +201,12 @@ export interface SceneOptions {
    */
   sampleIndex?: number
   /**
+   * The sample a component previews with when nothing binds it to a row's
+   * item — the editor's "Preview data" choice. Fixed at the top of a build,
+   * while `sampleIndex` changes row by row inside a repeat.
+   */
+  previewIndex?: number
+  /**
    * The current row's item, as the bindings `{as.field}` resolve to — handed
    * to what a consumer fills a repeated slot with, which is written in the
    * consuming page's scope but drawn once per item of the definition's list.
@@ -268,7 +274,11 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
   // derives (ADR 0016 §4). Done here, and in `diffDocuments`, so the build
   // and the update path see one tree.
   doc = derivedDocument(doc)
-  options = { ...options, rootFontSize: options.rootFontSize ?? rootFontSizeOf(doc) }
+  options = {
+    ...options,
+    rootFontSize: options.rootFontSize ?? rootFontSizeOf(doc),
+    previewIndex: options.previewIndex ?? options.sampleIndex ?? 0,
+  }
   const graph = new SceneGraph()
   // `new SceneGraph()` already provisions a page; adding another leaves the
   // editor pointing at an empty one.
@@ -818,6 +828,17 @@ function declaredDefaults(
  * here they are simply not applied, so the instance falls back to the default
  * and still draws.
  */
+/** Whether a use hands a component the current row's item: some prop set to `{as}` of a repeat it sits in. */
+function bindsRowItem(instance: UidxNode, repeats: readonly RepeatScope[]): boolean {
+  if (!repeats.length) return false
+  const names = new Set(repeats.map((scope) => scope.as))
+  for (const [, raw] of declaredInstanceValues(instance).values) {
+    const target = aliasTarget(raw)
+    if (target !== null && names.has(target)) return true
+  }
+  return false
+}
+
 function instanceValues(
   instance: UidxNode,
   definition: UidxNode,
@@ -1044,6 +1065,12 @@ function expandInstance(
    * makes "unset" a real state rather than an empty one, and what C7's dimmed
    * row shows.
    */
+  // A row's item reaches the instance only when the use binds it — a prop set
+  // to `{item}`, the repeat's own name (ADR 0017 §2). Unbound, it previews like
+  // any instance outside a repeat: the editor's chosen sample.
+  const row = bindsRowItem(node, options.repeats ?? [])
+    ? options.sampleIndex
+    : (options.previewIndex ?? options.sampleIndex)
   const scope: SceneOptions = {
     ...options,
     component: definition,
@@ -1051,7 +1078,7 @@ function expandInstance(
     resolveAlias: withProperties(
       options.resolveAlias,
       new Map([
-        ...declaredDefaults(definition, options.sampleIndex, options.models),
+        ...declaredDefaults(definition, row, options.models),
         ...instanceValues(node, definition, options.resolveAlias),
       ]),
     ),

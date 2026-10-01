@@ -39,9 +39,9 @@ id: tree
 <Page>
   <Component name="Tree" status="draft" layoutMode="VERTICAL">
     <Slot name="node" repeat="{nodes}">
-      <Instance name="row" component="TreeItem" />
+      <Instance name="row" component="TreeItem" props={{ node: '{item}' }} />
       <Frame name="children">
-        <Instance name="child-row" component="TreeItem" repeat="{item.children}" as="child" props={{ depth: '{child.depth}' }} />
+        <Instance name="child-row" component="TreeItem" repeat="{item.children}" as="child" props={{ depth: '{child.depth}', node: '{child}' }} />
       </Frame>
     </Slot>
   </Component>
@@ -103,7 +103,7 @@ id: tree-item
     )
   })
 
-  it('hands the nearest item of the right type to the model prop, and an explicit item field as written', () => {
+  it('passes the item, and an item field, to a nested component exactly as bound', () => {
     const out = generate({
       pages: [
         { file: 'tree.uidx', doc: parseOrThrow(TREE) },
@@ -1004,7 +1004,7 @@ id: list
 <Page>
   <Component name="List" status="draft" layoutMode="VERTICAL" counterAxisAlignItems="CENTER">
     <Slot name="item" repeat="{items}" layoutMode="VERTICAL" layoutAlign="STRETCH">
-      <Instance name="row" component="Row" layoutAlign="STRETCH" />
+      <Instance name="row" component="Row" layoutAlign="STRETCH" props={{ item: '{item}' }} />
     </Slot>
   </Component>
 </Page>

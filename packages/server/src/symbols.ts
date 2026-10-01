@@ -273,7 +273,12 @@ function checkInstanceValues(pages: readonly PageSource[]): (Diagnostic & { file
         // (ADR 0016 §1) and declares no `variants` attribute.
         const authored = componentVariants(component).axes
         const axes = authored.size ? authored : axesOf(component.spec)
-        const known = [...declared.keys(), ...axes.keys()]
+        // A component declared by its contract (ADR 0013) has its props there,
+        // not in `props={{…}}`: `item: Person` is passed as `{item}` from a
+        // repeat (ADR 0017 §2). Values are trusted here; their shapes are the
+        // contract's business.
+        const contract = new Set((component.spec?.contract?.props ?? []).map((prop) => prop.name))
+        const known = [...declared.keys(), ...axes.keys(), ...contract]
 
         const { line, column } = positionAt(
           doc.source,
@@ -290,6 +295,7 @@ function checkInstanceValues(pages: readonly PageSource[]): (Diagnostic & { file
         let sound = true
         for (const [key, value] of instanceProps(node).values) {
           const domain = axes.get(key)
+          if (!domain && !declared.has(key) && contract.has(key)) continue
           // `{label}` passes the enclosing component's own prop through (ADR
           // 0017 §3); its value is that component's business, checked where
           // it is declared.

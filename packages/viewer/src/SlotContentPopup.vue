@@ -51,7 +51,7 @@ const current = computed(() => {
 })
 
 const suggestedHeading = computed(() =>
-  props.card.repeat?.model ? `Receives a ${props.card.repeat.model}` : 'Allowed here',
+  props.card.repeat?.model ? `Has a ${props.card.repeat.model} property` : 'Allowed here',
 )
 
 function positionPopup(): void {
@@ -134,7 +134,7 @@ onBeforeUnmount(() => {
       <template v-if="suggested.length">
         <p class="popup-heading">
           {{ suggestedHeading }}
-          <span v-if="card.repeat?.model" class="heading-hint">shows each item</span>
+          <span v-if="card.repeat?.model" class="heading-hint">bind it to the item</span>
         </p>
         <button
           v-for="choice in suggested"
@@ -162,7 +162,6 @@ onBeforeUnmount(() => {
       <template v-if="others.length">
         <p class="popup-heading">
           {{ suggested.length ? 'Other components' : 'Components' }}
-          <span v-if="card.repeat?.model" class="heading-hint">same on every row</span>
         </p>
         <button
           v-for="choice in others"
