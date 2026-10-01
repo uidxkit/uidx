@@ -1,7 +1,7 @@
 import type { IncomingMessage, Server as HttpServer, ServerResponse } from 'node:http'
 import type { UidxPatch } from '@uidx/format'
 
-import { ASSET_ROUTE, assetReply } from './assets.js'
+import { ASSET_ROUTE, assetReply, MAX_UPLOAD, saveAsset } from './assets.js'
 import { fontRoutePlugin } from './fonts.js'
 import { headlessRoutePlugin } from './headless.js'
 import { codegenRoutePlugin } from './codegen.js'
@@ -404,6 +404,41 @@ function assetRoutePlugin(manifest: { current: FoundManifest | null }): ViewerPl
       // assets, so there is nothing this route may hand out.
       if (!found) return next()
       const path = (request.url ?? '/').replace(/^\//, '').split('?')[0] ?? ''
+      if (request.method === 'POST' && path === 'upload') {
+        const reply = (status: number, body: object): void => {
+          response.statusCode = status
+          response.setHeader('content-type', 'application/json')
+          response.setHeader('cache-control', 'no-store')
+          response.end(JSON.stringify(body))
+        }
+        const origin = request.headers.origin
+        if (
+          request.headers['sec-fetch-site'] === 'cross-site' ||
+          (origin && new URL(origin).host !== request.headers.host)
+        )
+          return reply(403, { error: 'Images must come from this viewer.' })
+        const name = new URL(request.url ?? '/', 'http://local').searchParams.get('name') ?? ''
+        const chunks: Buffer[] = []
+        let size = 0
+        let refused = false
+        request.on('data', (chunk: Buffer) => {
+          if (refused) return
+          size += chunk.length
+          if (size > MAX_UPLOAD) {
+            refused = true
+            reply(413, { error: 'An image must be at most 20 MB.' })
+          } else chunks.push(chunk)
+        })
+        request.on('end', () => {
+          if (refused) return
+          void saveAsset(found, name, Buffer.concat(chunks)).then(
+            (saved) => reply(201, saved),
+            (error: unknown) =>
+              reply(400, { error: error instanceof Error ? error.message : String(error) }),
+          )
+        })
+        return
+      }
       void assetReply(found, path).then(
         (reply) => {
           if (reply.status === 200) {

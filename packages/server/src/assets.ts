@@ -1,4 +1,5 @@
-import { readFile } from 'node:fs/promises'
+import { createHash } from 'node:crypto'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import { assetPathProblem } from '@uidx/format'
@@ -72,4 +73,59 @@ export async function assetReply(found: FoundManifest, rawPath: string): Promise
   } catch {
     return { status: 404, message: `"${src}" does not exist` }
   }
+}
+
+/** Raster formats an upload may be; SVG is imported as vectors instead. */
+const RASTER = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif'])
+export const MAX_UPLOAD = 20 * 1024 * 1024
+
+/**
+ * Saves dropped artwork into the document's assets folder (ADR 0006 §9) and
+ * answers with the `src` an image fill names it by. The folder is the first
+ * `assets` pattern's fixed prefix (`assets/**` → `assets/`), so the file is
+ * declared the moment it lands; a project that declares no assets is told to.
+ * The same bytes dropped twice reuse one file.
+ */
+export async function saveAsset(
+  found: FoundManifest,
+  fileName: string,
+  bytes: Uint8Array,
+): Promise<{ src: string }> {
+  const pattern = found.manifest.assets.find((glob) => !glob.startsWith('!'))
+  if (!pattern)
+    throw new Error(
+      'Declare an assets folder in uidx.json ("assets": ["assets/**"]) to add images.',
+    )
+  const folder = pattern
+    .split('/')
+    .filter((part) => !/[*?[{]/.test(part))
+    .join('/')
+  const dot = fileName.lastIndexOf('.')
+  const ext = fileName.slice(dot + 1).toLowerCase()
+  if (dot === -1 || !RASTER.has(ext)) throw new Error('Drop a PNG, JPEG, GIF, WebP or AVIF image.')
+  if (bytes.length === 0 || bytes.length > MAX_UPLOAD)
+    throw new Error('An image must be between 1 byte and 20 MB.')
+  const stem =
+    fileName
+      .slice(0, dot)
+      .normalize('NFKD')
+      .replace(/\p{M}/gu, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '') || 'image'
+  const digest = createHash('sha256').update(bytes).digest('hex')
+  await mkdir(resolve(found.dir, folder || '.'), { recursive: true })
+  for (let n = 1; n < 1000; n++) {
+    const name = n === 1 ? `${stem}.${ext}` : `${stem}-${n}.${ext}`
+    const src = folder ? `${folder}/${name}` : name
+    const path = resolve(found.dir, src)
+    try {
+      const existing = await readFile(path)
+      if (createHash('sha256').update(existing).digest('hex') === digest) return { src }
+    } catch {
+      await writeFile(path, bytes, { flag: 'wx' })
+      return { src }
+    }
+  }
+  throw new Error('Too many images share that name.')
 }

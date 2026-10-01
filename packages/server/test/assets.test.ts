@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { assetReply, contentTypeFor } from '../src/assets'
+import { assetReply, contentTypeFor, saveAsset } from '../src/assets'
 import { assetProblem, documentAssets, findManifest } from '../src/document'
 
 const roots: string[] = []
@@ -137,5 +137,27 @@ describe('content types', () => {
     expect(contentTypeFor('a.jpeg')).toBe('image/jpeg')
     expect(contentTypeFor('a.svg')).toBe('image/svg+xml')
     expect(contentTypeFor('a.bin')).toBe('application/octet-stream')
+  })
+})
+
+describe('saving dropped artwork', () => {
+  it('writes into the first assets folder, declared at once, and reuses identical bytes', async () => {
+    const found = await workspace(MANIFEST)
+    const png = new Uint8Array([137, 80, 78, 71, 1, 2, 3])
+    const first = await saveAsset(found, 'Hero Photo.PNG', png)
+    expect(first).toEqual({ src: 'assets/hero-photo.png' })
+    expect((await documentAssets(found)).has('assets/hero-photo.png')).toBe(true)
+    expect(await saveAsset(found, 'hero photo.png', png)).toEqual(first)
+    const other = await saveAsset(found, 'hero-photo.png', new Uint8Array([9, 9]))
+    expect(other).toEqual({ src: 'assets/hero-photo-2.png' })
+    const reply = await assetReply(found, 'assets/hero-photo.png')
+    expect(reply.status).toBe(200)
+  })
+
+  it('refuses what is not a raster image, and a project with no assets folder', async () => {
+    const found = await workspace(MANIFEST)
+    await expect(saveAsset(found, 'notes.txt', new Uint8Array([1]))).rejects.toThrow(/PNG, JPEG/)
+    const none = await workspace({ ...MANIFEST, assets: [] })
+    await expect(saveAsset(none, 'a.png', new Uint8Array([1]))).rejects.toThrow(/Declare an assets/)
   })
 })

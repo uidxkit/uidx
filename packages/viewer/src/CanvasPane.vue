@@ -975,10 +975,16 @@ function announceRespelling(id: string): void {
  */
 async function onDrop(event: DragEvent): Promise<void> {
   event.preventDefault()
-  const file = [...(event.dataTransfer?.files ?? [])].find(
+  const files = [...(event.dataTransfer?.files ?? [])]
+  const file = files.find(
     (f) => f.type === 'image/svg+xml' || f.name.toLowerCase().endsWith('.svg'),
   )
-  if (!file) return
+  const raster = files.find((f) => RASTER_FILE.test(f.name))
+  if (!file && raster) return dropRaster(raster, event)
+  if (!file) {
+    if (files.length) emit('notice', `${files[0]!.name} is not an image this canvas can place.`)
+    return
+  }
 
   const built = scene.value
   if (!built || !current) return
@@ -1023,6 +1029,77 @@ async function onDrop(event: DragEvent): Promise<void> {
   emit('patches', [{ op: 'insert-node', parent, index: parentNode.children.length, node }])
   emit('selection', [addressOf(parent, name)])
   if (imported.problems.length) emit('notice', problemMessage(file.name, imported.problems))
+}
+
+const RASTER_FILE = /\.(png|jpe?g|gif|webp|avif)$/i
+
+/**
+ * A photo or a bitmap logo: saved into the document's assets folder by the
+ * server, then placed as a rectangle filled with it at its own size (halved
+ * for a 2x export, capped so a camera photo does not cover the page).
+ */
+async function dropRaster(file: File, event: DragEvent): Promise<void> {
+  const built = scene.value
+  if (!built || !current) return
+  const at = toCanvasPoint(event)
+  const chain = containerChainAt(built.graph, built.rootId, at, '')
+    .map((id) => built.addresses.addressOf(id))
+    .filter((address): address is string => address !== undefined)
+  const parent = insertTargetFor(current, 'Rectangle', chain)
+  const parentNode = parent === null ? null : resolve(current.tree, parent)
+  const parentSceneId = parent === null ? undefined : built.addresses.sceneIdOf(parent)
+  if (parent === null || !parentNode || parentSceneId === undefined) {
+    emit('notice', `Nowhere here will take an image.`)
+    return
+  }
+  let src: string
+  try {
+    const response = await fetch(`/__uidx/asset/upload?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'content-type': file.type || 'application/octet-stream' },
+      body: file,
+    })
+    const answer = (await response.json()) as { src?: string; error?: string }
+    if (!response.ok || !answer.src) throw new Error(answer.error ?? 'The server refused it.')
+    src = answer.src
+  } catch (error) {
+    emit('notice', `${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  let width = 200
+  let height = 150
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height))
+    width = Math.max(1, Math.round(bitmap.width * scale))
+    height = Math.max(1, Math.round(bitmap.height * scale))
+    bitmap.close()
+  } catch {
+    // An undecodable image keeps the placeholder size; the renderer says why.
+  }
+  const wanted = file.name.replace(RASTER_FILE, '').replace(/[#/]/g, '-') || 'image'
+  const name = parentNode.children.some((c) => c.name === wanted)
+    ? autoName('Rectangle', parentNode.children)
+    : wanted
+  const where = localTo(parentSceneId, at)
+  emit('patches', [
+    {
+      op: 'insert-node',
+      parent,
+      index: parentNode.children.length,
+      node: {
+        element: 'Rectangle',
+        attrs: {
+          name,
+          ...(where ? { x: Math.round(where.x), y: Math.round(where.y) } : {}),
+          width,
+          height,
+          fills: [{ type: 'IMAGE', src, scaleMode: 'FILL' }],
+        },
+      },
+    },
+  ])
+  emit('selection', [addressOf(parent, name)])
 }
 
 /** The file's name without its extension, as a node name. */
