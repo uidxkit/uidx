@@ -376,3 +376,67 @@ describe('an axis in the instance panel', () => {
     ])
   })
 })
+
+describe('filling a slot from the panel', () => {
+  const CARD = parseOrThrow(
+    page(
+      'card',
+      `  <Component name="Card" status="draft" width={40} height={40}>
+    <Slot name="media">
+      <Frame name="placeholder" width={10} height={10} />
+    </Slot>
+  </Component>
+  <Component name="Icon" status="draft" width={8} height={8} />`,
+    ),
+  )
+  const definition = resolve(CARD.tree, 'Card')!
+  const components = new Map([
+    ['Card', definition],
+    ['Icon', resolve(CARD.tree, 'Icon')!],
+  ])
+  const mounted = (body: string) => {
+    const doc = parseOrThrow(page('home', body))
+    return mount(InstancePropsSection, {
+      props: { doc, instance: resolve(doc.tree, 'card')!, definition, components, writable: true },
+    })
+  }
+
+  it('offers text and the other components for an empty slot, and writes the fill', async () => {
+    const section = mounted(`  <Instance name="card" component="Card" />`)
+    const pick = section.find('[aria-label="Fill slot media"]')
+    expect(pick.findAll('option').map((option) => option.text())).toEqual([
+      'Default content',
+      'Text',
+      'Icon',
+    ])
+    await pick.setValue('Icon')
+    expect(section.emitted('patches')).toEqual([
+      [
+        [
+          {
+            op: 'insert-node',
+            parent: 'card',
+            index: 0,
+            node: {
+              element: 'Slot',
+              attrs: { name: 'media' },
+              children: [{ element: 'Instance', attrs: { name: 'icon', component: 'Icon' } }],
+            },
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('names what fills a slot and empties it back to the default', async () => {
+    const section = mounted(`  <Instance name="card" component="Card">
+    <Slot name="media">
+      <Text name="caption" characters="Hi" />
+    </Slot>
+  </Instance>`)
+    const row = section.find('[data-slot="media"]')
+    expect(row.find('.fill-name').text()).toBe('caption')
+    await row.find('[aria-label="Empty slot media"]').trigger('click')
+    expect(section.emitted('patches')).toEqual([[[{ op: 'remove-node', address: 'card#media' }]]])
+  })
+})

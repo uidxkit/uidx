@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { JsonValue, UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
+import {
+  addressOf,
+  slotFills,
+  slots,
+  type JsonValue,
+  type UidxDocument,
+  type UidxNode,
+  type UidxNodeSpec,
+  type UidxPatch,
+} from '@uidx/format'
 import {
   clearInstanceProp,
   instancePropRows,
@@ -25,10 +34,63 @@ const props = defineProps<{
   instance: UidxNode
   /** The component this is an instance of, if the document has it. */
   definition: UidxNode | undefined
+  /** Every component in the document, for what a slot can be filled with. */
+  components?: ReadonlyMap<string, UidxNode>
   writable: boolean
 }>()
 
-const emit = defineEmits<{ patches: [patches: UidxPatch[]] }>()
+const emit = defineEmits<{ patches: [patches: UidxPatch[]]; select: [address: string] }>()
+
+/**
+ * The definition's slots and what this instance put in each (ADR 0007): a
+ * filled slot names its content and can be emptied back to the default; an
+ * empty one offers the components its contract accepts, or text.
+ */
+const slotRows = computed(() => {
+  const definition = props.definition
+  if (!definition) return []
+  const fills = slotFills(props.instance).fills
+  const accepts = new Map(
+    (definition.spec?.contract?.slots ?? []).map((slot) => [slot.name, slot.accepts]),
+  )
+  return [...slots(definition).declared.keys()].map((name) => {
+    const fill = fills.get(name)
+    const accepted = accepts.get(name)
+    const allowed = accepted
+      ? new Set(accepted.split(/[|,]/).map((part) => part.trim().replace(/\[\]$/, '')))
+      : null
+    const choices = [...(props.components?.keys() ?? [])]
+      .filter((candidate) => candidate !== definition.name)
+      .filter((candidate) => !allowed || allowed.has(candidate))
+      .sort()
+    return {
+      name,
+      fill,
+      summary: fill ? fill.children.map((child) => child.name).join(', ') || 'empty' : '',
+      choices,
+    }
+  })
+})
+
+function fillSlot(slot: string, choice: string): void {
+  if (!choice || !props.writable) return
+  const content: UidxNodeSpec =
+    choice === ':text'
+      ? { element: 'Text', attrs: { name: 'text', characters: 'Text' } }
+      : { element: 'Instance', attrs: { name: choice.toLowerCase(), component: choice } }
+  emit('patches', [
+    {
+      op: 'insert-node',
+      parent: props.instance.address,
+      index: props.instance.children.length,
+      node: { element: 'Slot', attrs: { name: slot }, children: [content] },
+    },
+  ])
+}
+
+function clearSlot(fill: UidxNode): void {
+  if (props.writable) emit('patches', [{ op: 'remove-node', address: fill.address }])
+}
 
 const rows = computed(() => instancePropRows(props.instance, props.definition))
 /** The definition's contract props (ADR 0013), which the Contract tab binds rather than this section. */
@@ -162,6 +224,48 @@ function reset(name: string): void {
       <span v-else class="reset-spacer" />
     </div>
 
+    <template v-if="slotRows.length">
+      <header class="head"><span class="title">Slots</span></header>
+      <div v-for="slot in slotRows" :key="slot.name" class="row" :data-slot="slot.name">
+        <span class="name">{{ slot.name }}</span>
+        <template v-if="slot.fill">
+          <button
+            type="button"
+            class="fill-name"
+            :title="`Select what fills ${slot.name}`"
+            @click="emit('select', addressOf(slot.fill.address, slot.fill.children[0]?.name ?? ''))"
+          >
+            {{ slot.summary }}
+          </button>
+          <button
+            type="button"
+            class="reset"
+            :disabled="!writable"
+            :aria-label="`Empty slot ${slot.name}`"
+            title="Back to the component's default content"
+            @click="clearSlot(slot.fill)"
+          >
+            ↺
+          </button>
+        </template>
+        <template v-else>
+          <select
+            class="pick"
+            :disabled="!writable"
+            :aria-label="`Fill slot ${slot.name}`"
+            @change="fillSlot(slot.name, ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">Default content</option>
+            <option value=":text">Text</option>
+            <option v-for="choice in slot.choices" :key="choice" :value="choice">
+              {{ choice }}
+            </option>
+          </select>
+          <span class="reset-spacer" />
+        </template>
+      </div>
+    </template>
+
     <!--
       A value nothing consumes. Named rather than quietly kept: it is invisible
       in the canvas and reported by `uidx check` in a file the author may not
@@ -205,6 +309,20 @@ function reset(name: string): void {
 </template>
 
 <style scoped>
+.fill-name {
+  overflow: hidden;
+  padding: 0 6px;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  background: var(--raised);
+  border: 0;
+  border-radius: var(--radius-lg);
+  height: var(--field-h);
+  cursor: pointer;
+}
 .instance-props {
   padding: var(--pad);
   border-bottom: 1px solid var(--line);

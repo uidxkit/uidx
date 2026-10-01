@@ -1735,8 +1735,10 @@ function onDetach(prop: string, value: JsonValue): void {
           :doc="doc"
           :instance="active"
           :definition="definitionFor(active)"
+          :components="components"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
+          @select="emit('select', $event)"
         />
 
         <!--
