@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import type { ConnectionState } from './socket'
 import { setTheme, theme } from './theme'
 
@@ -29,6 +29,10 @@ const props = defineProps<{
   /** The assistant is reachable; its button shows only then. */
   agentOnline: boolean
   agentOpen: boolean
+  /** Every file of the document, for the switcher on the page name. */
+  files?: readonly { file: string; label: string; renderable: boolean }[]
+  /** The file the canvas holds. */
+  current?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -38,7 +42,16 @@ const emit = defineEmits<{
   redo: []
   code: []
   agent: []
+  open: [file: string]
+  newFile: []
 }>()
+
+/** The page name opens a list of every file: switching files from anywhere, Figma's page menu. */
+const switching = ref(false)
+function openFile(file: string): void {
+  switching.value = false
+  if (file !== props.current) emit('open', file)
+}
 
 const FACES: { id: Face; label: string; icon: string }[] = [
   {
@@ -78,6 +91,28 @@ const status = computed(() => {
 })
 
 const showCode = ref(false)
+const root = ref<HTMLElement | null>(null)
+/** A menu or popover closes on Escape, and on a press anywhere outside it. */
+function dismiss(event: Event): void {
+  if (event instanceof KeyboardEvent ? event.key !== 'Escape' : false) return
+  const target = event.target
+  if (event instanceof MouseEvent && target instanceof Node) {
+    const open = root.value?.querySelectorAll(
+      '.menu, .popover, [data-action="switch-file"], [data-action="code"]',
+    )
+    if (open && [...open].some((element) => element.contains(target))) return
+  }
+  switching.value = false
+  showCode.value = false
+}
+onMounted(() => {
+  document.addEventListener('mousedown', dismiss)
+  document.addEventListener('keydown', dismiss)
+})
+onUnmounted(() => {
+  document.removeEventListener('mousedown', dismiss)
+  document.removeEventListener('keydown', dismiss)
+})
 function code(): void {
   showCode.value = true
   if (props.codeOut) emit('code')
@@ -85,7 +120,7 @@ function code(): void {
 </script>
 
 <template>
-  <header class="app-bar">
+  <header ref="root" class="app-bar">
     <div class="start">
       <button
         type="button"
@@ -123,7 +158,54 @@ function code(): void {
           <svg class="chevron" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
             <path d="M4.5 2.5 8 6l-3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.3" />
           </svg>
-          <span class="crumb current" :title="page">{{ page }}</span>
+          <span class="switcher">
+            <button
+              type="button"
+              class="crumb current"
+              :title="`${page} — switch file`"
+              :aria-expanded="switching"
+              data-action="switch-file"
+              @click="switching = !switching"
+            >
+              {{ page }}
+              <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+                <path d="M2 3.5 5 6.5 8 3.5" fill="none" stroke="currentColor" stroke-width="1.3" />
+              </svg>
+            </button>
+            <div v-if="switching" class="menu" role="menu" aria-label="Files">
+              <button
+                v-for="entry in files ?? []"
+                :key="entry.file"
+                type="button"
+                role="menuitem"
+                class="menu-item"
+                :aria-current="entry.file === current"
+                :data-file="entry.file"
+                @click="openFile(entry.file)"
+              >
+                <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
+                  <path
+                    :d="entry.renderable ? 'M2.5 1.5h7v9h-7z' : 'M2 3.5h8M2 6h8M2 8.5h8'"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1"
+                  />
+                </svg>
+                <span>{{ entry.label }}</span>
+              </button>
+              <div class="menu-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                class="menu-item"
+                data-action="new-file"
+                @click="((switching = false), emit('newFile'))"
+              >
+                <span class="plus">+</span>
+                <span>New file…</span>
+              </button>
+            </div>
+          </span>
         </template>
       </nav>
     </div>
@@ -365,6 +447,61 @@ button.crumb:hover {
 .crumb.current {
   color: var(--text);
   font-weight: 600;
+}
+.switcher {
+  position: relative;
+}
+.switcher > .crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 6px);
+  left: 0;
+  display: grid;
+  min-width: 220px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--shadow-float);
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item:hover {
+  background: var(--raised);
+}
+.menu-item[aria-current='true'] {
+  background: var(--accent-dim);
+}
+.menu-item svg,
+.plus {
+  flex: none;
+  width: 12px;
+  color: var(--text-dim);
+  text-align: center;
+}
+.menu-sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--line);
 }
 .chevron {
   flex: none;

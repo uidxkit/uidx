@@ -992,6 +992,8 @@ watch(
 
 /** The left panel's tab on a page: what is on it, or what can be added. */
 const railTab = ref<'layers' | 'insert'>('layers')
+/** The Insert panel floated above the bottom bar, Figma's quick-insert. */
+const floatingInsert = ref(false)
 
 /** A face chosen in the top bar; from the overview it opens on the page the canvas holds. */
 function faceFromBar(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
@@ -1247,6 +1249,8 @@ async function onDeletePage(file: string): Promise<void> {
 }
 
 const creatingTokensFile = ref(false)
+/** "New file…" from the top bar's file switcher. */
+const creatingFile = ref(false)
 function onTokensFileCreated(file: string): void {
   creatingTokensFile.value = false
   openPage(file)
@@ -2004,6 +2008,10 @@ function removeSelection(): void {
  * still edits the hex.
  */
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && floatingInsert.value) {
+    floatingInsert.value = false
+    return
+  }
   if (!doc.value || event.defaultPrevented) return
   // ⌘Z / ⇧⌘Z (spec §5). The canvas SDK's command registry binds the same keys
   // but the viewer never mounts it — only `provideEditor`, `useCanvas` and the
@@ -2083,7 +2091,11 @@ onUnmounted(() => socket.close())
       :code-notice="codegenState.notice"
       :agent-online="agent.status.value.online"
       :agent-open="agent.open.value"
+      :files="pageList"
+      :current="entry"
       @home="openHome"
+      @open="openPage"
+      @new-file="creatingFile = true"
       @face="faceFromBar"
       @undo="undo"
       @redo="redo"
@@ -2129,6 +2141,12 @@ onUnmounted(() => socket.close())
         </div>
       </div>
     </div>
+
+    <NewPageDialog
+      v-if="creatingFile"
+      @created="(file) => ((creatingFile = false), openPage(file))"
+      @close="creatingFile = false"
+    />
 
     <ContextMenu v-if="menu" :x="menu.x" :y="menu.y" :items="menuItems()" @close="menu = null" />
 
@@ -2193,6 +2211,23 @@ onUnmounted(() => socket.close())
       }"
     >
       <aside v-if="view.kind !== 'home'" class="rail" aria-label="Document navigation">
+        <!--
+          Pages first and always: moving between files is the left panel's
+          first job, on every face. Below them, what is on the page or what
+          can be added to it.
+        -->
+        <ErrorBoundary pane="Pages">
+          <PagesList
+            :entries="pageList"
+            :open="entry"
+            :writable="connection === 'open'"
+            :uses-outside="usesOutside"
+            @open="openPage"
+            @home="openHome"
+            @rename="onRenamePage"
+            @delete="onDeletePage"
+          />
+        </ErrorBoundary>
         <nav v-if="view.kind === 'page'" class="rail-tabs" aria-label="Left panel">
           <button
             type="button"
@@ -2208,7 +2243,7 @@ onUnmounted(() => socket.close())
             data-rail-tab="insert"
             @click="railTab = 'insert'"
           >
-            Insert
+            Assets
           </button>
         </nav>
         <ErrorBoundary v-if="view.kind === 'page' && railTab === 'insert'" pane="Insert">
@@ -2223,34 +2258,20 @@ onUnmounted(() => socket.close())
             @place="placeInstance"
           />
         </ErrorBoundary>
-        <template v-else>
-          <ErrorBoundary pane="Pages">
-            <PagesList
-              :entries="pageList"
-              :open="entry"
-              :writable="connection === 'open'"
-              :uses-outside="usesOutside"
-              @open="openPage"
-              @home="openHome"
-              @rename="onRenamePage"
-              @delete="onDeletePage"
-            />
-          </ErrorBoundary>
-          <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
-            <LayersPane
-              ref="layersPane"
-              :doc="sceneDoc"
-              :selection="railSelection"
-              :components="components"
-              :vector-editing="vertexEditing"
-              :writable="connection === 'open'"
-              @edit-vector="editVector"
-              @select="selection = [$event]"
-              @patches="commitPatches"
-              @moved="onMoved"
-            />
-          </ErrorBoundary>
-        </template>
+        <ErrorBoundary v-else-if="view.kind === 'page'" pane="Layers">
+          <LayersPane
+            ref="layersPane"
+            :doc="sceneDoc"
+            :selection="railSelection"
+            :components="components"
+            :vector-editing="vertexEditing"
+            :writable="connection === 'open'"
+            @edit-vector="editVector"
+            @select="selection = [$event]"
+            @patches="commitPatches"
+            @moved="onMoved"
+          />
+        </ErrorBoundary>
       </aside>
 
       <!--
@@ -2376,7 +2397,26 @@ onUnmounted(() => socket.close())
             @drawing-done="armTool(null)"
           >
             <template #tools>
+              <div v-if="floatingInsert" class="floating-insert" aria-label="Insert panel">
+                <header>
+                  <span>Insert</span>
+                  <button type="button" aria-label="Close" @click="floatingInsert = false">
+                    ×
+                  </button>
+                </header>
+                <InsertPanel
+                  :components="components"
+                  :writable="connection === 'open' && sceneDoc !== null"
+                  :tool="tool"
+                  :placing="placing"
+                  @tool="(next) => (armTool(next), (floatingInsert = false))"
+                  @insert="(spec) => (insertBlock(spec), (floatingInsert = false))"
+                  @image="(file) => (canvasPane?.placeImage(file), (floatingInsert = false))"
+                  @place="(name) => (placeInstance(name), (floatingInsert = false))"
+                />
+              </div>
               <EditToolbar
+                :insert-open="floatingInsert"
                 :tool="tool"
                 :can-delete="deletable !== null"
                 :can-make-component="componentSource !== null"
@@ -2385,6 +2425,7 @@ onUnmounted(() => socket.close())
                 :can-add-slot="slotTarget !== null"
                 :can-add-repeat="repeatTarget !== null"
                 :writable="connection === 'open' && sceneDoc !== null"
+                @insert="floatingInsert = !floatingInsert"
                 @tool="armTool"
                 @remove="removeSelection"
                 @make-component="startMakeComponent"
@@ -2533,6 +2574,36 @@ onUnmounted(() => socket.close())
 }
 .rail > :deep(.insert) {
   flex: 1;
+}
+.floating-insert {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-height: min(560px, 70vh);
+  transform: translateX(-50%);
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-float);
+}
+.floating-insert > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.floating-insert > header button {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
 }
 .rail :deep(.layers),
 .rail :deep(.pages) {

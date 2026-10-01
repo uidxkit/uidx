@@ -31,6 +31,7 @@ describe('the creation toolbar', () => {
     // component and placing an instance are not things a pointer sweeps out.
     expect(labels(render())).toEqual([
       'Select',
+      'Insert',
       ...CREATABLE_ELEMENTS.map((e) => (e === 'Vector' ? 'Pen' : e)),
       'Graphics tools',
       'Make component',

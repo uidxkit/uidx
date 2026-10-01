@@ -149,3 +149,20 @@ describe('the codegen route', () => {
     expect((await fetch(`${server!.url}/__uidx/codegen`, { method: 'DELETE' })).status).toBe(405)
   })
 })
+
+describe('one component as code', () => {
+  it('renders its files in memory, for every target, writing nothing', async () => {
+    await start({})
+    const response = await fetch(`${server!.url}/__uidx/code?component=Box`)
+    expect(response.status).toBe(200)
+    const body = (await response.json()) as { files: { path: string; text: string }[] }
+    const paths = body.files.map((file) => file.path).sort()
+    expect(paths).toContain('react/Box.tsx')
+    expect(paths).toContain('html/box.html')
+    expect(paths).toContain('contract/box.json')
+    expect(body.files.find((file) => file.path === 'react/Box.tsx')!.text).toContain('label')
+    expect(
+      (await fetch(`${server!.url}/__uidx/code?component=${encodeURIComponent('<x>')}`)).status,
+    ).toBe(404)
+  })
+})

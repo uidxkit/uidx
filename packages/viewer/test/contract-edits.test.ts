@@ -1029,7 +1029,7 @@ describe('the inspector tabs', () => {
       props: { doc, selection: ['Checkbox'], writable: true, headless: LIBRARY },
     })
     const tabs = pane.findAll('.face-toggle button')
-    expect(tabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual(['Design', 'Contract 1'])
+    expect(tabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual(['Design', 'Contract 1', 'Code'])
     expect(tabs[0]!.attributes('aria-pressed')).toBe('true')
     expect(pane.find('.contract').exists()).toBe(false)
     await tabs[1]!.trigger('click')

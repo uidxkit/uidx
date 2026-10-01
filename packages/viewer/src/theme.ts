@@ -2,7 +2,7 @@ import { ref, watch } from 'vue'
 
 /**
  * Light or dark chrome. The choice is the viewer's, remembered per browser;
- * until one is made the system's preference decides. Applied as
+ * until one is made the editor is dark, as design tools are. Applied as
  * `data-theme` on the root, where `theme.css` redefines its tokens, so no
  * component knows which theme it is in.
  */
@@ -19,15 +19,7 @@ function stored(): ThemeChoice | null {
   }
 }
 
-function system(): ThemeChoice {
-  try {
-    return matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark'
-  } catch {
-    return 'dark'
-  }
-}
-
-export const theme = ref<ThemeChoice>(stored() ?? system())
+export const theme = ref<ThemeChoice>(stored() ?? 'dark')
 
 export function setTheme(next: ThemeChoice): void {
   theme.value = next

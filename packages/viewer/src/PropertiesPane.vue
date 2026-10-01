@@ -13,6 +13,7 @@ import {
 } from '@uidx/format'
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
+import CodeSection from './CodeSection.vue'
 import {
   contractIssues,
   contractView,
@@ -269,7 +270,7 @@ const emit = defineEmits<{
  * Design / Dev split is the precedent authors already know. Pane-local: the
  * choice is about how to look, not what is open.
  */
-const face = ref<'design' | 'contract'>('design')
+const face = ref<'design' | 'contract' | 'code'>('design')
 
 /** Unbound or stray parts on the selected component, for the tab's badge. */
 const contractIssueCount = computed(() =>
@@ -287,6 +288,21 @@ function onHover(prop: string | null): void {
 const swatches = computed(() => (props.doc ? documentSwatches(props.doc.tree) : []))
 
 /** The `<Component>` an instance names, from the document-wide index (F7). */
+/**
+ * The component the Code tab shows: the selection itself, the component an
+ * instance uses, or the component the selected layer sits inside.
+ */
+const codeComponent = computed<string | null>(() => {
+  const node = active.value
+  if (!node || !props.doc) return null
+  if (node.element === 'Component') return node.name
+  const used = node.attrs.component?.value
+  if (node.element === 'Instance' && typeof used === 'string') return used
+  const entity = node.address.split('#')[0]!
+  const top = props.doc.tree.children.find((child) => child.address === entity)
+  return top?.element === 'Component' ? top.name : null
+})
+
 function definitionFor(node: UidxNode): UidxNode | undefined {
   const named = node.attrs.component?.value
   return typeof named === 'string' ? props.components?.get(named) : undefined
@@ -1512,6 +1528,7 @@ function onDetach(prop: string, value: JsonValue): void {
               >{{ contractIssueCount }}</span
             >
           </button>
+          <button type="button" :aria-pressed="face === 'code'" @click="face = 'code'">Code</button>
         </nav>
         <span v-if="writable === false" class="read-only-badge">Read only</span>
       </div>
@@ -1543,7 +1560,15 @@ function onDetach(prop: string, value: JsonValue): void {
       </div>
     </header>
 
-    <template v-if="face === 'contract'">
+    <CodeSection
+      v-if="face === 'code'"
+      :component="codeComponent"
+      :stamp="doc?.sourceHash ?? ''"
+      :codegen="codegen"
+      :writable="writable !== false"
+      @generate-code="emit('generateCode')"
+    />
+    <template v-else-if="face === 'contract'">
       <p v-if="(selection?.length ?? 0) > 1" class="note">
         Select a single layer to see what it binds.
       </p>

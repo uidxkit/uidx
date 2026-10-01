@@ -14,6 +14,7 @@ import type { MiddlewareHost, ViewerPlugin } from './static-viewer.js'
 
 export const CODEGEN_ROUTE = '/__uidx/codegen'
 export const PREVIEW_ROUTE = '/__uidx/preview'
+export const CODE_ROUTE = '/__uidx/code'
 
 export interface CodegenRun {
   /** Where the files went, as `uidx.json` spells it. */
@@ -122,6 +123,32 @@ ${fragment}
 `
 }
 
+/**
+ * One component's generated code, rendered in memory and written nowhere:
+ * what the Code tab shows beside the design, the way Builder shows the code
+ * a block becomes. Every target's files for the component — React, the
+ * HTML/CSS markup and styles, the contract JSON — matched by the
+ * component's file stem or name.
+ */
+export async function componentCode(
+  found: FoundManifest,
+  component: string,
+): Promise<{ files: { path: string; text: string }[]; diagnostics: CodegenRun['diagnostics'] }> {
+  const rendered = await renderDocument(found, undefined)
+  if (!rendered.ok) return { files: [], diagnostics: rendered.diagnostics }
+  const stem = component
+    .replace(/[/\s]+/g, '-')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .toLowerCase()
+  const files = [...rendered.result.files]
+    .filter(([path]) => {
+      const base = path.slice(path.lastIndexOf('/') + 1).replace(/\.[^.]+$/, '')
+      return base === stem || base === component
+    })
+    .map(([path, text]) => ({ path, text }))
+  return { files, diagnostics: rendered.diagnostics }
+}
+
 /** `GET` says whether generation is configured and where; `POST` runs it. */
 export function codegenRoutePlugin(manifest: { current: FoundManifest | null }): ViewerPlugin {
   const handle = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
@@ -185,7 +212,29 @@ export function codegenRoutePlugin(manifest: { current: FoundManifest | null }):
     response.setHeader('content-type', 'text/html; charset=utf-8')
     response.end(page)
   }
+  const code = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+    response.setHeader('cache-control', 'no-store')
+    response.setHeader('content-type', 'application/json')
+    const found = manifest.current
+    const name = new URL(request.url ?? '/', 'http://local').searchParams.get('component') ?? ''
+    if (!found || !/^[\w/ -]+$/.test(name)) {
+      response.statusCode = 404
+      response.end(JSON.stringify({ error: 'Name a component of this document.' }))
+      return
+    }
+    try {
+      response.end(JSON.stringify(await componentCode(found, name)))
+    } catch (error) {
+      response.statusCode = 400
+      response.end(
+        JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
+      )
+    }
+  }
   const configure = (server: MiddlewareHost): void => {
+    server.middlewares.use(CODE_ROUTE, (req, res) => {
+      void code(req, res)
+    })
     server.middlewares.use(CODEGEN_ROUTE, (req, res) => {
       void handle(req, res)
     })

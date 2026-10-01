@@ -55,6 +55,8 @@ const props = defineProps<{
   canAddRepeat?: boolean
   /** False while the socket is down: nothing here can reach the file. */
   writable: boolean
+  /** Whether the floating Insert panel is open above the bar. */
+  insertOpen?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -64,6 +66,8 @@ const emit = defineEmits<{
   placeInstance: []
   addSlot: []
   addRepeat: []
+  /** Open or close the floating Insert panel. */
+  insert: []
 }>()
 
 /** Figma's letters, echoed in the tooltip so the shortcut is discoverable. */
@@ -171,6 +175,22 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
       <!-- Figma's arrow, so the default state has a face of its own. -->
       <svg viewBox="0 0 12 12" aria-hidden="true">
         <path d="M2 1l7 5-3 .6L4.6 10z" fill="currentColor" />
+      </svg>
+    </button>
+
+    <button
+      type="button"
+      class="tool insert-tool"
+      :data-armed="insertOpen ? 'true' : 'false'"
+      :aria-pressed="insertOpen === true"
+      :disabled="!writable"
+      title="Insert — blocks, images and components"
+      aria-label="Insert"
+      data-action="insert"
+      @click="emit('insert')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M6 1.5v9M1.5 6h9" fill="none" stroke="currentColor" stroke-width="1.4" />
       </svg>
     </button>
 
