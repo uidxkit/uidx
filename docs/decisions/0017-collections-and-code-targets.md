@@ -62,7 +62,10 @@ component's own, rendered in place. The toolbar's Repeat tool writes
 enclosing item's list field before the contract's own lists, so a layer
 inside a row walks the row — and names a nested item after its list
 (`child` for `{item.children}`), since `item` would hide the outer item; the
-Contract tab edits the list and `as` from the layer. The canvas
+Repeat section of the Design tab (and the Contract tab, which shows the
+same section) edits the list and `as` from the layer, names a first item so
+it hides no prop or outer item, lists what in the template reads the item,
+and can declare a new list prop of a model in place. The canvas
 expands a repeat to one row per sample, the n-th resolving `{as.*}` from the
 n-th samples: the first row is the layer itself, selected and edited like any
 other, and the rows after it (`row-2`, `row-3`) are generated echoes that

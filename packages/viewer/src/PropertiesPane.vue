@@ -123,6 +123,7 @@ import InstancePropsSection from './InstancePropsSection.vue'
 import PreviewDataSection from './PreviewDataSection.vue'
 import SlotCardField from './SlotCardField.vue'
 import SlotSettingsSection from './SlotSettingsSection.vue'
+import RepeatSection from './RepeatSection.vue'
 import { slotCards } from './slot-content'
 import { FieldIcon } from './field-icons'
 import type { SideValues } from './edit-models'
@@ -1941,6 +1942,33 @@ function onDetach(prop: string, value: JsonValue): void {
         A component's states come before its properties: a state is the coarser
         fact — which button this is, before what it says.
       -->
+        <!--
+          Repeat, for any layer inside a component (ADR 0017 §2): the layer and
+          what it holds become the template drawn once per item. A slot has it
+          inside its own panel above; a state's derived layer repeats as its
+          base does.
+        -->
+        <div
+          v-if="
+            active.element !== 'Slot' &&
+            active.element !== 'Component' &&
+            doc &&
+            !derivedTarget(doc, active.address)
+          "
+          class="repeat-host"
+        >
+          <RepeatSection
+            :doc="doc"
+            :node="active"
+            :components="components"
+            :models="models"
+            :writable="writable !== false"
+            @patches="emit('patches', $event)"
+            @select="emit('select', $event)"
+            @open-model="emit('openModel', $event)"
+          />
+        </div>
+
         <PreviewDataSection
           v-if="active.element === 'Component'"
           :component="active"
@@ -2966,6 +2994,11 @@ h2 {
   cursor: default;
 }
 
+.repeat-host:has(.repeat-section) {
+  padding: 0 0 var(--section-pad);
+  margin-bottom: var(--pad);
+  border-bottom: 1px solid var(--line);
+}
 .fill-actions {
   padding: 0 var(--section-pad) var(--pad);
   border-bottom: 1px solid var(--line);

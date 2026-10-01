@@ -1,19 +1,12 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, ref } from 'vue'
 import { declarationOf, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
 import type { ModelIndex } from '@uidx/schema'
 import ComponentThumb from './ComponentThumb.vue'
-import {
-  contractView,
-  declare,
-  isPlaceholder,
-  PLACEHOLDER,
-  receivesFor,
-  setRepeat,
-  setRepeatAs,
-} from './contract-edits'
+import { contractView, declare, isPlaceholder, PLACEHOLDER, receivesFor } from './contract-edits'
 import type { HeadlessLibrary } from './headless'
 import { LAYER_ICONS } from './layer-icons'
+import RepeatSection from './RepeatSection.vue'
 import SlotContentPopup from './SlotContentPopup.vue'
 import {
   acceptOptions,
@@ -67,7 +60,6 @@ const component = computed(() =>
 )
 const facet = computed(() => (view.value.kind === 'slot' ? view.value : null))
 const repeat = computed(() => facet.value?.repeat ?? null)
-const lists = computed(() => facet.value?.lists ?? [])
 
 /** The slot's declaration, read from the file rather than the view, so edits keep its other attributes. */
 const declaration = computed(() =>
@@ -89,55 +81,6 @@ function redeclare(change: { accepts?: string | null; description?: string }): v
       ? change.description || `${PLACEHOLDER}the slot "${props.node.name}".`
       : (declaration.value?.description ?? `${PLACEHOLDER}the slot "${props.node.name}".`)
   send(declare('slot', props.node.name, { attrs, description }))
-}
-
-/* ---------------------------------------------------------- the list */
-
-const propType = (name: string): string =>
-  component.value?.spec?.contract?.props.find((prop) => prop.name === name)?.type ?? ''
-
-const modelNames = computed(() => [...(props.models?.keys() ?? [])].sort())
-
-/** The inline "new list" form: a list prop of a model, declared and repeated over in one edit. */
-const creating = ref(false)
-const newName = ref('items')
-const newModel = ref('')
-watch(creating, (open) => {
-  if (!open) return
-  newModel.value = newModel.value || modelNames.value[0] || ''
-  const taken = new Set((component.value?.spec?.contract?.props ?? []).map((prop) => prop.name))
-  let name = 'items'
-  for (let n = 2; taken.has(name); n++) name = `items${n}`
-  newName.value = name
-})
-
-function chooseMode(mode: 'once' | 'each'): void {
-  if (mode === 'once') {
-    creating.value = false
-    send(setRepeat(props.node, null))
-  } else if (lists.value.length) send(setRepeat(props.node, lists.value[0]!))
-  else creating.value = true
-}
-
-function chooseList(value: string): void {
-  if (value === ':new') creating.value = true
-  else {
-    creating.value = false
-    send(setRepeat(props.node, value))
-  }
-}
-
-function createList(): void {
-  const name = newName.value.trim()
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || !newModel.value) return
-  send([
-    ...declare('prop', name, {
-      attrs: { type: `${newModel.value}[]` },
-      description: `${PLACEHOLDER}the prop "${name}".`,
-    }),
-    ...setRepeat(props.node, name),
-  ])
-  creating.value = false
 }
 
 /** What code hands each filling, and the prop a use passes it through. */
@@ -231,124 +174,24 @@ const defaultRefused = computed(() => {
       />
     </label>
 
-    <!-- 2. Once, or once per item of a list -->
-    <div class="group" data-field="repeat">
+    <!-- 2. Once, or once per item of a list: the same Repeat any layer has. -->
+    <div class="group">
       <span class="label">Content</span>
-      <div class="segmented" role="radiogroup" aria-label="How often the slot is filled">
-        <button
-          type="button"
-          role="radio"
-          :aria-checked="!repeat && !creating"
-          :disabled="!writable"
-          @click="chooseMode('once')"
-        >
-          Filled once
-        </button>
-        <button
-          type="button"
-          role="radio"
-          :aria-checked="!!repeat || creating"
-          :disabled="!writable"
-          @click="chooseMode('each')"
-        >
-          For each item
-        </button>
-      </div>
+      <RepeatSection
+        :doc="doc"
+        :node="node"
+        :components="components"
+        :models="models"
+        :writable="writable"
+        for-slot
+        @patches="emit('patches', $event)"
+        @select="emit('select', $event)"
+        @open-model="emit('openModel', $event)"
+      />
     </div>
 
-    <template v-if="repeat || creating">
-      <div class="row" data-field="list">
-        <span class="label">List</span>
-        <select
-          class="field"
-          :value="creating ? ':new' : (repeat?.list ?? '')"
-          :disabled="!writable"
-          aria-label="Repeat over"
-          @change="chooseList(($event.target as HTMLSelectElement).value)"
-        >
-          <option v-if="repeat && !lists.includes(repeat.list)" :value="repeat.list">
-            {{ repeat.list }} · not a list here
-          </option>
-          <option v-for="list in lists" :key="list" :value="list">
-            {{ list }}{{ propType(list) ? ` · ${propType(list)}` : '' }}
-          </option>
-          <option value=":new">＋ New list…</option>
-        </select>
-      </div>
-
-      <!-- A list prop of a model, declared here: the slot is where a designer meets the need. -->
-      <div v-if="creating" class="create" data-field="new-list">
-        <p class="create-title">New list property</p>
-        <div class="create-row">
-          <input
-            v-model="newName"
-            class="field"
-            aria-label="List name"
-            placeholder="items"
-            spellcheck="false"
-            @keydown.enter="createList"
-          />
-          <span class="of-word">of</span>
-          <select v-if="modelNames.length" v-model="newModel" class="field" aria-label="Item model">
-            <option v-for="model in modelNames" :key="model" :value="model">{{ model }}</option>
-          </select>
-        </div>
-        <p v-if="!modelNames.length" class="hint">
-          A list holds items of a model, and this project has none yet.
-          <button type="button" class="link" @click="emit('openModel', '')">Create a model</button>
-        </p>
-        <div class="create-actions">
-          <button type="button" class="ghost" @click="creating = false">Cancel</button>
-          <button
-            type="button"
-            class="primary"
-            :disabled="!writable || !newModel || !newName.trim()"
-            @click="createList"
-          >
-            Create and repeat
-          </button>
-        </div>
-      </div>
-
-      <template v-if="repeat && !creating">
-        <div class="row" data-field="as">
-          <span class="label" title="The item's name in bindings, like {item.name}">Item name</span>
-          <input
-            class="field"
-            :value="repeat.as"
-            :disabled="!writable"
-            aria-label="Item name"
-            spellcheck="false"
-            @change="send(setRepeatAs(node, ($event.target as HTMLInputElement).value))"
-          />
-        </div>
-        <div class="row" data-field="model">
-          <span class="label">Each item</span>
-          <span class="model-line">
-            <button
-              v-if="repeat.model"
-              type="button"
-              class="chip model"
-              :title="`Open ${repeat.model} on the Models face`"
-              @click="emit('openModel', repeat.model)"
-            >
-              {{ repeat.model }} ↗
-            </button>
-            <span v-else class="warn">no model</span>
-            <span class="faint">{{ repeat.rows }} sample rows on the canvas</span>
-          </span>
-        </div>
-        <p v-if="repeat.unknownModel" class="warn-line" role="status">
-          No page declares {{ repeat.model }}.
-          <button type="button" class="link" @click="emit('openModel', repeat.model ?? '')">
-            Declare it
-          </button>
-        </p>
-      </template>
-    </template>
-
     <!-- 3. What each filling receives — the render prop, said as code will say it -->
-    <div v-if="!creating" class="receives" data-field="receives">
+    <div class="receives" data-field="receives">
       <span class="label">{{ repeat ? 'Each filling receives' : 'A use passes' }}</span>
       <div v-if="repeat" class="chips">
         <span class="chip">{{ repeat.as }}: {{ repeat.model ?? 'unknown' }}</span>

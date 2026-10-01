@@ -84,7 +84,7 @@ function step(index: number, count: number, by: number): void {
 const braced = (alias: string): string => `{${alias}}`
 /** The empty choice: what the repeat implies, else nothing. */
 const inferredLabel = (row: ReceiveRow): string =>
-  row.from && !row.explicit ? `${braced(row.from)} · inferred` : 'Nothing'
+  row.from && !row.explicit ? `${braced(row.from)} · auto` : 'Nothing'
 
 function chooseReceives(prop: string, alias: string): void {
   if (props.writable) send(setReceives(props.instance, prop, alias || null))

@@ -1,7 +1,7 @@
 import { resolve, toAlias, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
 import { repeatOf, type ModelIndex } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
-import { placeableLists } from './contract-edits'
+import { ancestorsWithin, placeableLists } from './contract-edits'
 
 /**
  * Repeating a layer from the toolbar (ADR 0017 §2).
@@ -29,6 +29,7 @@ export interface RepeatTarget {
 function singular(list: string): string {
   const last = list.split('.').at(-1) ?? 'item'
   if (last === 'children') return 'child'
+  if (last === 'people') return 'person'
   if (last.endsWith('ies')) return `${last.slice(0, -3)}y`
   if (last.endsWith('s') && last.length > 2) return last.slice(0, -1)
   return `${last}Item`
@@ -50,21 +51,29 @@ export function repeatTargetFor(
   if (!component) return null
   const [list] = placeableLists(component, node, models)
   if (!list) return null
-  // Nested in another repeat (the list is an item's field), the row needs a
-  // name of its own; `item` would hide the outer item's bindings.
-  if (!list.includes('.')) return { node, component, list }
-  const taken = new Set<string>()
-  const walk = (current: UidxNode): void => {
-    if (current.attrs.repeat !== undefined) {
-      const as = current.attrs.as?.value
-      taken.add(typeof as === 'string' && as !== '' ? as : 'item')
-    }
-    for (const child of current.children) walk(child)
+  const as = itemNameFor(component, node, list)
+  return as === 'item' ? { node, component, list } : { node, component, list, as }
+}
+
+/**
+ * The item's name for a new repeat over `list`: `item` unless that would
+ * hide something — an enclosing repeat's item (a nested list) or a prop of
+ * the component, which an item component like PersonRow has under that very
+ * name. Otherwise the list's singular: `tag` for `{item.tags}`, `person` for
+ * `{people}`, numbered past whatever is taken.
+ */
+export function itemNameFor(component: UidxNode, node: UidxNode, list: string): string {
+  const taken = new Set<string>((component.spec?.contract?.props ?? []).map((prop) => prop.name))
+  // Only what encloses the layer is in scope there; a sibling's item hides nothing.
+  for (const ancestor of ancestorsWithin(component, node)) {
+    const repeat = repeatOf(ancestor)
+    if (repeat) taken.add(repeat.as)
   }
-  walk(component)
-  let as = singular(list)
-  for (let n = 2; taken.has(as); n++) as = `${singular(list)}${n}`
-  return { node, component, list, as }
+  if (!list.includes('.') && !taken.has('item')) return 'item'
+  const base = list.includes('.') || singular(list) !== 'item' ? singular(list) : 'entry'
+  let as = base
+  for (let n = 2; taken.has(as); n++) as = `${base}${n}`
+  return as
 }
 
 /**

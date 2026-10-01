@@ -311,7 +311,7 @@ function partView(
 /* ------------------------------------------------------------ repeats */
 
 /** The layers from the component down to, excluding, the node — the repeats among them scope it. */
-function ancestorsWithin(component: UidxNode, node: UidxNode): UidxNode[] {
+export function ancestorsWithin(component: UidxNode, node: UidxNode): UidxNode[] {
   const path: UidxNode[] = []
   const walk = (current: UidxNode): boolean => {
     if (current === node) return true
@@ -326,7 +326,11 @@ function ancestorsWithin(component: UidxNode, node: UidxNode): UidxNode[] {
 }
 
 /** The repeats enclosing a node, outermost first, each with the model its item carries. */
-function enclosingRepeats(component: UidxNode, node: UidxNode, models?: ModelIndex): RepeatScope[] {
+export function enclosingRepeats(
+  component: UidxNode,
+  node: UidxNode,
+  models?: ModelIndex,
+): RepeatScope[] {
   const scopes: RepeatScope[] = []
   for (const ancestor of ancestorsWithin(component, node)) {
     const repeat = repeatOf(ancestor)
@@ -357,7 +361,11 @@ export function placeableLists(
   return out
 }
 
-function repeatFacet(component: UidxNode | null, node: UidxNode, models?: ModelIndex): RepeatFacet {
+export function repeatFacet(
+  component: UidxNode | null,
+  node: UidxNode,
+  models?: ModelIndex,
+): RepeatFacet {
   const lists = placeableLists(component, node, models)
   const attrs = repeatOf(node)
   if (!attrs || !component) return { repeat: null, lists, wrapsOne: null }

@@ -23,10 +23,7 @@ import {
   setImplements,
   type LibraryOffer,
   setPart,
-  moveRepeatOnto,
   setReceives,
-  setRepeat,
-  setRepeatAs,
   undeclare,
 } from './contract-edits'
 import type { ModelIndex } from '@uidx/schema'
@@ -34,6 +31,7 @@ import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
 import { renameContractProp } from './contract-rename'
 import SlotSettingsSection from './SlotSettingsSection.vue'
+import RepeatSection from './RepeatSection.vue'
 
 /**
  * The Contract tab: where the visual tree is bound to its code render
@@ -173,26 +171,6 @@ const repeatable = computed(() => {
     ? current
     : null
 })
-
-function chooseRepeat(list: string): void {
-  if (!repeatable.value) return
-  send(setRepeat(repeatable.value.node, list || null))
-}
-
-function chooseAs(raw: string): void {
-  if (!repeatable.value) return
-  send(setRepeatAs(repeatable.value.node, raw))
-}
-
-/** The repeat moves from the container onto the row it holds; the row is then selected. */
-function repeatRowInstead(): void {
-  const current = repeatable.value
-  if (!current?.wrapsOne || !props.doc) return
-  const row = findNode(props.doc.tree, current.wrapsOne.address)
-  if (!row) return
-  send(moveRepeatOnto(current.node, row))
-  emit('select', row.address)
-}
 
 /** What an instance hands one of its definition's props; empty leaves the inference to stand. */
 function chooseReceives(prop: string, alias: string): void {
@@ -1622,116 +1600,19 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       once per item of a list, and its parent is the outer structure. So the
       rows sit below whichever view the layer has, not in a view of their own.
     -->
-    <template v-if="repeatable && repeatable.component && view.kind !== 'slot'">
-      <header class="head">
-        <span class="title">Repeat</span>
-        <span
-          v-if="repeatable.repeat"
-          class="of"
-          title="Rows the canvas draws: one per sample of the model, three when it has none"
-          >× {{ repeatable.repeat.rows }}</span
-        >
-      </header>
-      <div class="row" data-field="repeat" :data-set="repeatable.repeat !== null">
-        <span class="name" title="The list this layer draws one of itself per item of">Over</span>
-        <select
-          v-if="repeatable.lists.length"
-          class="pick"
-          :value="repeatable.repeat?.list ?? ''"
-          :disabled="!writable"
-          aria-label="Repeat over"
-          @change="chooseRepeat(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">Once</option>
-          <option
-            v-if="repeatable.repeat && !repeatable.lists.includes(repeatable.repeat.list)"
-            :value="repeatable.repeat.list"
-          >
-            {{ '{' + repeatable.repeat.list + '}' }} · not a list here
-          </option>
-          <option v-for="list in repeatable.lists" :key="list" :value="list">
-            {{ '{' + list + '}' }}
-          </option>
-        </select>
-        <input
-          v-else
-          class="text"
-          :value="repeatable.repeat?.list ?? ''"
-          :disabled="!writable"
-          aria-label="Repeat over"
-          placeholder="once"
-          @change="chooseRepeat(($event.target as HTMLInputElement).value.trim())"
-        />
-        <button
-          v-if="repeatable.repeat"
-          type="button"
-          class="reset"
-          :disabled="!writable"
-          aria-label="Clear repeat"
-          title="Draw it once"
-          @click="chooseRepeat('')"
-        >
-          ↺
-        </button>
-        <span v-else class="reset-spacer" />
-      </div>
-      <template v-if="repeatable.repeat">
-        <div class="row" data-field="as" :data-set="repeatable.repeat.as !== 'item'">
-          <span class="name" title="The item's name in the bindings below, like {item.name}"
-            >As</span
-          >
-          <input
-            class="text"
-            :value="repeatable.repeat.as"
-            :disabled="!writable"
-            aria-label="Item name"
-            placeholder="item"
-            @change="chooseAs(($event.target as HTMLInputElement).value)"
-          />
-          <span class="reset-spacer" />
-        </div>
-        <p v-if="repeatable.wrapsOne" class="stale" role="status">
-          This repeats the whole “{{ repeatable.node.name }}”, one per item, with “{{
-            repeatable.wrapsOne.name
-          }}” inside each. To keep one container and repeat the row:
-          <button type="button" class="stale-name" :disabled="!writable" @click="repeatRowInstead">
-            Repeat {{ repeatable.wrapsOne.name }} instead
-          </button>
-        </p>
-        <p v-if="repeatable.repeat.model && !repeatable.repeat.unknownModel" class="hint">
-          Each item is a
-          <button
-            type="button"
-            class="stale-name"
-            :title="`Open ${repeatable.repeat.model} on the Models face`"
-            @click="emit('openModel', repeatable.repeat.model)"
-          >
-            {{ repeatable.repeat.model }}</button
-          >; bind text below to <code>{{ '{' + repeatable.repeat.as + '.field}' }}</code
-          >.
-        </p>
-        <p v-else-if="repeatable.repeat.model" class="stale" role="status">
-          Each item is a {{ repeatable.repeat.model }}, which no page declares under
-          <code>## Models</code>.
-          <button
-            type="button"
-            class="stale-name"
-            :disabled="!writable"
-            @click="emit('openModel', repeatable.repeat.model)"
-          >
-            Declare it
-          </button>
-        </p>
-        <p v-else class="stale" role="status">
-          The contract cannot place <code>{{ '{' + repeatable.repeat.list + '}' }}</code
-          >: declare it as a list prop, or as a list field of the outer item.
-        </p>
-      </template>
-      <p v-else-if="!repeatable.lists.length" class="hint">
-        To repeat this layer, declare a list prop under <code>## Contract</code> — say
-        <code>items</code> of type <code>Contact[]</code>.
-      </p>
-    </template>
+    <!-- Repeat is per layer (ADR 0017 §2): the same section the Design tab shows. -->
+    <RepeatSection
+      v-if="repeatable && repeatable.component && view.kind !== 'slot'"
+      class="repeat"
+      :doc="doc"
+      :node="repeatable.node"
+      :components="components"
+      :models="models"
+      :writable="writable"
+      @patches="emit('patches', $event)"
+      @select="emit('select', $event)"
+      @open-model="emit('openModel', $event)"
+    />
 
     <!-- Where the choices come from, on every view: a fact the author can act on. -->
     <p v-if="libraryError" class="stale library" role="status">{{ libraryError }}</p>

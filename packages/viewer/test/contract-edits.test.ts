@@ -761,7 +761,7 @@ describe('the Contract section', () => {
     const over = section.find('[data-field="list"] select')
     expect(over.findAll('option').map((o) => o.text().trim())).toEqual([
       'items · Item[]',
-      '＋ New list…',
+      '＋ New list property…',
     ])
     // "Filled once" is the segmented choice beside "For each item".
     await section.find('[data-field="repeat"] [role="radio"]').trigger('click')
