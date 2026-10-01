@@ -144,3 +144,18 @@ describe('the Models pane', () => {
     expect(frozen.find('button.add.root').attributes('disabled')).toBeDefined()
   })
 })
+
+describe('renaming from the Models face', () => {
+  it('asks the shell to rename a model or a field, carrying their readers', async () => {
+    const pane = mountPane()
+    const card = pane.find('[data-model="Contact"]')
+    await card.find('button[aria-label="Rename model Contact"]').trigger('click')
+    const field = pane.find('input[aria-label="Rename model Contact"]')
+    await field.setValue('Person')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(pane.emitted('renameModel')).toEqual([['Contact', 'Person']])
+    await pane.find('[data-field="id"] input[aria-label="Field name"]').setValue('uid')
+    expect(pane.emitted('renameField')).toEqual([['Contact', 'id', 'uid']])
+    expect(pane.emitted('edit')).toBeUndefined()
+  })
+})

@@ -923,6 +923,8 @@ function writeModel(
     fields: { name: string; declaration: ContractDeclaration }[]
   } | null,
   eol: '\r\n' | '\n',
+  /** The name to print, when the model is being renamed. */
+  as?: string,
 ): Range {
   const source = doc.source
   const models = doc.spec?.models ?? []
@@ -942,7 +944,7 @@ function writeModel(
     s.remove(from, existing.loc.end)
     return { start: from, end: from }
   }
-  const text = printModel({ name, ...next }, eol)
+  const text = printModel({ name: as ?? name, ...next }, eol)
   if (existing) {
     s.overwrite(existing.loc.start, existing.loc.end, text)
     return { start: existing.loc.start, end: existing.loc.start + text.length }
@@ -982,12 +984,19 @@ function modelDeclaration(
   if (patch.name === '') throw new PatchError('a model op names the model it declares')
   const existing = doc.spec?.models?.find((model) => model.name === patch.name)
   if (!patch.declaration) return writeModel(doc, s, patch.name, null, eol)
+  if (patch.rename !== undefined && patch.rename !== patch.name) {
+    if (!existing)
+      throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to rename`)
+    if (doc.spec?.models?.some((model) => model.name === patch.rename))
+      throw new PatchError(`<Model name="${patch.rename}"> is already declared`)
+  }
   return writeModel(
     doc,
     s,
     patch.name,
     { description: patch.declaration.description, fields: existing ? fieldsOf(existing) : [] },
     eol,
+    patch.rename,
   )
 }
 
@@ -1006,8 +1015,16 @@ function fieldDeclaration(
     if (at === -1)
       throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to remove`)
     fields.splice(at, 1)
-  } else if (at === -1) fields.push({ name: patch.name, declaration: patch.declaration })
-  else fields[at] = { name: patch.name, declaration: patch.declaration }
+  } else if (at === -1) {
+    if (patch.rename !== undefined && patch.rename !== patch.name)
+      throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to rename`)
+    fields.push({ name: patch.name, declaration: patch.declaration })
+  } else {
+    const name = patch.rename ?? patch.name
+    if (name !== patch.name && fields.some((field) => field.name === name))
+      throw new PatchError(`<Field name="${name}"> is already declared in ${model.name}`)
+    fields[at] = { name, declaration: patch.declaration }
+  }
   return writeModel(doc, s, model.name, { description: model.description, fields }, eol)
 }
 

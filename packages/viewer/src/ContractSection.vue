@@ -313,6 +313,36 @@ const builtInStates = computed(() => {
  * Turns a built-in state on (an empty row, so the canvas draws it and the
  * author designs it by selecting it) or off (every row naming it goes).
  */
+/**
+ * The styles table as rows (ADR 0016 §2): each a set of keys and the cells it
+ * changes. Designed on the canvas; listed here so a row can be read whole,
+ * and a cell or a row taken out, without hunting for the variant that shows it.
+ */
+const styleRows = computed(() =>
+  (props.doc?.spec?.styles ?? []).map((row) => ({
+    keys: row.keys,
+    label:
+      Object.entries(row.keys)
+        .map(([axis, value]) => (axis === STATE_AXIS ? value : `${axis}=${value}`))
+        .join(' + ') || 'base',
+    cells: Object.entries(row.values).flatMap(([target, values]) =>
+      Object.entries(values).map(([prop, value]) => ({ target, prop, value })),
+    ),
+  })),
+)
+const openRow = ref<string | null>(null)
+const rowKey = (keys: Record<string, string>): string => JSON.stringify(Object.entries(keys).sort())
+const shown = (value: JsonValue): string =>
+  typeof value === 'string' ? value : JSON.stringify(value)
+
+function removeStyleRow(keys: Record<string, string>): void {
+  send([{ op: 'style', keys: { ...keys }, target: '', prop: '' }])
+}
+
+function removeStyleCell(keys: Record<string, string>, target: string, prop: string): void {
+  send([{ op: 'style', keys: { ...keys }, target, prop }])
+}
+
 function toggleState(name: string, on: boolean): void {
   if (on) {
     send([{ op: 'style', keys: { [STATE_AXIS]: name }, target: '', prop: '', value: {} }])
@@ -907,6 +937,68 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           {{ state.label }}
         </label>
       </div>
+
+      <template v-if="styleRows.length">
+        <header class="head">
+          <span class="title">Styles</span>
+          <span class="count">{{ styleRows.length }}</span>
+        </header>
+        <p class="hint">
+          What each state and variant changes. Change a look by selecting it on the canvas.
+        </p>
+        <template v-for="row in styleRows" :key="rowKey(row.keys)">
+          <div class="row read" :data-style-row="row.label">
+            <button
+              type="button"
+              class="name open"
+              :aria-expanded="openRow === rowKey(row.keys)"
+              @click="openRow = openRow === rowKey(row.keys) ? null : rowKey(row.keys)"
+            >
+              <span class="name-text">{{ row.label }}</span>
+            </button>
+            <span class="type">
+              {{
+                row.cells.length
+                  ? `${row.cells.length} change${row.cells.length === 1 ? '' : 's'}`
+                  : 'no changes yet'
+              }}
+            </span>
+            <button
+              type="button"
+              class="reset"
+              :disabled="!writable"
+              :aria-label="`Remove style row ${row.label}`"
+              title="Remove this row and every change in it"
+              @click="removeStyleRow(row.keys)"
+            >
+              ×
+            </button>
+          </div>
+          <div v-if="openRow === rowKey(row.keys)" class="form">
+            <div
+              v-for="cell in row.cells"
+              :key="`${cell.target}:${cell.prop}`"
+              class="cell"
+              :data-cell="`${cell.target}:${cell.prop}`"
+            >
+              <code>{{ cell.target }}:{{ cell.prop }}</code>
+              <span class="cell-value" :title="shown(cell.value)">{{ shown(cell.value) }}</span>
+              <button
+                type="button"
+                class="reset"
+                :disabled="!writable"
+                :aria-label="`Remove ${cell.target}:${cell.prop} from ${row.label}`"
+                @click="removeStyleCell(row.keys, cell.target, cell.prop)"
+              >
+                ×
+              </button>
+            </div>
+            <p v-if="!row.cells.length" class="hint">
+              Select this state on the canvas and change something to give it a look.
+            </p>
+          </div>
+        </template>
+      </template>
 
       <template v-if="view.slots.length || view.straySlots.length">
         <header class="head"><span class="title">Slots</span></header>
@@ -1857,6 +1949,25 @@ code {
 .faint {
   color: var(--text-faint);
   font-size: 10px;
+}
+.head .count {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.cell {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) 24px;
+  gap: 8px;
+  align-items: center;
+  font-size: 11px;
+}
+.cell code {
+  color: var(--text-dim);
+}
+.cell-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .state-toggles {
   display: flex;

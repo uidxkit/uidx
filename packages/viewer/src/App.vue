@@ -93,6 +93,7 @@ import HomePane from './HomePane.vue'
 import NewPageDialog from './NewPageDialog.vue'
 import { duplicateLayer, mainComponentOf } from './layer-actions'
 import { detachInstance } from './detach'
+import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
 import { createUidxSocket, type ConnectionState } from './socket'
@@ -268,6 +269,14 @@ const undeclared = computed(() =>
 )
 /** The model a repeat's row sent the author to: marked and scrolled to on the face. */
 const focusedModel = ref<string | null>(null)
+
+/** A plan built in the viewer: sent as one undo step, or its refusal shown. */
+function commitRefusable(
+  plan: { byFile: ReadonlyMap<string, UidxPatch[]> } | { refused: string },
+): void {
+  if ('refused' in plan) onRefused(plan.refused)
+  else commitAcrossPages(plan.byFile)
+}
 
 function onModelEdit(file: string, patches: UidxPatch[]): void {
   commitAcrossPages(new Map([[file, patches]]))
@@ -2194,6 +2203,8 @@ onUnmounted(() => socket.close())
           :writable="connection === 'open'"
           @edit="onModelEdit"
           @open="onModelOpen"
+          @rename-model="(from, to) => commitRefusable(renameModel(pages, from, to))"
+          @rename-field="(model, from, to) => commitRefusable(renameField(pages, model, from, to))"
         />
       </ErrorBoundary>
       <template v-else-if="view.kind === 'tokens'">

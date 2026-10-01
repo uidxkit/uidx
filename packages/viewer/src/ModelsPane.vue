@@ -43,7 +43,18 @@ const emit = defineEmits<{
   edit: [file: string, patches: UidxPatch[]]
   /** Jump to a page, and to a component on it when named. */
   open: [file: string, component?: string]
+  /** Renames that carry every type or binding naming them, across pages. */
+  renameModel: [from: string, to: string]
+  renameField: [model: string, from: string, to: string]
 }>()
+
+const renamingModel = ref<string | null>(null)
+function commitModelName(card: ModelCard, event: Event): void {
+  if (renamingModel.value !== card.name) return
+  renamingModel.value = null
+  const name = (event.target as HTMLInputElement).value.trim()
+  if (name && name !== card.name) emit('renameModel', card.name, name)
+}
 
 const paneEl = ref<HTMLDivElement | null>(null)
 const newName = ref('')
@@ -89,14 +100,11 @@ function change(card: ModelCard, field: FieldSpec, next: Parameters<typeof field
   send(card, setField(card.name, field.name, fieldWith(field, next)))
 }
 
-/** A rename is a removal and a declaration, in that order, so the file is valid between. */
+/** A rename keeps the field's place and carries the `{item.field}` bindings that read it. */
 function rename(card: ModelCard, field: FieldSpec, to: string): void {
   const name = to.trim()
   if (name === field.name || !isIdentifier(name) || card.fields.some((f) => f.name === name)) return
-  send(card, [
-    ...removeField(card.name, field.name),
-    ...setField(card.name, name, fieldWith(field, {})),
-  ])
+  emit('renameField', card.name, field.name, name)
 }
 
 const isPlaceholder = (text: string): boolean => text.startsWith(PLACEHOLDER)
@@ -202,7 +210,26 @@ watch(
         :aria-label="`Model ${card.name}`"
       >
         <header class="model-heading">
-          <h2>{{ card.name }}</h2>
+          <input
+            v-if="renamingModel === card.name"
+            class="model-rename"
+            :value="card.name"
+            :aria-label="`Rename model ${card.name}`"
+            @keydown.enter="commitModelName(card, $event)"
+            @keydown.escape="renamingModel = null"
+            @blur="commitModelName(card, $event)"
+          />
+          <h2 v-else @dblclick="writable && (renamingModel = card.name)">{{ card.name }}</h2>
+          <button
+            v-if="writable && renamingModel !== card.name"
+            type="button"
+            class="rename-model"
+            :aria-label="`Rename model ${card.name}`"
+            title="Rename; every prop and field typed by it follows"
+            @click="renamingModel = card.name"
+          >
+            ✎
+          </button>
           <button
             type="button"
             class="where"
@@ -389,6 +416,27 @@ watch(
 </template>
 
 <style scoped>
+.rename-model {
+  padding: 0 4px;
+  font: inherit;
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.rename-model:hover {
+  color: var(--text);
+}
+.model-rename {
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
 .models-pane {
   position: relative;
   height: 100%;

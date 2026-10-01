@@ -676,6 +676,40 @@ describe('the Contract section', () => {
     ])
   })
 
+  it('lists the styles table by row, and removes a cell or a whole row', async () => {
+    const source = page(
+      'chip',
+      `  <Component name="Chip" status="draft" width={10} height={10} />`,
+      `
+<Styles>
+  <Style state="hover" root:opacity={0.8} root:cornerRadius={4} />
+  <Style tone="danger" state="focus" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="tone" type="'info' | 'danger'" default="info" visual>Tone.</Prop>
+</Props>
+`,
+    )
+    const section = mountFor(source, 'Chip')
+    const rows = section.findAll('[data-style-row]')
+    expect(rows.map((row) => row.attributes('data-style-row'))).toEqual([
+      'hover',
+      'tone=danger + focus',
+    ])
+    expect(rows[0]!.text()).toContain('2 changes')
+    expect(rows[1]!.text()).toContain('no changes yet')
+    await rows[0]!.find('.name').trigger('click')
+    await section.find('[aria-label="Remove root:opacity from hover"]').trigger('click')
+    await section.find('[aria-label="Remove style row tone=danger + focus"]').trigger('click')
+    expect(section.emitted('patches')).toEqual([
+      [[{ op: 'style', keys: { state: 'hover' }, target: 'root', prop: 'opacity' }]],
+      [[{ op: 'style', keys: { tone: 'danger', state: 'focus' }, target: '', prop: '' }]],
+    ])
+  })
+
   it('lists parts with their layer, binds an unbound one, and selects a bound one', async () => {
     const section = mountFor(CHECKBOX, 'Checkbox')
     expect(section.text()).toContain('1 of 2 bound')

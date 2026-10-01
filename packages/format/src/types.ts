@@ -433,9 +433,22 @@ export type UidxPatch =
    * declaration is its description; the fields are the `field` op's. A model
    * is reprinted canonically by either, the way the styles table is.
    */
-  | { op: 'model'; name: string; declaration?: ModelDeclaration }
+  | {
+      op: 'model'
+      name: string
+      declaration?: ModelDeclaration
+      /** Writes the model under this new name in its place, fields kept; readers are the caller's. */
+      rename?: string
+    }
   /** One `<Field>` of a model, written or removed; absent, the field goes. */
-  | { op: 'field'; model: string; name: string; declaration?: ContractDeclaration }
+  | {
+      op: 'field'
+      model: string
+      name: string
+      declaration?: ContractDeclaration
+      /** Writes the field under this new name in its place; bindings are the caller's. */
+      rename?: string
+    }
   /**
    * Writes a prose region whole (ADR 0012): `## Behavior` (one `- id:
    * sentence` bullet per rule) or `## Examples` (`<Example>` elements), as

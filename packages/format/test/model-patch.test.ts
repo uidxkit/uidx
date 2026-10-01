@@ -120,3 +120,63 @@ describe('the model and field ops', () => {
     }
   })
 })
+
+describe('renaming a model or a field in place', () => {
+  it('keeps fields and position, refuses taken names, and inverts', () => {
+    const source = `---
+id: m
+---
+
+## Visual Contract
+
+<Page>
+</Page>
+
+## Models
+
+<Model name="Contact">
+  A person.
+  <Field name="id" type="string" key>Identity.</Field>
+  <Field name="name" type="string">Name.</Field>
+</Model>
+
+<Model name="Team">
+  A group.
+</Model>
+`
+    const model: UidxPatch = {
+      op: 'model',
+      name: 'Contact',
+      declaration: { description: 'A person.' },
+      rename: 'Person',
+    }
+    const renamed = parseOrThrow(applyPatches(source, [model]).source)
+    expect(renamed.spec!.models!.map((m) => m.name)).toEqual(['Person', 'Team'])
+    expect(renamed.spec!.models![0]!.fields.map((f) => f.name)).toEqual(['id', 'name'])
+    expect(
+      applyPatches(
+        applyPatches(source, [model]).source,
+        inversePatches(parseOrThrow(source), [model]),
+      ).source,
+    ).toBe(source)
+    expect(() => applyPatches(source, [{ ...model, rename: 'Team' } as UidxPatch])).toThrow(
+      /already declared/,
+    )
+
+    const field: UidxPatch = {
+      op: 'field',
+      model: 'Contact',
+      name: 'id',
+      declaration: { attrs: { type: 'string', key: true }, description: 'Identity.' },
+      rename: 'uid',
+    }
+    const next = parseOrThrow(applyPatches(source, [field]).source)
+    expect(next.spec!.models![0]!.fields.map((f) => f.name)).toEqual(['uid', 'name'])
+    expect(
+      applyPatches(
+        applyPatches(source, [field]).source,
+        inversePatches(parseOrThrow(source), [field]),
+      ).source,
+    ).toBe(source)
+  })
+})

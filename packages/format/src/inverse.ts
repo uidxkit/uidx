@@ -180,6 +180,15 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
       const before = doc.spec?.models?.find((model) => model.name === patch.name)
       if (!before && !patch.declaration)
         throw new PatchError(`<Model name="${patch.name}"> is not declared; nothing to restore`)
+      if (patch.rename !== undefined && patch.rename !== patch.name && before)
+        return [
+          {
+            op: 'model',
+            name: patch.rename,
+            declaration: { description: before.description },
+            rename: patch.name,
+          },
+        ]
       // A removal took the fields too; the inverse brings them back one by one.
       const fields: UidxPatch[] =
         before && !patch.declaration
@@ -223,6 +232,16 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
       const before = model?.fields.find((field) => field.name === patch.name)
       if (!before && !patch.declaration)
         throw new PatchError(`<Field name="${patch.name}"> is not declared; nothing to restore`)
+      if (patch.rename !== undefined && patch.rename !== patch.name && before)
+        return [
+          {
+            op: 'field',
+            model: patch.model,
+            name: patch.rename,
+            declaration: fieldDeclarationOf(before),
+            rename: patch.name,
+          },
+        ]
       return [
         {
           op: 'field',
