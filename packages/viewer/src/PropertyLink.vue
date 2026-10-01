@@ -28,7 +28,8 @@ defineProps<{
    * Create — a component that has declared nothing is exactly where creating
    * from the field is worth the most.
    */
-  candidates: { name: string; declaration: { type: string; default: JsonValue } }[] | null
+  candidates:
+    { name: string; label?: string; declaration: { type: string; default: JsonValue } }[] | null
   /** The glyph of the one type this input takes. */
   icon: IconName
   editable: boolean
@@ -95,7 +96,7 @@ function unlink(): void {
     @click="picking = !picking"
   >
     <FieldIcon :name="icon" />
-    {{ boundTo }}
+    {{ candidates?.find((candidate) => candidate.name === boundTo)?.label ?? boundTo }}
   </button>
 
   <!--

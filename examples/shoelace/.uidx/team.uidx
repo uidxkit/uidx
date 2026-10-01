@@ -25,7 +25,7 @@ One List, three uses: the default PersonRow, PersonCard and PersonChip injected 
       <Instance
         name="personcard"
         component="PersonCard"
-        props={{ item: '{item}' }}
+        props={{ person: '{item}' }}
         layoutAlign="STRETCH"
       />
     </Slot>
@@ -40,7 +40,7 @@ One List, three uses: the default PersonRow, PersonCard and PersonChip injected 
       <Instance
         name="personchip"
         component="PersonChip"
-        props={{ item: '{item}' }}
+        props={{ person: '{item}' }}
       />
     </Slot>
   </Instance>

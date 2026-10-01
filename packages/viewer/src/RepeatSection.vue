@@ -71,7 +71,7 @@ function pick(model: string): void {
   const current = view.value
   if (!current) return
   choosing.value = false
-  send(repeatOverModel(current.component, props.node, model, current.lists))
+  send(repeatOverModel(current.component, props.node, model, current.lists, props.components))
 }
 </script>
 

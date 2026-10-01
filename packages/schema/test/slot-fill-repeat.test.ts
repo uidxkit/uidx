@@ -166,3 +166,43 @@ describe('the item reaches a component only when bound', () => {
     expect(texts(unbound, 1).out.map(([, text]) => text)).toEqual(['Grace', 'Grace', 'Grace'])
   })
 })
+
+describe("a component's property bound to a field of the item", () => {
+  it("draws each row's own value through the property", () => {
+    const PILL = page(
+      'pill',
+      `  <Component name="Pill" status="draft" props={{ label: { type: 'TEXT', default: 'Tag' } }}>
+    <Text name="t" characters="{label}" />
+  </Component>`,
+    )
+    const CREW = page(
+      'crew',
+      `  <Component name="Crew" status="draft">
+    <Frame name="row" repeat="{items}">
+      <Instance name="pill" component="Pill" props={{ label: '{item.name}' }} />
+    </Frame>
+  </Component>`,
+      `
+## Contract
+
+<Props>
+  <Prop name="items" type="Person[]">People.</Prop>
+</Props>
+`,
+    )
+    const docs = [ROW, PILL, CREW]
+    const components = new Map(
+      docs.flatMap((d) =>
+        d.tree.children.filter((c) => c.element === 'Component').map((c) => [c.name, c] as const),
+      ),
+    )
+    const scene = toSceneGraph(CREW, {
+      resolveComponent: (name) => components.get(name),
+      models: modelIndex(docs),
+    })
+    const texts = [...(scene.graph as unknown as { nodes: Map<string, Node> }).nodes.values()]
+      .filter((node) => node.type === 'TEXT')
+      .map((node) => node.text)
+    expect(texts).toEqual(['Ada', 'Grace', 'Linus'])
+  })
+})

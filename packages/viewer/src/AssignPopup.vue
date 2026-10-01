@@ -14,7 +14,8 @@ import type { VariableCandidate } from './variable-binding'
  */
 const props = defineProps<{
   /** Same-type properties, or null to hide the group (outside a component). */
-  candidates: { name: string; declaration: { type: string; default: JsonValue } }[] | null
+  candidates:
+    { name: string; label?: string; declaration: { type: string; default: JsonValue } }[] | null
   componentName: string | null
   /** Already type-filtered by the host. */
   variables: VariableCandidate[]
@@ -172,7 +173,7 @@ onBeforeUnmount(() => {
     </div>
 
     <template v-if="itemFields.length">
-      <p class="popup-heading">From the item</p>
+      <p class="popup-heading">From each row</p>
       <div
         v-for="option in itemFields"
         :key="option.name"
@@ -186,7 +187,7 @@ onBeforeUnmount(() => {
         @keydown.enter="emit('property', option.name)"
       >
         <span class="item-glyph" aria-hidden="true">{ }</span>
-        <span class="row-name">{{ option.name }}</span>
+        <span class="row-name">{{ option.label ?? option.name }}</span>
         <span class="row-preview">{{ previewOf(option.declaration.default) }}</span>
       </div>
     </template>

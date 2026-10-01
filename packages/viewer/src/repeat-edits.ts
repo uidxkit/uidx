@@ -1,4 +1,11 @@
-import { resolve, toAlias, type UidxDocument, type UidxNode, type UidxPatch } from '@uidx/format'
+import {
+  resolve,
+  toAlias,
+  type JsonValue,
+  type UidxDocument,
+  type UidxNode,
+  type UidxPatch,
+} from '@uidx/format'
 import { repeatOf, type ModelIndex } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
 import { ancestorsWithin, placeableLists } from './contract-edits'
@@ -120,6 +127,7 @@ export function repeatOverModel(
   node: UidxNode,
   model: string,
   lists: readonly { list: string; type: string }[],
+  components?: ReadonlyMap<string, UidxNode>,
 ): UidxPatch[] {
   const wanted = `${model}[]`
   const found = lists.find((entry) => entry.type.replace(/\s+/g, '') === wanted)
@@ -144,9 +152,52 @@ export function repeatOverModel(
     prop: 'repeat',
     value: toAlias(list),
   })
+  let as = repeatOf(node)?.as ?? 'item'
   if (!repeating) {
-    const as = itemNameFor(component, node, list)
+    as = itemNameFor(component, node, list)
     if (as !== 'item') patches.push({ op: 'add', address: node.address, prop: 'as', value: as })
   }
-  return patches
+  return [...patches, ...bindRowInside(node, model, as, components)]
+}
+
+/**
+ * The components already inside a layer that has just started repeating,
+ * bound to its row when they take its model and say nothing yet: the chip in
+ * a row of people gets `person: '{item}'` in the same edit. Explicit — it is
+ * written, and shows as a pill to remove — but no second gesture per chip.
+ * Stops at a nested repeat, whose components take that repeat's row.
+ */
+function bindRowInside(
+  node: UidxNode,
+  model: string,
+  as: string,
+  components: ReadonlyMap<string, UidxNode> | undefined,
+): UidxPatch[] {
+  const out: UidxPatch[] = []
+  const visit = (current: UidxNode, top: boolean): void => {
+    if (!top && current.attrs.repeat !== undefined) return
+    if (current.element === 'Instance') {
+      const named = current.attrs.component?.value
+      const definition = typeof named === 'string' ? components?.get(named) : undefined
+      const prop = definition?.spec?.contract?.props.find(
+        (candidate) => candidate.type.replace(/\s+/g, '') === model,
+      )
+      const existing = current.attrs.props?.value
+      const passed =
+        existing && typeof existing === 'object' && !Array.isArray(existing)
+          ? (existing as Record<string, JsonValue>)
+          : {}
+      if (prop && passed[prop.name] === undefined)
+        out.push({
+          op: current.attrs.props === undefined ? 'add' : 'set',
+          address: current.address,
+          prop: 'props',
+          value: { ...passed, [prop.name]: toAlias(as) },
+        })
+      return
+    }
+    for (const child of current.children) visit(child, false)
+  }
+  visit(node, true)
+  return out
 }

@@ -25,10 +25,10 @@ A compact row for one person: avatar, name and role. The list draws it by defaul
       primaryAxisSizingMode="AUTO"
       counterAxisSizingMode="AUTO"
     >
-      <Text name="name" characters="{item.name}" fontSize="{type#md}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text}' }]} />
+      <Text name="name" characters="{person.name}" fontSize="{type#md}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text}' }]} />
       <Text
         name="role"
-        characters="{item.role}"
+        characters="{person.role}"
         textAutoResize="WIDTH_AND_HEIGHT"
         fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text-muted}' }]}
         fontSize="{type#sm}"
@@ -40,7 +40,7 @@ A compact row for one person: avatar, name and role. The list draws it by defaul
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">The person this row shows.</Prop>
+  <Prop name="person" type="Person">The person this row shows.</Prop>
 </Props>
 
 ## Models

@@ -8,7 +8,7 @@ import './list.css'
 export interface ListProps {
   /** The people to list, in order. */
   items: Person[]
-  /** What each person is drawn with. Receives the person as `item`; defaults to a PersonRow. */
+  /** What each person is drawn with; defaults to a PersonRow. */
   renderItem?: (item: Person, index: number) => ReactNode
   /** Extra class names for the root element. */
   className?: string
@@ -23,7 +23,7 @@ function ListBase({ items, renderItem, className, style }: ListProps) {
       {items.map((item, index) => (
         <Fragment key={String(item.id)}>
           {renderItem ? renderItem(item, index) : (
-            <PersonRow item={item} />
+            <PersonRow person={item} />
           )}
         </Fragment>
       ))}

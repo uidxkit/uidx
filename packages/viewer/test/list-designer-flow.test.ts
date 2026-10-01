@@ -78,7 +78,7 @@ describe('the list designer flow', () => {
     await pane.get('.section-link [data-popup-trigger]').trigger('click')
     const row = pane
       .findAll('.assign-popup .popup-row')
-      .find((r) => r.text().includes('item.name'))!
+      .find((r) => r.text().includes('item › name'))!
     await row.trigger('click')
     expect(pane.emitted('patches')!.at(-1)![0]).toEqual([
       { op: 'set', address: 'Row#name', prop: 'characters', value: '{item.name}' },

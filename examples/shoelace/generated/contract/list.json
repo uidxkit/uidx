@@ -28,7 +28,7 @@
     "slots": [
       {
         "name": "item",
-        "description": "What each person is drawn with. Receives the person as `item`; defaults to a PersonRow."
+        "description": "What each person is drawn with; defaults to a PersonRow."
       }
     ],
     "composes": []

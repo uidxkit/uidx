@@ -4,7 +4,7 @@ import { type JsonValue, type UidxDocument, type UidxNode, type UidxPatch } from
 import type { ModelIndex } from '@uidx/schema'
 import ComponentThumb from './ComponentThumb.vue'
 import { setReceives } from './contract-edits'
-import { bindOptions, boundAlias, dataRows, itemScopes } from './instance-data'
+import { aliasLabel, bindOptions, boundAlias, dataRows, itemScopes } from './instance-data'
 import ItemBindPopup from './ItemBindPopup.vue'
 import { LAYER_ICONS } from './layer-icons'
 import SlotCardField from './SlotCardField.vue'
@@ -241,7 +241,7 @@ function reset(name: string): void {
             @click="binding = binding === row.name ? null : row.name"
           >
             <span class="glyph" aria-hidden="true">{ }</span>
-            <span class="bound-name">{{ rowBound(row.name) }}</span>
+            <span class="bound-name">{{ aliasLabel(rowBound(row.name)!, scopes) }}</span>
           </button>
         </span>
         <select
@@ -340,7 +340,9 @@ function reset(name: string): void {
               @click="binding = binding === row.prop ? null : row.prop"
             >
               <span class="glyph" aria-hidden="true">{ }</span>
-              <span v-if="row.source.bound" class="bound-name">{{ row.source.bound }}</span>
+              <span v-if="row.source.bound" class="bound-name">{{
+                aliasLabel(row.source.bound, scopes)
+              }}</span>
               <span v-else class="unbound">Not bound</span>
             </button>
             <button
@@ -593,7 +595,6 @@ function reset(name: string): void {
 }
 .bound-name {
   overflow: hidden;
-  font-family: ui-monospace, monospace;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

@@ -13,7 +13,7 @@
   "contract": {
     "props": [
       {
-        "name": "item",
+        "name": "person",
         "type": "Person",
         "controllable": false,
         "visual": false,

@@ -1,7 +1,7 @@
 import { aliasTarget, slots, type ModelSpec, type UidxDocument, type UidxNode } from '@uidx/format'
 import { modelOfType, repeatModel, repeatOf, sampleAt, type ModelIndex } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
-import { enclosingRepeats } from './contract-edits'
+import { enclosingRepeats, itemLabel } from './contract-edits'
 import { fillContext } from './slot-content'
 
 /**
@@ -54,6 +54,8 @@ export interface ItemScope {
 export interface BindOption {
   alias: string
   type: string
+  /** How it reads in the panel: "This Person", "This Person › name". */
+  label: string
 }
 
 /**
@@ -94,10 +96,15 @@ export function bindOptions(scopes: readonly ItemScope[], type: string): BindOpt
   const wanted = type.replace(/\s+/g, '')
   const out: BindOption[] = []
   for (const scope of [...scopes].reverse()) {
-    if (scope.model?.name === wanted) out.push({ alias: scope.as, type: wanted })
+    if (scope.model?.name === wanted)
+      out.push({ alias: scope.as, type: wanted, label: itemLabel(scope.as, [], scopes) })
     for (const field of scope.model?.fields ?? [])
       if (field.type.replace(/\s+/g, '') === wanted)
-        out.push({ alias: `${scope.as}.${field.name}`, type: field.type })
+        out.push({
+          alias: `${scope.as}.${field.name}`,
+          type: field.type,
+          label: itemLabel(scope.as, [field.name], scopes),
+        })
   }
   return out
 }
@@ -160,4 +167,68 @@ export function previewModel(
     if (found && !found.list) return { prop: prop.name, model: found.model }
   }
   return null
+}
+
+/** A bound alias as the panel shows it: "This Person › name". */
+export function aliasLabel(alias: string, scopes: readonly ItemScope[]): string {
+  const [head, ...rest] = alias.split('.')
+  return itemLabel(head!, rest, scopes)
+}
+
+/**
+ * The rows in scope for children of `container`: the repeats around it in
+ * its component and its own, or — a fill of a repeated slot on a page — the
+ * slot's row. What a component placed there could be bound to.
+ */
+export function scopesInside(
+  doc: UidxDocument,
+  container: UidxNode,
+  components: ReadonlyMap<string, UidxNode> | undefined,
+  models: ModelIndex | undefined,
+): ItemScope[] {
+  const component =
+    container.element === 'Component' ? container : enclosingComponent(doc, container.address)
+  if (component) {
+    const scopes = container === component ? [] : enclosingRepeats(component, container, models)
+    const own = repeatOf(container)
+    if (own) scopes.push({ as: own.as, model: repeatModel(own, component.spec, scopes, models) })
+    return scopes.map((scope) => ({ as: scope.as, model: scope.model ?? null }))
+  }
+  // A fill: `<Instance><Slot name="item">…` on a page, the slot repeated in its definition.
+  const host = parentIn(doc.tree, container.address)
+  if (container.element !== 'Slot' || host?.element !== 'Instance') return []
+  const named = host.attrs.component?.value
+  const definition = typeof named === 'string' ? components?.get(named) : undefined
+  const slot = definition ? slots(definition).declared.get(container.name) : undefined
+  const repeat = slot ? repeatOf(slot) : null
+  if (!definition || !repeat) return []
+  const model = repeatModel(repeat, definition.spec, [], models)
+  return [{ as: repeat.as, model: model ?? null }]
+}
+
+function parentIn(root: UidxNode, address: string): UidxNode | null {
+  for (const child of root.children) {
+    if (child.address === address) return root
+    const found = parentIn(child, address)
+    if (found) return found
+  }
+  return null
+}
+
+/**
+ * The binding a component gets when it is placed where a row is in scope
+ * and it takes that row's model: `{ person: '{item}' }`. Written at the
+ * moment of placing, in the file, as a pill the designer sees and can
+ * remove — never inferred later. Null when nothing fits.
+ */
+export function rowBindingFor(
+  definition: UidxNode | undefined,
+  scopes: readonly ItemScope[],
+): Record<string, string> | null {
+  const row = scopes.at(-1)
+  if (!definition || !row?.model) return null
+  const prop = definition.spec?.contract?.props.find(
+    (candidate) => candidate.type.replace(/\s+/g, '') === row.model!.name,
+  )
+  return prop ? { [prop.name]: `{${row.as}}` } : null
 }

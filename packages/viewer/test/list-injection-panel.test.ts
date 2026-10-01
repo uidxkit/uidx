@@ -108,7 +108,7 @@ describe('the slot model', () => {
   it('reads a repeated slot: its list, model, sample count and default', () => {
     const doc = team(`  <Instance name="people" component="List" />`)
     const [card] = slotCards(resolve(doc.tree, 'people')!, definition, components, models, pages)
-    expect(card!.repeat).toEqual({ list: 'items', model: 'Person', count: 4 })
+    expect(card!.repeat).toEqual({ list: 'items', as: 'item', model: 'Person', count: 4 })
     expect(card!.content).toEqual({ kind: 'default', label: 'Row', component: 'Row' })
     expect(card!.suggested.map((c) => [c.name, c.receives])).toEqual([
       ['Card', 'item'],
@@ -230,7 +230,7 @@ describe('the instance inspector', () => {
     const wrapper = section(doc, 'people#item/card')
     const item = wrapper.find('[data-data="item"]')
     expect(item.find('.bind').attributes('data-bound')).toBeDefined()
-    expect(item.find('.bound-name').text()).toBe('item')
+    expect(item.find('.bound-name').text()).toBe('This Person')
     await item.find('[aria-label="Unbind item"]').trigger('click')
     expect(wrapper.emitted('patches')).toEqual([
       [[{ op: 'remove', address: 'people#item/card', prop: 'props' }]],
@@ -293,7 +293,11 @@ describe('selecting the hole itself', () => {
             op: 'insert-node',
             parent: 'people#item',
             index: 0,
-            node: { element: 'Instance', attrs: { name: 'card', component: 'Card' } },
+            // Into a repeated slot, the row is bound as the card is placed.
+            node: {
+              element: 'Instance',
+              attrs: { name: 'card', component: 'Card', props: { item: '{item}' } },
+            },
           },
         ],
       ],
@@ -349,7 +353,10 @@ describe('setting a slot up in its own component', () => {
             op: 'insert-node',
             parent: 'List#item',
             index: 0,
-            node: { element: 'Instance', attrs: { name: 'card', component: 'Card' } },
+            node: {
+              element: 'Instance',
+              attrs: { name: 'card', component: 'Card', props: { item: '{item}' } },
+            },
           },
         ],
       ],

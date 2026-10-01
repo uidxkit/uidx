@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { rowBindingFor, scopesInside } from './instance-data'
 import { LENGTH_PROPS, rootFontSizeOf } from '@uidx/format'
 import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { createEditor } from '@open-pencil/core/editor'
@@ -613,6 +614,15 @@ function createNode(
   // may be grouped (`Icon/Check`), and only the last segment is the noun.
   const base = placing === null ? element : (placing.split('/').at(-1) ?? 'instance')
   const name = autoName(base, parentNode.children)
+  // Placed inside a repeated row, a component that takes the row's model is
+  // bound to it now — written in the file, shown as a pill, removable.
+  const binding =
+    placing === null
+      ? null
+      : rowBindingFor(
+          props.components?.get(placing),
+          scopesInside(current, parentNode, props.components, props.models),
+        )
   const spec =
     placing === null
       ? createSpec(element as CreatableElement, name, { at: where, size })
@@ -622,6 +632,7 @@ function createNode(
             name,
             component: placing,
             ...(where ? { x: where.x, y: where.y } : {}),
+            ...(binding ? { props: binding } : {}),
           },
         }
 

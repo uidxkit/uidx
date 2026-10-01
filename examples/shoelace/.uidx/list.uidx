@@ -25,7 +25,7 @@ A vertical list of people that draws one item per person. Swap the item componen
       <Instance
         name="row"
         component="PersonRow"
-        props={{ item: '{item}' }}
+        props={{ person: '{item}' }}
         layoutAlign="STRETCH"
       />
     </Slot>
@@ -40,5 +40,5 @@ A vertical list of people that draws one item per person. Swap the item componen
 </Props>
 
 <Slots>
-  <Slot name="item">What each person is drawn with. Receives the person as `item`; defaults to a PersonRow.</Slot>
+  <Slot name="item">What each person is drawn with; defaults to a PersonRow.</Slot>
 </Slots>

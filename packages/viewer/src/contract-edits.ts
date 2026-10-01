@@ -519,7 +519,7 @@ export function fieldBindingCandidates(
   if (!component) return []
   const out: { alias: string; label: string }[] = []
   const offer = (alias: string, type: string): void => {
-    if (fits(type, kind)) out.push({ alias, label: `${alias} · ${type.trim()}` })
+    if (fits(type, kind)) out.push({ alias, label: bindingLabel(component, node, alias, models) })
   }
   for (const scope of [...enclosingRepeats(component, node, models)].reverse()) {
     for (const field of scope.model?.fields ?? []) {
@@ -542,6 +542,37 @@ export function fieldBindingCandidates(
     }
   }
   return out
+}
+
+/**
+ * How a binding reads to a designer: the row of a repeat is "This Person",
+ * its fields "This Person › name". The name the file uses for the row
+ * (`item`, `{item.name}`) is code's, so it stays out of the panel. A prop of
+ * the component itself reads by its own name: "person › name".
+ */
+export function bindingLabel(
+  component: UidxNode | null,
+  node: UidxNode,
+  alias: string,
+  models?: ModelIndex,
+): string {
+  const [head, ...rest] = alias.split('.')
+  const scopes = component ? enclosingRepeats(component, node, models) : []
+  const own = repeatOf(node)
+  if (own && component)
+    scopes.push({ as: own.as, model: repeatModel(own, component.spec, scopes, models) })
+  return itemLabel(head!, rest, scopes)
+}
+
+/** `item`, `[name]` in scopes where `item` is a Person's row → "This Person › name". */
+export function itemLabel(
+  head: string,
+  rest: readonly string[],
+  scopes: readonly { as: string; model?: { name: string } | null }[],
+): string {
+  const scope = [...scopes].reverse().find((candidate) => candidate.as === head)
+  const base = scope ? `This ${scope.model?.name ?? 'item'}` : head
+  return [base, ...rest].join(' › ')
 }
 
 /** The text form of `fieldBindingCandidates`, kept for the Content field. */

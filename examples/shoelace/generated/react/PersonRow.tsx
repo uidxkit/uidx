@@ -6,22 +6,22 @@ import './person-row.css'
 
 export interface PersonRowProps {
   /** The person this row shows. */
-  item: Person
+  person: Person
   /** Extra class names for the root element. */
   className?: string
   /** Inline style for the root element. */
   style?: CSSProperties
 }
 
-function PersonRowBase({ item, className, style }: PersonRowProps) {
+function PersonRowBase({ person, className, style }: PersonRowProps) {
   const ref = useRef<HTMLDivElement>(null)
   return (
     <div ref={ref} className={['person-row', className].filter(Boolean).join(' ')} style={style}>
       <div data-node="avatar">
       </div>
       <div data-node="who">
-        <span data-node="name">{item?.name}</span>
-        <span data-node="role">{item?.role}</span>
+        <span data-node="name">{person?.name}</span>
+        <span data-node="role">{person?.role}</span>
       </div>
     </div>
   )

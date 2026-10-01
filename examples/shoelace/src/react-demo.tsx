@@ -26,9 +26,9 @@ export function Lists() {
       <List items={people} />
       <List
         items={people}
-        renderItem={(person) => <PersonCard item={person} style={{ alignSelf: 'stretch' }} />}
+        renderItem={(person) => <PersonCard person={person} style={{ alignSelf: 'stretch' }} />}
       />
-      <List items={people} renderItem={(person) => <PersonChip item={person} />} />
+      <List items={people} renderItem={(person) => <PersonChip person={person} />} />
       <List
         items={people}
         renderItem={(person, index) => (

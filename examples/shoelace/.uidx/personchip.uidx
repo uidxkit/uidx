@@ -12,12 +12,12 @@ A pill with one person's name. For dense lists, like attendees or assignees.
     primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
     paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius="{radius#full}"
     fills={[{ type: 'SOLID', color: '{color#accent}' }]}>
-    <Text name="name" characters="{item.name}" fontSize="{type#sm}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#on-accent}' }]} />
+    <Text name="name" characters="{person.name}" fontSize="{type#sm}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#on-accent}' }]} />
   </Component>
 </Page>
 
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">The person this chip names.</Prop>
+  <Prop name="person" type="Person">The person this chip names.</Prop>
 </Props>

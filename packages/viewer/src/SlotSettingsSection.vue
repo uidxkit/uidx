@@ -73,7 +73,7 @@ const picking = ref(false)
 const trigger = ref<Element | null>(null)
 
 function pickDefault(pick: SlotPick): void {
-  send(defaultContentPatches(props.node, pick))
+  send(defaultContentPatches(props.node, pick, card.value ?? undefined))
 }
 </script>
 

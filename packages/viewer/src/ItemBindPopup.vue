@@ -64,7 +64,7 @@ function pick(alias: string | null): void {
     :style="placement"
     @keydown="onListKeys($event, root, null)"
   >
-    <p class="heading">From the item</p>
+    <p class="heading">From each row</p>
     <button
       v-for="option in options"
       :key="option.alias"
@@ -75,7 +75,7 @@ function pick(alias: string | null): void {
       @click="pick(option.alias)"
     >
       <span class="glyph" aria-hidden="true">{ }</span>
-      <span class="name">{{ option.alias }}</span>
+      <span class="name">{{ option.label }}</span>
       <span class="type">{{ option.type }}</span>
     </button>
     <p v-if="!options.length" class="empty">Nothing in the item has this type.</p>
@@ -131,7 +131,6 @@ function pick(alias: string | null): void {
 }
 .name {
   flex: 1;
-  font-family: ui-monospace, monospace;
 }
 .type {
   color: var(--text-faint);

@@ -6,19 +6,19 @@ import './person-card.css'
 
 export interface PersonCardProps {
   /** The person this card shows. */
-  item: Person
+  person: Person
   /** Extra class names for the root element. */
   className?: string
   /** Inline style for the root element. */
   style?: CSSProperties
 }
 
-function PersonCardBase({ item, className, style }: PersonCardProps) {
+function PersonCardBase({ person, className, style }: PersonCardProps) {
   const ref = useRef<HTMLDivElement>(null)
   return (
     <div ref={ref} className={['person-card', className].filter(Boolean).join(' ')} style={style}>
-      <span data-node="name">{item?.name}</span>
-      <span data-node="role">{item?.role}</span>
+      <span data-node="name">{person?.name}</span>
+      <span data-node="role">{person?.role}</span>
     </div>
   )
 }

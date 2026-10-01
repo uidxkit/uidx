@@ -6,18 +6,18 @@ import './person-chip.css'
 
 export interface PersonChipProps {
   /** The person this chip names. */
-  item: Person
+  person: Person
   /** Extra class names for the root element. */
   className?: string
   /** Inline style for the root element. */
   style?: CSSProperties
 }
 
-function PersonChipBase({ item, className, style }: PersonChipProps) {
+function PersonChipBase({ person, className, style }: PersonChipProps) {
   const ref = useRef<HTMLDivElement>(null)
   return (
     <div ref={ref} className={['person-chip', className].filter(Boolean).join(' ')} style={style}>
-      <span data-node="name">{item?.name}</span>
+      <span data-node="name">{person?.name}</span>
     </div>
   )
 }

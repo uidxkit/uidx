@@ -39,6 +39,8 @@ export interface SlotChoice {
 export interface SlotRepeat {
   /** The definition's list prop the slot repeats over — `items`. */
   list: string
+  /** The row's name in bindings — `item` unless the slot says otherwise. */
+  as: string
   /** The model of one item — `Person` — or null when the prop is not a model list. */
   model: string | null
   /** How many sample rows the canvas draws. */
@@ -112,7 +114,8 @@ function repeatOf(
       Array.isArray(field.sample) ? field.sample.length : 1,
     ),
   )
-  return { list, model: model?.name ?? null, count }
+  const as = slot.attrs.as?.value
+  return { list, as: typeof as === 'string' && as ? as : 'item', model: model?.name ?? null, count }
 }
 
 /** The contract prop of `component` typed by `model`, which a repeat hands its item to. */
@@ -188,15 +191,22 @@ export function fitsAccepts(
 export type SlotPick =
   { kind: 'component'; name: string } | { kind: 'text' } | { kind: 'empty' } | { kind: 'default' }
 
-function contentFor(pick: SlotPick): UidxNodeSpec | null {
-  if (pick.kind === 'component')
+function contentFor(pick: SlotPick, card?: SlotCard): UidxNodeSpec | null {
+  if (pick.kind === 'component') {
+    // Into a repeated slot, a component that takes the row's model is bound
+    // to the row as it is placed: the file says so, the panel shows a pill.
+    const receives = card?.repeat
+      ? [...card.suggested, ...card.others].find((choice) => choice.name === pick.name)?.receives
+      : null
     return {
       element: 'Instance',
       attrs: {
         name: pick.name.replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase(),
         component: pick.name,
+        ...(receives && card?.repeat ? { props: { [receives]: `{${card.repeat.as}}` } } : {}),
       },
     }
+  }
   if (pick.kind === 'text') return { element: 'Text', attrs: { name: 'text', characters: 'Text' } }
   return null
 }
@@ -210,7 +220,7 @@ function contentFor(pick: SlotPick): UidxNodeSpec | null {
 export function pickPatches(instance: UidxNode, card: SlotCard, pick: SlotPick): UidxPatch[] {
   const fill = card.fill
   if (pick.kind === 'default') return fill ? [{ op: 'remove-node', address: fill.address }] : []
-  const node = contentFor(pick)
+  const node = contentFor(pick, card)
   if (!fill)
     return [
       {
@@ -313,9 +323,13 @@ export function definitionSlotCard(
 }
 
 /** The definition's own default content replaced by a pick: one undoable edit on the slot. */
-export function defaultContentPatches(slot: UidxNode, pick: SlotPick): UidxPatch[] {
+export function defaultContentPatches(
+  slot: UidxNode,
+  pick: SlotPick,
+  card?: SlotCard,
+): UidxPatch[] {
   if (pick.kind === 'default') return []
-  const node = contentFor(pick)
+  const node = contentFor(pick, card)
   return [
     ...slot.children.map((child): UidxPatch => ({ op: 'remove-node', address: child.address })),
     ...(node ? [{ op: 'insert-node' as const, parent: slot.address, index: 0, node }] : []),

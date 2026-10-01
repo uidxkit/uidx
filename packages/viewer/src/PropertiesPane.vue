@@ -820,9 +820,13 @@ function withModelFields<
   T extends { name: string; declaration: { type: string; default: JsonValue } },
 >(prop: string, candidates: T[] | null): T[] | null {
   if (prop !== 'characters' || !candidates) return candidates
-  for (const { alias } of textBindings.value) {
+  for (const { alias, label } of textBindings.value) {
     if (!candidates.some((c) => c.name === alias))
-      candidates.push({ name: alias, declaration: { type: 'TEXT', default: '' } } as T)
+      candidates.push({
+        name: alias,
+        label,
+        declaration: { type: 'TEXT', default: '' },
+      } as unknown as T)
   }
   return candidates
 }

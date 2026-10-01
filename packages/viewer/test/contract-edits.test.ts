@@ -343,10 +343,10 @@ describe('what the tab shows', () => {
     const models = modelIndex([doc, row])
     const label = resolve(doc.tree, 'TreeItem#label')!
     expect(textBindingCandidates(resolve(doc.tree, 'TreeItem'), label, models)).toEqual([
-      { alias: 'node.id', label: 'node.id · string' },
-      { alias: 'node.label', label: 'node.label · string' },
-      { alias: 'node.depth', label: 'node.depth · number' },
-      { alias: 'depth', label: 'depth · number' },
+      { alias: 'node.id', label: 'node › id' },
+      { alias: 'node.label', label: 'node › label' },
+      { alias: 'node.depth', label: 'node › depth' },
+      { alias: 'depth', label: 'depth' },
     ])
     // Below the repeating slot, the item's fields; a model-typed field is not a text.
     const inTree = resolve(row.tree, 'Tree#node/children')!

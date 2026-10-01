@@ -4,6 +4,7 @@ import { parseOrThrow, resolve } from '@uidx/format'
 import { modelIndex } from '@uidx/schema'
 import RepeatSection from '../src/RepeatSection.vue'
 import InstancePropsSection from '../src/InstancePropsSection.vue'
+import { rowBindingFor, scopesInside } from '../src/instance-data'
 
 /**
  * Repeat, kept simple (ADR 0017 §2): a switch on any layer, then a model.
@@ -278,8 +279,82 @@ id: pill
 
   it('shows a bound text property as its binding', () => {
     const wrapper = pill('Crew#row/bound')
-    expect(wrapper.find('[data-prop="label"] .bound-name').text()).toBe('item.name')
+    expect(wrapper.find('[data-prop="label"] .bound-name').text()).toBe('This Person › name')
     expect(wrapper.find('[data-prop="label"] input.text').exists()).toBe(false)
+    wrapper.unmount()
+  })
+})
+
+describe('binding a component to the row as it is placed', () => {
+  const ROSTER = parseOrThrow(`---
+id: roster
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Roster" status="draft">
+    <Frame name="row">
+      <Instance name="chip" component="Chip" />
+      <Instance name="named" component="Chip" props={{ person: '{other}' }} />
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="people" type="Person[]">People.</Prop>
+</Props>
+`)
+  const all = new Map([...components, ['Roster', resolve(ROSTER.tree, 'Roster')!]])
+
+  it('binds the components inside a layer as it starts repeating, leaving bound ones be', async () => {
+    const row = mount(RepeatSection, {
+      props: {
+        doc: ROSTER,
+        node: resolve(ROSTER.tree, 'Roster#row')!,
+        components: all,
+        models,
+        writable: true,
+      },
+      attachTo: document.body,
+    })
+    await row.find('[role="switch"]').trigger('click')
+    await row.find('.model-popup [data-model="Person"]').trigger('click')
+    expect(row.emitted('patches')).toEqual([
+      [
+        [
+          { op: 'add', address: 'Roster#row', prop: 'repeat', value: '{people}' },
+          { op: 'add', address: 'Roster#row/chip', prop: 'props', value: { person: '{item}' } },
+        ],
+      ],
+    ])
+    row.unmount()
+  })
+
+  it('binds a component placed inside a repeated row, and nothing outside one', () => {
+    const inside = scopesInside(TEAM, resolve(TEAM.tree, 'Team#row')!, components, models)
+    expect(rowBindingFor(components.get('Chip'), inside)).toEqual({ person: '{item}' })
+    const outside = scopesInside(TEAM, resolve(TEAM.tree, 'Team#footer')!, components, models)
+    expect(rowBindingFor(components.get('Chip'), outside)).toBeNull()
+  })
+
+  it('reads the row as "This Person" in the bind popup and on the pill', async () => {
+    const instance = resolve(TEAM.tree, 'Team#row/chip')!
+    const wrapper = mount(InstancePropsSection, {
+      props: {
+        doc: TEAM,
+        instance,
+        definition: components.get('Chip'),
+        components,
+        models,
+        writable: true,
+      },
+      attachTo: document.body,
+    })
+    await wrapper.find('[data-data="person"] .bind').trigger('click')
+    expect(wrapper.find('.bind-popup [data-alias="item"]').text()).toContain('This Person')
     wrapper.unmount()
   })
 })
