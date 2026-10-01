@@ -6,6 +6,7 @@ import { fontRoutePlugin } from './fonts.js'
 import { headlessRoutePlugin } from './headless.js'
 import { codegenRoutePlugin } from './codegen.js'
 import { pagesRoutePlugin } from './pages.js'
+import { configRoutePlugin } from './config.js'
 import { allowsLocalRequest, localAccessPlugin } from './local-access.js'
 import type { FoundManifest } from './document.js'
 import { WebSocketServer, type WebSocket } from 'ws'
@@ -571,6 +572,7 @@ async function listenOnFreePort(
     selectionRoutePlugin(selection),
     patchRoutePlugin(patchRoute),
     pagesRoutePlugin(workspace),
+    configRoutePlugin(manifest),
   ]
   if (mcp) {
     const configure = (server: MiddlewareHost): void => {

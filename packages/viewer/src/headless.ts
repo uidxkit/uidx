@@ -117,6 +117,8 @@ export async function chooseHeadless(path: string): Promise<void> {
     const data = (await response.json()) as HeadlessPayload
     if (!response.ok) throw new Error(data.error ?? 'Could not choose the headless library.')
     adopt(data)
+    void loadConnection()
+    connectionGeneration.value += 1
   } catch (error) {
     headlessError.value = error instanceof Error ? error.message : String(error)
   }
@@ -137,9 +139,88 @@ export async function refreshHeadless(): Promise<void> {
     const data = (await response.json()) as HeadlessPayload
     if (!response.ok) throw new Error(data.error ?? 'Could not read the headless library.')
     adopt(data)
+    void loadConnection()
   } catch (error) {
     headlessLibrary.value = null
     headlessCandidates.value = []
     headlessError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+/**
+ * The code connection as `uidx.json` holds it (`/__uidx/config`): the
+ * library's naming profile, each component's names in the library, the
+ * React component an identity renders onto, and where code goes. The
+ * Connect tab edits it; the Code tab redraws when it moves.
+ */
+export interface ConnectionConfig {
+  headless: {
+    manifest: string
+    profile: Record<string, string>
+    bindings: Record<string, ComponentNames>
+  } | null
+  codegen: {
+    out: string
+    targets: string[] | null
+    react: Record<string, ReactMapping>
+  } | null
+}
+export interface ComponentNames {
+  tag?: string
+  parts?: Record<string, string>
+  attributes?: Record<string, string>
+  events?: Record<string, string>
+}
+export interface ReactMapping {
+  from?: string
+  export?: string
+  props?: Record<string, string>
+  events?: Record<string, string>
+  children?: string
+  omit?: string[]
+}
+export type ConfigChange =
+  | { key: 'profile'; value: Record<string, string> | null }
+  | { key: 'binding'; component: string; value: ComponentNames | null }
+  | { key: 'react'; component: string; value: ReactMapping | null }
+  | { key: 'codegen'; value: { out: string; targets?: string[] } }
+
+export const connection = shallowRef<ConnectionConfig>({ headless: null, codegen: null })
+/** Moves on every saved change, so what renders code from it refreshes. */
+export const connectionGeneration = shallowRef(0)
+export const connectionError = shallowRef('')
+
+export async function loadConnection(): Promise<void> {
+  try {
+    const response = await fetch('/__uidx/config', { signal: AbortSignal.timeout(15_000) })
+    unavailable(response)
+    const data = (await response.json()) as ConnectionConfig & { error?: string }
+    if (!response.ok) throw new Error(data.error ?? 'Could not read the code connection.')
+    connection.value = { headless: data.headless, codegen: data.codegen }
+  } catch (error) {
+    connectionError.value = error instanceof Error ? error.message : String(error)
+  }
+}
+
+/** Writes one change to `uidx.json`; on success the library and codegen state follow. */
+export async function saveConnection(change: ConfigChange): Promise<boolean> {
+  connectionError.value = ''
+  try {
+    const response = await fetch('/__uidx/config', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(change),
+      signal: AbortSignal.timeout(15_000),
+    })
+    unavailable(response)
+    const data = (await response.json()) as ConnectionConfig & { error?: string }
+    if (!response.ok) throw new Error(data.error ?? 'Could not save the change.')
+    connection.value = { headless: data.headless, codegen: data.codegen }
+    connectionGeneration.value += 1
+    await refreshHeadless()
+    return true
+  } catch (error) {
+    connectionError.value = error instanceof Error ? error.message : String(error)
+    return false
   }
 }

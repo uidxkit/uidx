@@ -14,6 +14,8 @@ import {
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import CodeSection from './CodeSection.vue'
+import ConnectSection from './ConnectSection.vue'
+import { connection, connectionError, connectionGeneration, saveConnection } from './headless'
 import {
   contractIssues,
   contractView,
@@ -270,7 +272,7 @@ const emit = defineEmits<{
  * Design / Dev split is the precedent authors already know. Pane-local: the
  * choice is about how to look, not what is open.
  */
-const face = ref<'design' | 'contract' | 'code'>('design')
+const face = ref<'design' | 'contract' | 'connect' | 'code'>('design')
 
 /** Unbound or stray parts on the selected component, for the tab's badge. */
 const contractIssueCount = computed(() =>
@@ -301,6 +303,15 @@ const codeComponent = computed<string | null>(() => {
   const entity = node.address.split('#')[0]!
   const top = props.doc.tree.children.find((child) => child.address === entity)
   return top?.element === 'Component' ? top.name : null
+})
+
+/** The component the Connect tab edits: one declared in this file, holding the selection. */
+const connectComponent = computed<UidxNode | null>(() => {
+  const node = active.value
+  if (!node || !props.doc) return null
+  const entity = node.address.split('#')[0]!
+  const top = props.doc.tree.children.find((child) => child.address === entity)
+  return top?.element === 'Component' ? top : null
 })
 
 function definitionFor(node: UidxNode): UidxNode | undefined {
@@ -1528,6 +1539,9 @@ function onDetach(prop: string, value: JsonValue): void {
               >{{ contractIssueCount }}</span
             >
           </button>
+          <button type="button" :aria-pressed="face === 'connect'" @click="face = 'connect'">
+            Connect
+          </button>
           <button type="button" :aria-pressed="face === 'code'" @click="face = 'code'">Code</button>
         </nav>
         <span v-if="writable === false" class="read-only-badge">Read only</span>
@@ -1560,10 +1574,24 @@ function onDetach(prop: string, value: JsonValue): void {
       </div>
     </header>
 
+    <ConnectSection
+      v-if="face === 'connect'"
+      :doc="doc"
+      :component="connectComponent"
+      :library="headless ?? null"
+      :candidates="headlessCandidates"
+      :config="connection"
+      :error="connectionError || headlessError"
+      :writable="writable !== false"
+      @patches="emit('patches', $event)"
+      @save="saveConnection"
+      @choose-library="emit('chooseLibrary', $event)"
+      @open-contract="face = 'contract'"
+    />
     <CodeSection
-      v-if="face === 'code'"
+      v-else-if="face === 'code'"
       :component="codeComponent"
-      :stamp="doc?.sourceHash ?? ''"
+      :stamp="`${doc?.sourceHash ?? ''}:${connectionGeneration}`"
       :codegen="codegen"
       :writable="writable !== false"
       @generate-code="emit('generateCode')"
