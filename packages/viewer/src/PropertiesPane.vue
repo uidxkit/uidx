@@ -1560,8 +1560,12 @@ function onDetach(prop: string, value: JsonValue): void {
           :codegen="codegen"
           :models="models"
           :components="components"
+          :pages="pages"
+          :file="file"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
+          @remap="emit('remap', $event)"
+          @refused="emit('refused', $event)"
           @select="emit('select', $event)"
           @open-model="emit('openModel', $event)"
           @choose-library="emit('chooseLibrary', $event)"
@@ -1751,8 +1755,22 @@ function onDetach(prop: string, value: JsonValue): void {
           @refused="emit('refused', $event)"
         />
 
+        <!--
+          The legacy props={{}} declaration (story F6). A component with a
+          ## Contract declares its props there; showing both would offer two
+          places to declare one thing, each writing something different.
+        -->
+        <p
+          v-if="active.element === 'Component' && doc?.spec?.contract"
+          class="note"
+          data-field="props-in-contract"
+        >
+          Properties are declared in the
+          <button type="button" class="link-button" @click="face = 'contract'">Contract</button>
+          tab.
+        </p>
         <ComponentPropsSection
-          v-if="active.element === 'Component'"
+          v-else-if="active.element === 'Component'"
           :pages="pages"
           :file="file"
           :doc="doc"
@@ -2592,6 +2610,14 @@ h2 {
   border-radius: var(--radius-lg);
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
+}
+.link-button {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
 }
 .status-pick {
   background: none;

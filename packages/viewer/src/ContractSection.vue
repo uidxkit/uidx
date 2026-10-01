@@ -29,6 +29,7 @@ import {
 import type { ModelIndex } from '@uidx/schema'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
+import { renameContractProp } from './contract-rename'
 
 /**
  * The Contract tab: where the visual tree is bound to its code render
@@ -61,6 +62,9 @@ const props = defineProps<{
   models?: ModelIndex
   /** Component name -> definition across every page, for what an instance receives. */
   components?: ReadonlyMap<string, UidxNode>
+  /** Every page and this one's file, so a prop rename can carry the instances that set it. */
+  pages?: ReadonlyMap<string, UidxDocument>
+  file?: string
   writable: boolean
 }>()
 
@@ -74,7 +78,22 @@ const emit = defineEmits<{
   openModel: [name: string]
   /** Render the code targets into `codegen.out` on the server. */
   generateCode: []
+  /** An edit that lands in several files: a prop rename and every instance it carries. */
+  remap: [byFile: ReadonlyMap<string, UidxPatch[]>]
+  refused: [reason: string]
 }>()
+
+function renameProp(from: string, to: string): void {
+  if (!to.trim() || to.trim() === from || !props.file) return
+  const pages = props.pages ?? (props.doc ? new Map([[props.file, props.doc]]) : new Map())
+  const plan = renameContractProp(pages, props.file, from, to)
+  if ('refused' in plan) {
+    emit('refused', plan.refused)
+    return
+  }
+  open.value = `prop:${to.trim()}`
+  emit('remap', plan.byFile)
+}
 
 /** The library's tag for the selected component, when `uidx.json` binds one (ADR 0013 §3). */
 const boundTag = computed(() => {
@@ -471,6 +490,17 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           </button>
         </div>
         <div v-if="open === `prop:${prop.name}`" class="form" :data-editor="`prop:${prop.name}`">
+          <label class="field">
+            <span>Name</span>
+            <input
+              class="text"
+              :value="prop.name"
+              :disabled="!writable || !file"
+              aria-label="Prop name"
+              title="Renaming carries its bindings, style rows, examples and every instance that sets it"
+              @change="renameProp(prop.name, ($event.target as HTMLInputElement).value)"
+            />
+          </label>
           <label class="field">
             <span>Description</span>
             <input

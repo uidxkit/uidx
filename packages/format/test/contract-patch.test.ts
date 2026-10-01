@@ -33,6 +33,33 @@ const declare = (
 const remove = (kind: ContractKind, name: string) => ({ op: 'contract', kind, name }) as UidxPatch
 
 describe('the contract op', () => {
+  it('renames a declaration in place, refuses a taken name, and inverts', () => {
+    const source = page(`
+## Contract
+
+<Props>
+  <Prop name="a" type="string">A.</Prop>
+  <Prop name="b" type="string">B.</Prop>
+</Props>
+`)
+    const rename: UidxPatch = {
+      op: 'contract',
+      kind: 'prop',
+      name: 'a',
+      declaration: { attrs: { type: 'string' }, description: 'A.' },
+      rename: 'title',
+    }
+    const next = applyPatches(source, [rename]).source
+    expect(parseOrThrow(next).spec!.contract!.props.map((prop) => prop.name)).toEqual([
+      'title',
+      'b',
+    ])
+    expect(applyPatches(next, inversePatches(parseOrThrow(source), [rename])).source).toBe(source)
+    expect(() => applyPatches(source, [{ ...rename, rename: 'b' } as UidxPatch])).toThrow(
+      /already declared/,
+    )
+  })
+
   it('creates the region and the list for the first declaration, before other regions', () => {
     const source = page('\n## Behavior\n\n- a: does a thing.\n')
     const next = applyPatches(source, [

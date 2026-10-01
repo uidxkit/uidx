@@ -621,7 +621,7 @@ describe('the Contract section', () => {
     await section.find('[data-prop="on"] .name').trigger('click')
     const form = section.find('[data-editor="prop:on"]')
     await form.find('[aria-label="Default"]').setValue('false')
-    await form.find('.field input').setValue('')
+    await form.findAll('.field input')[1]!.setValue('')
     const [defaulted, cleared] = section.emitted('patches')! as UidxPatch[][][]
     expect(defaulted![0]).toEqual([
       {
@@ -893,7 +893,7 @@ describe('editing the contract from the tab (ADR 0013 §2)', () => {
     await section.find('[data-prop="checked"] .name').trigger('click')
     const form = section.find('[data-editor="prop:checked"]')
     expect(form.exists()).toBe(true)
-    await form.findAll('input.text')[0]!.setValue('Whether it is on.')
+    await form.findAll('input.text')[1]!.setValue('Whether it is on.')
     expect(section.emitted('patches')![0]).toEqual([
       [
         {
@@ -963,6 +963,16 @@ describe('generating code from the tab', () => {
 })
 
 describe('the inspector tabs', () => {
+  it('points the Design face at the Contract tab for props, instead of a second editor', async () => {
+    const pane = mount(PropertiesPane, {
+      props: { doc: parseOrThrow(CHECKBOX), selection: ['Checkbox'], writable: true },
+    })
+    const note = pane.find('[data-field="props-in-contract"]')
+    expect(note.text()).toContain('Properties are declared in the Contract tab')
+    await note.find('button').trigger('click')
+    expect(pane.find('.contract').exists()).toBe(true)
+  })
+
   it("picks a component's status rather than only showing it", async () => {
     const pane = mount(PropertiesPane, {
       props: { doc: parseOrThrow(CHECKBOX), selection: ['Checkbox'], writable: true },

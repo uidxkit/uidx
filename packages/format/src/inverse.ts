@@ -141,6 +141,16 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
       const before = declarationOf(doc, patch.kind, patch.name)
       if (!before && !patch.declaration)
         throw new PatchError(`${patch.name} is not declared; nothing to restore`)
+      if (patch.rename !== undefined && patch.rename !== patch.name && before)
+        return [
+          {
+            op: 'contract',
+            kind: patch.kind,
+            name: patch.rename,
+            declaration: before,
+            rename: patch.name,
+          },
+        ]
       return [
         {
           op: 'contract',

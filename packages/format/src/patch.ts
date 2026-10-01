@@ -808,7 +808,13 @@ function contractDeclaration(
     return { start: span.start, end: span.start }
   }
 
-  const text = printContractItem(patch.kind, patch.name, patch.declaration)
+  if (patch.rename !== undefined && patch.rename !== patch.name) {
+    if (!existing)
+      throw new PatchError(`${addressOfPatch(patch)} is not declared; nothing to rename`)
+    if (items.some((item) => item.name === patch.rename))
+      throw new PatchError(`${patch.rename} is already declared`)
+  }
+  const text = printContractItem(patch.kind, patch.rename ?? patch.name, patch.declaration)
   if (existing) {
     s.overwrite(existing.loc.start, existing.loc.end, text)
     return { start: existing.loc.start, end: existing.loc.start + text.length }

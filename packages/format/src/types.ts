@@ -421,6 +421,12 @@ export type UidxPatch =
       kind: ContractKind
       name: string
       declaration?: ContractDeclaration
+      /**
+       * Writes the declaration under this new name, in the old one's place.
+       * Only the declaration moves: what reads the old name (bindings, style
+       * rows, examples, instances) is the caller's to carry.
+       */
+      rename?: string
     }
   /**
    * One `<Model>` of `## Models`, written or removed (ADR 0015 §1). The
