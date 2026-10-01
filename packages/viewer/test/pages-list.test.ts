@@ -96,3 +96,39 @@ describe('the pages rail', () => {
     expect(list.find('[role="listbox"]').exists()).toBe(false)
   })
 })
+
+describe('renaming and deleting a page', () => {
+  const writable = () =>
+    mount(PagesList, {
+      props: {
+        entries: pageEntries(['tokens.uidx', 'home.uidx', 'studio.uidx'], DOCS),
+        open: 'home.uidx',
+        writable: true,
+        usesOutside: (file: string) => (file === 'studio.uidx' ? 2 : 0),
+      },
+    })
+
+  it('offers nothing to a read-only rail', () => {
+    expect(mountList().find('[aria-label^="Rename page"]').exists()).toBe(false)
+  })
+
+  it('renames inline, without opening the page', async () => {
+    const list = writable()
+    await list.find('[data-file="studio.uidx"] button[aria-label^="Rename page"]').trigger('click')
+    const field = list.find('[data-file="studio.uidx"] input.rename')
+    await field.setValue('Studio v2')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(list.emitted('rename')).toEqual([['studio.uidx', 'Studio v2']])
+    expect(list.emitted('open')).toBeUndefined()
+  })
+
+  it('confirms a delete, saying what it breaks', async () => {
+    const list = writable()
+    await list.find('[data-file="studio.uidx"] button[aria-label^="Delete page"]').trigger('click')
+    const confirm = list.find('.confirm')
+    expect(confirm.text()).toContain('used 2 times on other pages')
+    await confirm.find('.danger').trigger('click')
+    expect(list.emitted('delete')).toEqual([['studio.uidx']])
+    expect(list.find('.confirm').exists()).toBe(false)
+  })
+})

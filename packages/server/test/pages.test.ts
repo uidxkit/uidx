@@ -39,6 +39,34 @@ describe.each(['built', 'development'] as const)('%s page creation', (mode) => {
     })
   }
 
+  function act(body: object) {
+    return fetch(`${server!.url}/__uidx/pages`, {
+      method: 'POST',
+      headers: { origin: server!.url!, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+  }
+
+  it('renames a page, moving its file and frontmatter id, and deletes one', async () => {
+    await start()
+    expect((await post('Old name')).status).toBe(201)
+    const renamed = await act({ action: 'rename', file: 'old-name.uidx', name: 'New name' })
+    expect(renamed.status).toBe(200)
+    expect(await renamed.json()).toEqual({ file: 'new-name.uidx' })
+    const doc = parseOrThrow(await readFile(join(dir, 'new-name.uidx'), 'utf8'))
+    expect(doc.frontmatter.id).toBe('new-name')
+    expect(server!.workspace!.pages).toContain('new-name.uidx')
+    expect(server!.workspace!.pages).not.toContain('old-name.uidx')
+    expect((await act({ action: 'rename', file: 'new-name.uidx', name: 'Welcome' })).status).toBe(
+      409,
+    )
+    expect((await act({ action: 'rename', file: '../etc.uidx', name: 'x' })).status).toBe(404)
+
+    expect((await act({ action: 'delete', file: 'new-name.uidx' })).status).toBe(200)
+    expect(server!.workspace!.pages).not.toContain('new-name.uidx')
+    expect((await act({ action: 'delete', file: 'welcome.uidx' })).status).toBe(409)
+  })
+
   it('creates a component identity or a tokens file when asked for one', async () => {
     await start()
     expect((await post('Primary button', undefined, 'component')).status).toBe(201)

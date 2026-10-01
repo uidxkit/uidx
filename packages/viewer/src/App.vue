@@ -1101,6 +1101,44 @@ function onTokenDelete(): void {
   selection.value = []
 }
 
+/** Uses, in other files, of the components a page declares: what deleting it breaks. */
+function usesOutside(file: string): number {
+  const doc = pages.value.get(file)
+  if (!doc || doc.tree.element === 'Tokens') return 0
+  return doc.tree.children
+    .filter((node) => node.element === 'Component')
+    .flatMap((node) => dependents.value.ofComponent.get(node.name) ?? [])
+    .filter((dependent) => dependent.file !== file).length
+}
+
+/** Rename and delete go to the server, which owns the files; it re-announces the pages. */
+async function pageAction(body: object): Promise<string | null> {
+  try {
+    const response = await fetch('/__uidx/pages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    })
+    const answer = (await response.json()) as { file?: string; error?: string }
+    if (!response.ok || !answer.file) throw new Error(answer.error ?? 'The server refused.')
+    return answer.file
+  } catch (error) {
+    onRefused(error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
+async function onRenamePage(file: string, name: string): Promise<void> {
+  const renamed = await pageAction({ action: 'rename', file, name })
+  if (renamed && entry.value === file) openPage(renamed)
+}
+
+async function onDeletePage(file: string): Promise<void> {
+  const wasOpen = entry.value === file
+  if ((await pageAction({ action: 'delete', file })) && wasOpen) openHome()
+}
+
 const creatingTokensFile = ref(false)
 function onTokensFileCreated(file: string): void {
   creatingTokensFile.value = false
@@ -1987,7 +2025,16 @@ onUnmounted(() => socket.close())
           @face="toggleFace"
         />
         <ErrorBoundary pane="Pages">
-          <PagesList :entries="pageList" :open="entry" @open="openPage" @home="openHome" />
+          <PagesList
+            :entries="pageList"
+            :open="entry"
+            :writable="connection === 'open'"
+            :uses-outside="usesOutside"
+            @open="openPage"
+            @home="openHome"
+            @rename="onRenamePage"
+            @delete="onDeletePage"
+          />
         </ErrorBoundary>
         <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
           <LayersPane

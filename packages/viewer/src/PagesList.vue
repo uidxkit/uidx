@@ -32,9 +32,39 @@ const props = defineProps<{
   entries: readonly PageEntry[]
   /** The page the canvas is drawing. */
   open: string | null
+  /** Whether rename and delete are offered (connected, and the server can write). */
+  writable?: boolean
+  /** How many uses in other files a page's components have, for the delete warning. */
+  usesOutside?: (file: string) => number
 }>()
 
-const emit = defineEmits<{ open: [file: string]; home: [] }>()
+const emit = defineEmits<{
+  open: [file: string]
+  home: []
+  rename: [file: string, name: string]
+  delete: [file: string]
+}>()
+
+/** The row being renamed or confirmed for deletion; one at a time. */
+const renaming = ref<string | null>(null)
+const deleting = ref<string | null>(null)
+
+function startRename(page: PageEntry): void {
+  deleting.value = null
+  renaming.value = page.file
+  void Promise.resolve().then(() => {
+    const field = rows.value.get(page.file)?.querySelector<HTMLInputElement>('.rename')
+    field?.focus()
+    field?.select()
+  })
+}
+
+function commitRename(page: PageEntry, event: Event): void {
+  if (renaming.value !== page.file) return
+  renaming.value = null
+  const name = (event.target as HTMLInputElement).value.trim()
+  if (name && name !== page.label) emit('rename', page.file, name)
+}
 
 /**
  * One page is not a choice. Hiding the rail entirely rather than showing a
@@ -148,7 +178,58 @@ function onKeyDown(event: KeyboardEvent, page: PageEntry): void {
             stroke-width="1"
           />
         </svg>
-        <span class="label">{{ page.label }}</span>
+        <input
+          v-if="renaming === page.file"
+          class="rename"
+          :value="page.label"
+          :aria-label="`Rename page ${page.label}`"
+          @click.stop
+          @keydown.stop
+          @keydown.enter="commitRename(page, $event)"
+          @keydown.escape="renaming = null"
+          @blur="commitRename(page, $event)"
+        />
+        <span v-else class="label">{{ page.label }}</span>
+        <span v-if="writable && renaming !== page.file" class="actions">
+          <button
+            type="button"
+            class="action"
+            :aria-label="`Rename page ${page.label}`"
+            title="Rename"
+            @click.stop="startRename(page)"
+          >
+            ✎
+          </button>
+          <button
+            type="button"
+            class="action"
+            :aria-label="`Delete page ${page.label}`"
+            title="Delete"
+            @click.stop="deleting = deleting === page.file ? null : page.file"
+          >
+            ×
+          </button>
+        </span>
+      </li>
+      <li v-if="deleting" class="confirm" role="alert">
+        <span>
+          Delete {{ shown.find((page) => page.file === deleting)?.label }}?
+          <template v-if="(usesOutside?.(deleting) ?? 0) > 0">
+            Its components are used {{ usesOutside!(deleting) }}
+            {{ usesOutside!(deleting) === 1 ? 'time' : 'times' }} on other pages, which will break.
+          </template>
+          The file goes; undo cannot bring it back, version control can.
+        </span>
+        <span class="confirm-actions">
+          <button
+            type="button"
+            class="danger"
+            @click="(emit('delete', deleting), (deleting = null))"
+          >
+            Delete
+          </button>
+          <button type="button" @click="deleting = null">Cancel</button>
+        </span>
       </li>
     </ul>
   </div>
@@ -228,5 +309,63 @@ function onKeyDown(event: KeyboardEvent, page: PageEntry): void {
 }
 .count {
   font-variant-numeric: tabular-nums;
+}
+.actions {
+  display: none;
+  margin-left: auto;
+  gap: 2px;
+}
+.row:hover .actions,
+.row:focus-within .actions {
+  display: inline-flex;
+}
+.action {
+  padding: 0 4px;
+  color: var(--text-faint);
+  background: none;
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+.action:hover {
+  color: var(--text);
+}
+.rename {
+  flex: 1;
+  min-width: 0;
+  font: inherit;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+.confirm {
+  display: grid;
+  gap: 6px;
+  margin: 4px var(--pad);
+  padding: 8px;
+  font-size: 11px;
+  color: var(--text);
+  background: var(--bg);
+  border: 1px solid var(--danger);
+  border-radius: 5px;
+}
+.confirm-actions {
+  display: flex;
+  gap: 6px;
+}
+.confirm-actions button {
+  padding: 2px 8px;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.confirm-actions .danger {
+  border-color: var(--danger);
+  color: var(--danger);
 }
 </style>
