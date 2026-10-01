@@ -303,6 +303,79 @@ function toggleState(name: string, on: boolean): void {
   send(rows.map((row) => ({ op: 'style', keys: { ...row.keys }, target: '', prop: '' })))
 }
 
+/**
+ * The contract's single elements (ADR 0013 §2): how assistive technology
+ * meets the component, whether it takes part in a form, and what it is built
+ * from. Each field writes its whole element; emptying every field removes it.
+ */
+const ROLES = [
+  'button',
+  'checkbox',
+  'combobox',
+  'dialog',
+  'img',
+  'link',
+  'listbox',
+  'menu',
+  'menuitem',
+  'option',
+  'progressbar',
+  'radio',
+  'radiogroup',
+  'region',
+  'slider',
+  'status',
+  'switch',
+  'tab',
+  'tablist',
+  'tabpanel',
+  'textbox',
+  'tooltip',
+]
+const accessibility = computed(() => props.doc?.spec?.contract?.accessibility ?? {})
+const form = computed(() => props.doc?.spec?.contract?.form)
+const composes = computed(() => props.doc?.spec?.contract?.composes ?? [])
+const textOf = (value: JsonValue | undefined): string => (typeof value === 'string' ? value : '')
+
+function setAccessibility(key: string, text: string): void {
+  const next: Record<string, JsonValue> = { ...accessibility.value }
+  if (text.trim()) next[key] = text.trim()
+  else delete next[key]
+  send([
+    Object.keys(next).length
+      ? { op: 'contract-element', element: 'Accessibility', attrs: next }
+      : { op: 'contract-element', element: 'Accessibility' },
+  ])
+}
+
+function setForm(change: { participates?: boolean; submits?: string }): void {
+  const participates = change.participates ?? form.value?.participates ?? false
+  const submits = (change.submits ?? form.value?.submits ?? '').trim()
+  if (!participates && !submits) {
+    if (form.value) send([{ op: 'contract-element', element: 'Form' }])
+    return
+  }
+  send([
+    {
+      op: 'contract-element',
+      element: 'Form',
+      attrs: { participates, ...(submits ? { submits } : {}) },
+    },
+  ])
+}
+
+function setComposes(text: string): void {
+  const names = text
+    .split(',')
+    .map((name) => name.trim())
+    .filter(Boolean)
+  if (!names.length) {
+    if (composes.value.length) send([{ op: 'contract-element', element: 'Composes' }])
+    return
+  }
+  send([{ op: 'contract-element', element: 'Composes', attrs: { with: names.join(', ') } }])
+}
+
 function add(): void {
   const name = addName.value.trim()
   if (!name) return
@@ -872,6 +945,85 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           <span class="reset-spacer" />
         </div>
       </template>
+
+      <details
+        class="code-binding"
+        data-field="accessibility"
+        :open="Object.keys(accessibility).length > 0 || !!form || composes.length > 0"
+      >
+        <summary>Accessibility and forms</summary>
+        <label class="field">
+          <span>Role</span>
+          <input
+            class="text"
+            list="contract-roles"
+            :value="textOf(accessibility.role)"
+            :disabled="!writable"
+            aria-label="Role"
+            placeholder="button"
+            title="What assistive technology announces it as"
+            @change="setAccessibility('role', ($event.target as HTMLInputElement).value)"
+          />
+          <datalist id="contract-roles">
+            <option v-for="role in ROLES" :key="role" :value="role" />
+          </datalist>
+        </label>
+        <label class="field">
+          <span>Keyboard</span>
+          <input
+            class="text"
+            :value="textOf(accessibility.keyboard)"
+            :disabled="!writable"
+            aria-label="Keyboard"
+            placeholder="Enter and Space activate"
+            @change="setAccessibility('keyboard', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <label class="field">
+          <span>Accessible name</span>
+          <input
+            class="text"
+            :value="textOf(accessibility.label)"
+            :disabled="!writable"
+            aria-label="Accessible name"
+            placeholder="from {label}"
+            @change="setAccessibility('label', ($event.target as HTMLInputElement).value)"
+          />
+        </label>
+        <label class="check">
+          <input
+            type="checkbox"
+            :checked="form?.participates ?? false"
+            :disabled="!writable"
+            aria-label="Takes part in forms"
+            @change="setForm({ participates: ($event.target as HTMLInputElement).checked })"
+          />
+          Takes part in forms
+        </label>
+        <label v-if="form?.participates" class="field">
+          <span>Submits</span>
+          <input
+            class="text"
+            :value="form?.submits ?? ''"
+            :disabled="!writable"
+            aria-label="Submits"
+            placeholder="value while checked, nothing otherwise"
+            @change="setForm({ submits: ($event.target as HTMLInputElement).value })"
+          />
+        </label>
+        <label class="field">
+          <span>Composes</span>
+          <input
+            class="text"
+            :value="composes.join(', ')"
+            :disabled="!writable"
+            aria-label="Composes"
+            placeholder="Field, Icon"
+            title="Components this one is built from, separated by commas"
+            @change="setComposes(($event.target as HTMLInputElement).value)"
+          />
+        </label>
+      </details>
 
       <!--
         How the component reaches code. A designer never needs this; a
@@ -1630,6 +1782,16 @@ code {
 .field > span {
   color: var(--text-dim);
   font-size: 10px;
+}
+[data-field='accessibility'] > .field,
+[data-field='accessibility'] > .check {
+  margin: 6px 0;
+}
+[data-field='accessibility'] > .check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
 }
 .pair {
   display: grid;

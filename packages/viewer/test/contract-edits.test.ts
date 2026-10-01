@@ -639,6 +639,43 @@ describe('the Contract section', () => {
     ).toBe('Describe the prop "on".')
   })
 
+  it('writes accessibility, form and composition as their contract elements', async () => {
+    const source = page(
+      'chip',
+      `  <Component name="Chip" status="draft" width={10} height={10} />`,
+      `
+## Contract
+
+<Props>
+  <Prop name="on" type="boolean" default={false}>On.</Prop>
+</Props>
+<Accessibility role="switch" />
+`,
+    )
+    const section = mountFor(source, 'Chip')
+    const details = section.find('details[data-field="accessibility"]')
+    expect(details.attributes('open')).toBeDefined()
+    expect((details.find('[aria-label="Role"]').element as HTMLInputElement).value).toBe('switch')
+    await details.find('[aria-label="Keyboard"]').setValue('Space toggles')
+    await details.find('[aria-label="Role"]').setValue('')
+    await details.find('[aria-label="Takes part in forms"]').setValue(true)
+    await details.find('[aria-label="Composes"]').setValue('Field, , Icon')
+    expect(section.emitted('patches')).toEqual([
+      [
+        [
+          {
+            op: 'contract-element',
+            element: 'Accessibility',
+            attrs: { role: 'switch', keyboard: 'Space toggles' },
+          },
+        ],
+      ],
+      [[{ op: 'contract-element', element: 'Accessibility' }]],
+      [[{ op: 'contract-element', element: 'Form', attrs: { participates: true } }]],
+      [[{ op: 'contract-element', element: 'Composes', attrs: { with: 'Field, Icon' } }]],
+    ])
+  })
+
   it('lists parts with their layer, binds an unbound one, and selects a bound one', async () => {
     const section = mountFor(CHECKBOX, 'Checkbox')
     expect(section.text()).toContain('1 of 2 bound')

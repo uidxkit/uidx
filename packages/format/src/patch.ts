@@ -3,7 +3,7 @@ import MagicString from 'magic-string'
 import { autoName, emitTree, INDENT_UNIT } from './emit.js'
 import { isWithin, parse, parseOrThrow, resolve, resolveParent } from './parse.js'
 import { serializeValue } from './values.js'
-import { writeIntent, writeRegion } from './region-patch.js'
+import { writeContractElement, writeIntent, writeRegion } from './region-patch.js'
 import {
   COLLECTION_CHILD_ELEMENTS,
   COMPONENT_CHILD_ELEMENTS,
@@ -134,6 +134,7 @@ function addressOfPatch(patch: UidxPatch): string {
   if (patch.op === 'field') return `<Field name="${patch.name}"> of ${patch.model}`
   if (patch.op === 'region') return `## ${patch.name}`
   if (patch.op === 'intent') return 'the intent'
+  if (patch.op === 'contract-element') return `<${patch.element}>`
   return patch.op === 'insert-node' ? patch.parent : patch.address
 }
 
@@ -168,6 +169,8 @@ function applyOne(doc: UidxDocument, s: MagicString, patch: UidxPatch, eol: '\r\
         return writeRegion(doc, s, patch, eol)
       case 'intent':
         return writeIntent(doc, s, patch, eol)
+      case 'contract-element':
+        return writeContractElement(doc, s, patch, eol)
       default:
         // Unreachable through the type: the union above is exhaustive, so this
         // only fires for an op that arrived from somewhere newer than this

@@ -159,7 +159,7 @@ describe('the Docs face', () => {
     await example.find('[aria-label="Example name"]').setValue('danger')
     await example.find('select[aria-label="Value"]').setValue('danger')
     await pane.find('[data-editor="examples"] .primary').trigger('click')
-    const [[file, patches]] = pane.emitted('patches') as [string, UidxPatch[]][]
+    const [file, patches] = (pane.emitted('patches') as [string, UidxPatch[]][])[0]!
     expect(file).toBe('chip.uidx')
     const next = parseOrThrow(applyPatches(SOURCE, patches).source)
     expect(examplesOf(next)).toEqual([{ name: 'danger', sets: [{ at: 'tone', value: 'danger' }] }])

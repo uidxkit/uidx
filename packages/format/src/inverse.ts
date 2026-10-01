@@ -1,6 +1,6 @@
 import { addressOf, resolve, resolveParent } from './parse.js'
 import { fieldDeclarationOf, PatchError } from './patch.js'
-import { regionBody } from './region-patch.js'
+import { contractElementAttrs, regionBody } from './region-patch.js'
 import { predictDocument } from './predict.js'
 import type {
   ContractDeclaration,
@@ -181,6 +181,17 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
     }
     case 'intent':
       return [{ op: 'intent', text: doc.intent.raw.trim() }]
+    case 'contract-element': {
+      const before = contractElementAttrs(doc, patch.element)
+      if (!before && !patch.attrs) throw new PatchError(`there is no <${patch.element}> to restore`)
+      return [
+        {
+          op: 'contract-element',
+          element: patch.element,
+          ...(before ? { attrs: structuredClone(before) } : {}),
+        },
+      ]
+    }
     case 'field': {
       const model = doc.spec?.models?.find((entry) => entry.name === patch.model)
       const before = model?.fields.find((field) => field.name === patch.name)

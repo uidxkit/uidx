@@ -113,3 +113,56 @@ describe('the intent op', () => {
     expect(apply(VISUAL, { op: 'intent', text: '' })).toContain('---\n\n## Visual Contract')
   })
 })
+
+describe('the contract-element op', () => {
+  it('writes, replaces and removes Accessibility, Form and Composes, inverting each', () => {
+    const source = VISUAL + CONTRACT + EXAMPLES
+    const steps: UidxPatch[] = [
+      {
+        op: 'contract-element',
+        element: 'Accessibility',
+        attrs: { role: 'button', keyboard: 'Enter and Space activate' },
+      },
+      { op: 'contract-element', element: 'Form', attrs: { participates: true, submits: 'value' } },
+      { op: 'contract-element', element: 'Composes', attrs: { with: 'Field, Icon' } },
+    ]
+    let current = source
+    for (const step of steps) {
+      const before = current
+      current = apply(current, step)
+      expect(applyPatches(current, inversePatches(parseOrThrow(before), [step])).source).toBe(
+        before,
+      )
+    }
+    expect(current).toContain(
+      '</Props>\n<Form participates submits="value" />\n<Accessibility role="button" keyboard="Enter and Space activate" />\n<Composes with="Field, Icon" />\n\n## Examples',
+    )
+    const contract = parseOrThrow(current).spec!.contract!
+    expect(contract.accessibility).toEqual({ role: 'button', keyboard: 'Enter and Space activate' })
+    expect(contract.form).toEqual({ participates: true, submits: 'value' })
+    expect(contract.composes).toEqual(['Field', 'Icon'])
+
+    const relabelled = apply(current, {
+      op: 'contract-element',
+      element: 'Accessibility',
+      attrs: { role: 'link' },
+    })
+    expect(parseOrThrow(relabelled).spec!.contract!.accessibility).toEqual({ role: 'link' })
+    const removed = apply(current, { op: 'contract-element', element: 'Form' })
+    expect(parseOrThrow(removed).spec!.contract!.form).toBeUndefined()
+    const back = inversePatches(parseOrThrow(current), [
+      { op: 'contract-element', element: 'Form' },
+    ])
+    expect(applyPatches(removed, back).source).toBe(current)
+  })
+
+  it('creates the contract region when the file has none', () => {
+    const next = apply(VISUAL + EXAMPLES, {
+      op: 'contract-element',
+      element: 'Accessibility',
+      attrs: { role: 'status' },
+    })
+    expect(next).toBe(`${VISUAL}\n## Contract\n\n<Accessibility role="status" />\n${EXAMPLES}`)
+    expect(() => apply(VISUAL, { op: 'contract-element', element: 'Form' })).toThrow(/no <Form>/)
+  })
+})

@@ -101,6 +101,7 @@ export function rebasePatches(
       case 'field':
       case 'region':
       case 'intent':
+      case 'contract-element':
         rebased.push(patch)
         break
       case 'retag': {

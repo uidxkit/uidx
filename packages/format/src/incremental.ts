@@ -261,7 +261,11 @@ function relowerBatch(doc: UidxDocument, patches: readonly UidxPatch[]): Increme
   // and the derived variants it changes are rebuilt from the spec — so the
   // whole document is re-read rather than one node re-lowered.
   if (
-    patches.some((p) => ['style', 'contract', 'model', 'field', 'region', 'intent'].includes(p.op))
+    patches.some((p) =>
+      ['style', 'contract', 'model', 'field', 'region', 'intent', 'contract-element'].includes(
+        p.op,
+      ),
+    )
   ) {
     const { doc: full, diagnostics } = parse(spliced.source)
     if (!full) {

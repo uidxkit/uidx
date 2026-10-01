@@ -443,6 +443,16 @@ export type UidxPatch =
    * Contract` that says what the file is for and when to use it.
    */
   | { op: 'intent'; text: string }
+  /**
+   * Writes, replaces or removes one of `## Contract`'s single elements:
+   * `<Accessibility>` (role, label, keyboard…), `<Form>` (`participates`,
+   * `submits`) or `<Composes with="A, B">`. No `attrs` removes it.
+   */
+  | {
+      op: 'contract-element'
+      element: 'Accessibility' | 'Form' | 'Composes'
+      attrs?: Record<string, JsonValue>
+    }
   // structural ops
   | { op: 'insert-node'; parent: string; index: number; node: UidxNodeSpec }
   | { op: 'remove-node'; address: string }

@@ -87,6 +87,7 @@ function addressOf(patch: UidxPatch): string | null {
     case 'field':
     case 'region':
     case 'intent':
+    case 'contract-element':
       return null
     default:
       return patch.address
