@@ -134,11 +134,13 @@ describe('properties pane', () => {
    * they appear at all. The outline that used to carry them is gone, so
    * dropping them here puts them in the file and nowhere in the app.
    */
-  it('shows a component status and version as chips', () => {
-    const chips = pane(['Card']).findAll('.node-head .meta')
-    expect(chips.map((c) => c.text())).toEqual(['stable', '2.1.0'])
-    expect(chips[0]!.attributes('data-meta')).toBe('status')
-    expect(chips[0]!.attributes('data-value')).toBe('stable')
+  it('shows a component version as a chip and its status as a picker', () => {
+    const head = pane(['Card']).find('.node-head')
+    expect(head.findAll('span.meta').map((c) => c.text())).toEqual(['2.1.0'])
+    const status = head.find('select.meta')
+    expect(status.attributes('data-meta')).toBe('status')
+    expect(status.attributes('data-value')).toBe('stable')
+    expect((status.element as HTMLSelectElement).value).toBe('stable')
   })
 
   it('shows no chips on a node that carries no metadata', () => {

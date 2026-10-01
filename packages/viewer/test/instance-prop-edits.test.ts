@@ -97,6 +97,31 @@ describe('the rows an instance shows', () => {
   })
 })
 
+describe('a contract prop with a domain', () => {
+  const BADGE = resolve(
+    parseOrThrow(
+      `${page('badge', `  <Component name="Badge" status="draft" width={10} height={10} />`)}
+## Contract
+
+<Props>
+  <Prop name="tone" type="'info' | 'danger'" default="info" visual>Tone.</Prop>
+</Props>
+`,
+    ).tree,
+    'Badge',
+  )!
+  const use = page('home', `  <Instance name="save" component="Badge" />`)
+
+  it('is offered as a picker of its words, and refuses any other', () => {
+    const [tone] = instancePropRows(instanceIn(use), BADGE)
+    expect(tone).toMatchObject({ name: 'tone', domain: ['info', 'danger'], resolved: 'info' })
+    const doc = parseOrThrow(use)
+    expect(setInstanceProp(doc, 'save', BADGE, 'tone', 'loud')).toBeNull()
+    const out = apply(use, setInstanceProp(doc, 'save', BADGE, 'tone', 'danger'))!
+    expect(resolve(parseOrThrow(out).tree, 'save')!.attrs.props!.value).toEqual({ tone: 'danger' })
+  })
+})
+
 describe('assigning one', () => {
   it('adds the attribute when the instance sets nothing yet', () => {
     const source = uses()

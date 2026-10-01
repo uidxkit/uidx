@@ -655,6 +655,8 @@ const meta = computed<{ name: string; value: string }[]>(() => {
   const node = active.value
   if (!node) return []
   const chips = [...METADATA_ATTRS].flatMap((name) => {
+    // A component's status is a picker of its own, below.
+    if (name === 'status' && statusEditable.value) return []
     const value = node.attrs[name]?.value
     return typeof value === 'string' ? [{ name, value }] : []
   })
@@ -663,6 +665,29 @@ const meta = computed<{ name: string; value: string }[]>(() => {
     chips.unshift({ name: 'state', value: describeDerived(derived.value) })
   return chips
 })
+
+/**
+ * A component's maturity, picked rather than typed: draft while it is being
+ * worked out, stable once others may rely on it, deprecated on its way out.
+ * Codegen, `uidx diff` and the review site all read it.
+ */
+const STATUSES = ['draft', 'stable', 'deprecated'] as const
+const statusEditable = computed(
+  () => active.value?.element === 'Component' && !derived.value && props.writable !== false,
+)
+const status = computed(() => {
+  const value = active.value?.attrs.status?.value
+  return typeof value === 'string' ? value : ''
+})
+function setStatus(value: string): void {
+  const node = active.value
+  if (!node || value === status.value) return
+  emit('patches', [
+    value === ''
+      ? { op: 'remove', address: node.address, prop: 'status' }
+      : { op: status.value ? 'set' : 'add', address: node.address, prop: 'status', value },
+  ])
+}
 
 /** What a bound row displays: the token's value, since the literal is elsewhere. */
 function resolved(field: EditableProp): number | null {
@@ -1502,6 +1527,19 @@ function onDetach(prop: string, value: JsonValue): void {
           :title="chip.name"
           >{{ chip.value }}</span
         >
+        <select
+          v-if="statusEditable"
+          class="meta status-pick"
+          data-meta="status"
+          :data-value="status"
+          :value="status"
+          aria-label="Component status"
+          title="Draft while it is worked out; stable once others may rely on it; deprecated on its way out"
+          @change="setStatus(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="">no status</option>
+          <option v-for="option in STATUSES" :key="option" :value="option">{{ option }}</option>
+        </select>
       </div>
     </header>
 
@@ -2554,6 +2592,13 @@ h2 {
   border-radius: var(--radius-lg);
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
+}
+.status-pick {
+  background: none;
+  font: inherit;
+  font-size: var(--ui-size-sm);
+  cursor: pointer;
+  color-scheme: dark;
 }
 .meta[data-meta='status'][data-value='stable'] {
   border-color: var(--ok);

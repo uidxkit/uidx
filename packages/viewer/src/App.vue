@@ -34,6 +34,7 @@ import {
   diffToPatches,
   inversePatches,
   predictDocument,
+  resolve,
 } from '@uidx/format'
 import { applyDelta } from './apply-delta'
 import type { Diagnostic, JsonValue, UidxDocument, UidxPatch, VariableType } from '@uidx/format'
@@ -90,6 +91,7 @@ import { tokenAliasCandidates } from './token-alias-candidates'
 import { addCollectionPatch, addTokenPatch, editCellPatch } from './token-edits'
 import HomePane from './HomePane.vue'
 import NewPageDialog from './NewPageDialog.vue'
+import { duplicateLayer, mainComponentOf } from './layer-actions'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
 import { createUidxSocket, type ConnectionState } from './socket'
@@ -444,6 +446,7 @@ function renderThumb(card: PageCard): Promise<string | null> {
 
 /** The canvas, for applying an edit optimistically before the file answers. */
 const canvasPane = ref<InstanceType<typeof CanvasPane> | null>(null)
+const layersPane = ref<InstanceType<typeof LayersPane> | null>(null)
 const tokensPane = ref<InstanceType<typeof TokensPane> | null>(null)
 const pendingCollections = new Map<string, { file: string; name: string }>()
 /**
@@ -493,7 +496,58 @@ function saveSettled(): void {
  * shortcuts beside them.
  */
 const menu = ref<{ x: number; y: number } | null>(null)
+/** The one selected layer a menu verb acts on, when it is a real node in the file. */
+const soleSelection = computed(() =>
+  selection.value.length === 1 && vertexEditing.value === null ? selection.value[0]! : null,
+)
+const duplicate = computed(() => {
+  const address = soleSelection.value
+  return address !== null && sceneDoc.value
+    ? duplicateLayer(
+        sceneDoc.value,
+        address,
+        takenNames.value,
+        canvasPane.value?.exportBounds(address),
+      )
+    : null
+})
+function duplicateSelection(): void {
+  const plan = duplicate.value
+  if (!plan) return
+  commitPatches(plan.patches)
+  selection.value = [plan.address]
+}
+const mainComponent = computed(() => {
+  const address = soleSelection.value
+  const node = address !== null && sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  return mainComponentOf(pages.value, node)
+})
+async function goToMainComponent(): Promise<void> {
+  const target = mainComponent.value
+  if (!target) return
+  if (target.file !== entry.value) openPage(target.file)
+  await nextTick()
+  selection.value = [target.address]
+}
+
 const menuItems = (): MenuItem[] => [
+  {
+    label: 'Duplicate',
+    shortcut: '⌘D',
+    disabled: duplicate.value === null,
+    run: duplicateSelection,
+  },
+  {
+    label: 'Rename',
+    disabled: soleSelection.value === null || soleSelection.value === '',
+    run: () => layersPane.value?.renameAddress(soleSelection.value!),
+  },
+  {
+    label: 'Go to main component',
+    disabled: mainComponent.value === null,
+    run: () => void goToMainComponent(),
+  },
+  { kind: 'separator' },
   {
     label: 'Make component',
     shortcut: '⌘⌥K',
@@ -1766,6 +1820,13 @@ function onKeyDown(event: KeyboardEvent): void {
   // a modifier on it. It guards itself: `componentSource` is null when the
   // selection cannot become a component, and opening the dialog on null is a
   // no-op, so the key never does something the button would have refused.
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.code === 'KeyD') {
+    if (isTypingTarget(event)) return
+    // Always taken, so the browser's bookmark dialog never opens over the canvas.
+    event.preventDefault()
+    duplicateSelection()
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyK') {
     if (isTypingTarget(event)) return
     event.preventDefault()
@@ -1930,6 +1991,7 @@ onUnmounted(() => socket.close())
         </ErrorBoundary>
         <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
           <LayersPane
+            ref="layersPane"
             :doc="sceneDoc"
             :selection="railSelection"
             :components="components"

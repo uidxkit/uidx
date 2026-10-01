@@ -289,6 +289,14 @@ const editing = ref<string | null>(null)
 const draft = ref('')
 const invalid = ref<string | null>(null)
 
+/** Starts renaming a layer by address — the context menu's Rename. The
+ * selection already holds it, so its row is open and in view. */
+function renameAddress(address: string): void {
+  const row = all.value.find((candidate) => candidate.address === address)
+  if (row) startRename(row)
+}
+defineExpose({ renameAddress })
+
 function startRename(row: LayerRow): void {
   // The root <Page>'s name is the frontmatter `id`, not a `name` attribute.
   if (row.address === '') return

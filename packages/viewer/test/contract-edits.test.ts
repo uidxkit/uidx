@@ -926,6 +926,22 @@ describe('generating code from the tab', () => {
 })
 
 describe('the inspector tabs', () => {
+  it("picks a component's status rather than only showing it", async () => {
+    const pane = mount(PropertiesPane, {
+      props: { doc: parseOrThrow(CHECKBOX), selection: ['Checkbox'], writable: true },
+    })
+    const pick = pane.find('select[aria-label="Component status"]')
+    expect((pick.element as HTMLSelectElement).value).toBe('stable')
+    await pick.setValue('deprecated')
+    expect(pane.emitted('patches')).toEqual([
+      [[{ op: 'set', address: 'Checkbox', prop: 'status', value: 'deprecated' }]],
+    ])
+    await pick.setValue('')
+    expect(pane.emitted('patches')![1]).toEqual([
+      [{ op: 'remove', address: 'Checkbox', prop: 'status' }],
+    ])
+  })
+
   it('switches between Design and Contract, and counts parts to bind on the tab', async () => {
     const doc = parseOrThrow(CHECKBOX)
     const pane = mount(PropertiesPane, {
