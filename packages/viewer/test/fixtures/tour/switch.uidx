@@ -1,0 +1,36 @@
+---
+id: "switch"
+---
+
+Describe what Switch is for, and when to reach for something else.
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="FIXED" counterAxisSizingMode="FIXED"
+    primaryAxisAlignItems="MIN" counterAxisAlignItems="CENTER"
+    paddingLeft={3} paddingRight={3} paddingTop={3} paddingBottom={3} cornerRadius={12}
+    fills={[{ type: 'SOLID', color: { r: 0.933, g: 0.941, b: 0.957, a: 1 } }]}
+    width={44}
+    height={24}>
+    <Ellipse
+      name="ellipse-1"
+      fills={[{ type: 'SOLID', color: { r: 0.85, g: 0.85, b: 0.85, a: 1 } }]}
+      width={18}
+      height={18}
+    />
+  
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" root:primaryAxisAlignItems="MAX" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Switch">The words it shows.</Prop>
+  <Prop name="checked" type="boolean" default={false} visual>Describe the prop "checked".</Prop>
+</Props>

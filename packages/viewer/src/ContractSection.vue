@@ -1019,7 +1019,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         Turn a state on to draw it beside the others; then select it on the canvas and change it.
         Boolean properties marked visual are states too.
       </p>
-      <div class="state-toggles">
+      <div class="state-toggles" data-tour="states">
         <label
           v-for="state in builtInStates"
           :key="state.name"

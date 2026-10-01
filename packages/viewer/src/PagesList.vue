@@ -130,7 +130,7 @@ function onKeyDown(event: KeyboardEvent, page: PageEntry): void {
       It never marks itself current, because the rail is not on screen when the
       dashboard is — the dashboard takes the whole width.
     -->
-    <button type="button" class="row overview" @click="emit('home')">
+    <button type="button" class="row overview" data-tour="overview" @click="emit('home')">
       <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
         <path
           d="M1.5 1.5h4v4h-4zM6.5 1.5h4v4h-4zM1.5 6.5h4v4h-4zM6.5 6.5h4v4h-4z"

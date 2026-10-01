@@ -148,6 +148,12 @@ function readCell(field: FieldSpec, text: string): JsonValue {
   return parseSample(text) ?? null
 }
 
+/** A new field, staying on Fields so it can be named — the first one would otherwise flip the card to Items. */
+function addField(card: ModelCard): void {
+  tabs.value[card.name] = 'fields'
+  send(card, newField(specOf(card)))
+}
+
 function cell(card: ModelCard, field: FieldSpec, index: number, value: JsonValue): void {
   send(card, setItemCell(specOf(card), field.name, index, value))
 }
@@ -515,17 +521,7 @@ watch(
           type="button"
           class="add"
           :disabled="!writable"
-          @click="
-            send(
-              card,
-              newField({
-                name: card.name,
-                description: card.description,
-                fields: card.fields,
-                loc: { start: 0, end: 0 },
-              }),
-            )
-          "
+          @click="addField(card)"
         >
           + Add field
         </button>

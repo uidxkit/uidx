@@ -189,6 +189,15 @@ export function diffDocuments(
     // detached into a frame, a frame retagged — is a different scene node
     // (another type, and an instance's generated subtree to drop): rebuild.
     if (previous && previous.node.element !== entry.node.element) return null
+    // A component that gains its first state, or loses its last, turns into
+    // a set of variants or back (ADR 0016 §4) — another scene type, laid out
+    // by `arrangeVariants`. The diff would only move children: rebuild.
+    if (
+      previous &&
+      entry.node.element === 'Component' &&
+      nodeTypeFor(previous.node) !== nodeTypeFor(entry.node)
+    )
+      return null
   }
 
   // ADR 0017 §2: a repeat's echoes (`row-2`, `row-3`) are generated at ids

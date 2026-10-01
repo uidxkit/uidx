@@ -42,6 +42,8 @@ const emit = defineEmits<{
   redo: []
   code: []
   agent: []
+  /** Open the tutorials. */
+  learn: []
   open: [file: string]
   newFile: []
 }>()
@@ -285,6 +287,25 @@ function code(): void {
       <span class="status" :data-state="status.state" role="status" :title="status.text">
         <span class="dot" aria-hidden="true" />{{ status.text }}
       </span>
+
+      <button
+        type="button"
+        class="icon-button learn"
+        aria-label="Tutorials"
+        title="Tutorials — learn by building"
+        data-action="learn"
+        @click="emit('learn')"
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true">
+          <path
+            d="M1.5 6 8 3l6.5 3L8 9 1.5 6zM4 7.3v3.2C4 11.6 5.8 12.5 8 12.5s4-.9 4-2V7.3M14.5 6v3.5"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="1.3"
+            stroke-linejoin="round"
+          />
+        </svg>
+      </button>
 
       <button
         type="button"

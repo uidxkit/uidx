@@ -1,0 +1,20 @@
+---
+id: "screen"
+---
+
+## Core Intent
+
+Describe what this page is for.
+
+## Visual Contract
+
+<Page>
+  <Instance
+    name="button-1"
+    component="Button"
+    x={360}
+    y={352}
+    props={{ label: 'Save' }}
+  />
+
+</Page>

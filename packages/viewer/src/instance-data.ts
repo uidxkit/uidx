@@ -1,4 +1,11 @@
-import { aliasTarget, slots, type ModelSpec, type UidxDocument, type UidxNode } from '@uidx/format'
+import {
+  aliasTarget,
+  componentProps,
+  slots,
+  type ModelSpec,
+  type UidxDocument,
+  type UidxNode,
+} from '@uidx/format'
 import { modelOfType, repeatModel, repeatOf, sampleAt, type ModelIndex } from '@uidx/schema'
 import { enclosingComponent } from './component-prop-edits'
 import { enclosingRepeats, itemLabel } from './contract-edits'
@@ -127,8 +134,12 @@ export function dataRows(
   models: ModelIndex | undefined,
   previewIndex: number,
 ): DataRow[] {
-  const props = definition?.spec?.contract?.props ?? []
-  if (!definition || !props.length) return []
+  if (!definition) return []
+  // Text, flags and choices are edited (and bound) in the Properties rows;
+  // Data holds what those rows cannot: a model, or a list of one.
+  const editable = componentProps(definition).declared
+  const props = (definition.spec?.contract?.props ?? []).filter((prop) => !editable.has(prop.name))
+  if (!props.length) return []
   const scopes = itemScopes(doc, instance, components, models)
   return props.map((prop) => {
     const found = modelOfType(prop.type, definition.spec, models)

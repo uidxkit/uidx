@@ -1641,10 +1641,20 @@ function onDetach(prop: string, value: JsonValue): void {
     <header class="inspector-header">
       <div class="inspector-title">
         <nav class="face-toggle" aria-label="Inspector view">
-          <button type="button" :aria-pressed="face === 'design'" @click="face = 'design'">
+          <button
+            type="button"
+            :data-tour="`tab-design`"
+            :aria-pressed="face === 'design'"
+            @click="face = 'design'"
+          >
             Design
           </button>
-          <button type="button" :aria-pressed="face === 'contract'" @click="face = 'contract'">
+          <button
+            type="button"
+            :data-tour="`tab-contract`"
+            :aria-pressed="face === 'contract'"
+            @click="face = 'contract'"
+          >
             Contract
             <span
               v-if="contractIssueCount"
@@ -1653,10 +1663,22 @@ function onDetach(prop: string, value: JsonValue): void {
               >{{ contractIssueCount }}</span
             >
           </button>
-          <button type="button" :aria-pressed="face === 'connect'" @click="face = 'connect'">
+          <button
+            type="button"
+            :data-tour="`tab-connect`"
+            :aria-pressed="face === 'connect'"
+            @click="face = 'connect'"
+          >
             Connect
           </button>
-          <button type="button" :aria-pressed="face === 'code'" @click="face = 'code'">Code</button>
+          <button
+            type="button"
+            :data-tour="`tab-code`"
+            :aria-pressed="face === 'code'"
+            @click="face = 'code'"
+          >
+            Code
+          </button>
         </nav>
         <span v-if="writable === false" class="read-only-badge">Read only</span>
       </div>

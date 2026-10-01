@@ -769,3 +769,27 @@ describe('an instance’s own attributes, and a definition root’s, update with
     ).toBeNull()
   })
 })
+
+describe('a component turning into a set of states', () => {
+  const button = (styles: string) =>
+    parseOrThrow(`---
+id: button
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="draft" layoutMode="HORIZONTAL">
+    <Text name="label" characters="Go" />
+  </Component>
+</Page>
+${styles}`)
+
+  it('rebuilds when the first state is added, and when the last is removed', () => {
+    const plain = button('')
+    const hover = button('\n<Styles>\n  <Style state="hover" />\n</Styles>\n')
+    // Default and hover side by side is another scene shape, not a moved child.
+    expect(diffDocuments(plain, hover)).toBeNull()
+    expect(diffDocuments(hover, plain)).toBeNull()
+  })
+})

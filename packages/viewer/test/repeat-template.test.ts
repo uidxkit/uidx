@@ -4,7 +4,7 @@ import { parseOrThrow, resolve } from '@uidx/format'
 import { modelIndex } from '@uidx/schema'
 import RepeatSection from '../src/RepeatSection.vue'
 import InstancePropsSection from '../src/InstancePropsSection.vue'
-import { rowBindingFor, scopesInside } from '../src/instance-data'
+import { dataRows, rowBindingFor, scopesInside } from '../src/instance-data'
 
 /**
  * Repeat, kept simple (ADR 0017 §2): a switch on any layer, then a model.
@@ -356,5 +356,41 @@ id: roster
     await wrapper.find('[data-data="person"] .bind').trigger('click')
     expect(wrapper.find('.bind-popup [data-alias="item"]').text()).toContain('This Person')
     wrapper.unmount()
+  })
+})
+
+describe('the Data rows of an instance', () => {
+  it('hold only models and lists; words, flags and choices stay with Properties', () => {
+    const page = parseOrThrow(`---
+id: card
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Card" status="draft"><Text name="t" characters="{label}" /></Component>
+  <Instance name="use" component="Card" />
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string">Words.</Prop>
+  <Prop name="on" type="boolean" default={false}>A flag.</Prop>
+  <Prop name="person" type="Person">Who.</Prop>
+  <Prop name="people" type="Person[]">Everyone.</Prop>
+</Props>
+
+## Models
+
+<Model name="Person">
+  One person.
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>The name.</Field>
+</Model>
+`)
+    const models = modelIndex([page])
+    const definition = resolve(page.tree, 'Card')!
+    const rows = dataRows(page, resolve(page.tree, 'use')!, definition, undefined, models, 0)
+    expect(rows.map((row) => row.prop)).toEqual(['person', 'people'])
   })
 })

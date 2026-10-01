@@ -7,6 +7,7 @@ import type { UidxDocument } from '@uidx/format'
 import HomePane from '../src/HomePane.vue'
 import { homeModel, type PageCard } from '../src/home-model'
 import { pageEntries } from '../src/page-list'
+import { welcomed } from '../src/tour'
 
 /**
  * The grid, with the renderer stubbed.
@@ -80,6 +81,21 @@ describe('the dashboard', () => {
     await pane.vm.$nextTick()
     expect(pane.emitted('open')).toEqual([['new-page.uidx']])
     expect(pane.find('dialog').exists()).toBe(false)
+    pane.unmount()
+  })
+
+  it('welcomes a first visit with the tutorials, until Not now, then keeps them listed', async () => {
+    welcomed.value = false
+    const { pane } = mountHome()
+    const learn = pane.get('[data-tour="tutorials"]')
+    expect(learn.attributes('data-welcome')).toBeDefined()
+    expect(learn.text()).toContain('New to uidx? Learn by building')
+    await learn.get('.not-now').trigger('click')
+    expect(welcomed.value).toBe(true)
+    expect(pane.get('[data-tour="tutorials"]').attributes('data-welcome')).toBeUndefined()
+    expect(pane.get('[data-tour="tutorials"]').text()).toContain('Tutorials')
+    await pane.get('[data-tutorial="button"]').trigger('click')
+    expect(pane.emitted('tutorial')).toEqual([['button']])
     pane.unmount()
   })
 

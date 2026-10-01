@@ -108,6 +108,59 @@ describe('the Models pane', () => {
     ])
   })
 
+  it('stays on Fields when the first field is added, so it can be named', async () => {
+    const empty = new Map([
+      [
+        'p.uidx',
+        parseOrThrow(`---
+id: p
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="People" width={20} height={20} />
+</Page>
+
+## Models
+
+<Model name="Person">
+  One person.
+</Model>
+`),
+      ],
+    ])
+    const wrapper = mount(ModelsPane, {
+      props: {
+        cards: modelsViewModel(empty, 'p.uidx'),
+        undeclared: undeclaredModels(empty),
+        pages: pagesForModels(empty, 'p.uidx'),
+        writable: true,
+      },
+    })
+    const card = () => wrapper.get('[data-model="Person"]')
+    expect(card().get('[data-tab="fields"]').attributes('aria-selected')).toBe('true')
+    await card().get('button.add').trigger('click')
+    expect(wrapper.emitted('edit')).toHaveLength(1)
+    // The shell answers with the field; the card must not flip to Items under the designer.
+    const withField = new Map([
+      [
+        'p.uidx',
+        parseOrThrow(
+          empty
+            .get('p.uidx')!
+            .source.replace(
+              '  One person.\n',
+              '  One person.\n  <Field name="field" type="string">Describe the field.</Field>\n',
+            ),
+        ),
+      ],
+    ])
+    await wrapper.setProps({ cards: modelsViewModel(withField, 'p.uidx') })
+    expect(card().get('[data-tab="fields"]').attributes('aria-selected')).toBe('true')
+    expect(card().find('input[aria-label="Field name"]').exists()).toBe(true)
+  })
+
   it('declares a new model on the chosen page, and one a contract already names', async () => {
     const pane = mountPane()
     await pane.find('input[aria-label="Model name"]').setValue('Person')

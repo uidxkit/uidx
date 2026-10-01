@@ -1,0 +1,27 @@
+---
+id: "button"
+---
+
+Describe what Button is for, and when to reach for something else.
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={999}
+    fills={[{ type: 'SOLID', color: '{color#accent}' }]}>
+    <Text name="label" characters="{label}" fontSize={14} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="hover" root:fills={[{ type: 'SOLID', color: '{color#accent-hover}' }]} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Button">The words it shows.</Prop>
+</Props>

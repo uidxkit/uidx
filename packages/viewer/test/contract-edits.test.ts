@@ -355,6 +355,42 @@ describe('what the tab shows', () => {
     ).toEqual(['item.id', 'item.label', 'item.depth'])
   })
 
+  it('offers a repeated text the fields of its own item', () => {
+    const doc = parseOrThrow(`---
+id: people
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="People" layoutMode="VERTICAL">
+    <Text name="label" characters="{label}" repeat="{people}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string">The words.</Prop>
+  <Prop name="people" type="Person[]">The rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Person">
+  One person.
+  <Field name="name" type="string">The name.</Field>
+</Model>
+`)
+    const models = modelIndex([doc])
+    const component = resolve(doc.tree, 'People')
+    const label = resolve(doc.tree, 'People#label')!
+    expect(textBindingCandidates(component, label, models)).toEqual([
+      { alias: 'item.name', label: 'This Person › name' },
+      { alias: 'label', label: 'label' },
+    ])
+  })
+
   it('offers a checkbox the booleans in scope and a number the numbers, and nothing else', () => {
     const row = parseOrThrow(TREE)
     const models = modelIndex([row, parseOrThrow(ROW_PAGE)])

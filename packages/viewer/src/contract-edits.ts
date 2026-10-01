@@ -521,7 +521,12 @@ export function fieldBindingCandidates(
   const offer = (alias: string, type: string): void => {
     if (fits(type, kind)) out.push({ alias, label: bindingLabel(component, node, alias, models) })
   }
-  for (const scope of [...enclosingRepeats(component, node, models)].reverse()) {
+  // A repeated layer is drawn once per item, so its own item is in scope too —
+  // innermost, as it is for an instance's props.
+  const scopes = enclosingRepeats(component, node, models)
+  const own = repeatOf(node)
+  if (own) scopes.push({ as: own.as, model: repeatModel(own, component.spec, scopes, models) })
+  for (const scope of [...scopes].reverse()) {
     for (const field of scope.model?.fields ?? []) {
       if (modelByRef(component.spec, typeName(field.type).name, models)) continue
       offer(`${scope.as}.${field.name}`, field.type)

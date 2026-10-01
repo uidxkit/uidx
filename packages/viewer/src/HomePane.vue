@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import TutorialList from './TutorialList.vue'
+import { dismissWelcome, welcomed } from './tour'
 import { computed, ref } from 'vue'
 import NewPageDialog from './NewPageDialog.vue'
 
@@ -36,7 +38,12 @@ const props = defineProps<{
   connected?: boolean
 }>()
 
-const emit = defineEmits<{ open: [file: string]; tokens: [collection: string] }>()
+const emit = defineEmits<{
+  open: [file: string]
+  tokens: [collection: string]
+  /** Start a tutorial. */
+  tutorial: [id: string]
+}>()
 const creating = ref(false)
 
 function created(file: string): void {
@@ -98,6 +105,32 @@ const kpis = computed(() => {
       </li>
     </ul>
 
+    <!--
+      Learning by doing: each tutorial points at the real controls and moves
+      on as the designer does the step. Said as a welcome on a first visit,
+      kept as a quiet list after.
+    -->
+    <section
+      class="block learn"
+      :data-welcome="!welcomed || undefined"
+      aria-labelledby="learn-title"
+      data-tour="tutorials"
+    >
+      <div class="learn-head">
+        <h2 id="learn-title" class="block-title">
+          {{ welcomed ? 'Tutorials' : 'New to uidx? Learn by building' }}
+        </h2>
+        <button v-if="!welcomed" type="button" class="not-now" @click="dismissWelcome">
+          Not now
+        </button>
+      </div>
+      <p v-if="!welcomed" class="empty">
+        Pick one. The editor points at where to click and moves on as you go — about four minutes
+        each.
+      </p>
+      <TutorialList @start="emit('tutorial', $event)" />
+    </section>
+
     <section
       v-if="connected && model.stats.components === 0"
       class="block start"
@@ -129,7 +162,13 @@ const kpis = computed(() => {
         <h2 class="block-title">
           Pages <span class="count">{{ model.cards.length }}</span>
         </h2>
-        <button class="new-page" type="button" :disabled="!connected" @click="creating = true">
+        <button
+          class="new-page"
+          type="button"
+          data-tour="new-page"
+          :disabled="!connected"
+          @click="creating = true"
+        >
           New page
         </button>
       </div>
@@ -381,5 +420,27 @@ li + li .collection {
 .starts span {
   font-size: 12px;
   color: var(--text-dim);
+}
+.learn[data-welcome] {
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, var(--line));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+}
+.learn-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.not-now {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  cursor: pointer;
+}
+.not-now:hover {
+  color: var(--text);
 }
 </style>

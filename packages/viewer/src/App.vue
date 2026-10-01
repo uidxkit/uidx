@@ -114,6 +114,10 @@ import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
 import { componentPreviewKey } from './component-preview'
+import TourCoach from './TourCoach.vue'
+import TutorialList from './TutorialList.vue'
+import { startTutorial, stopTutorial, tourRun } from './tour'
+import type { TourState } from './tutorials'
 import { createUidxSocket, type ConnectionState } from './socket'
 import { selectionReport } from './selection-report'
 import ChatPanel from './ChatPanel.vue'
@@ -482,6 +486,31 @@ provide(componentPreviewKey, renderComponent)
  * long name wraps is looking, not designing, so it writes nothing.
  */
 const previewSample = ref(0)
+
+/**
+ * What a tutorial step reads about the editor (tutorials.ts). A function, so
+ * the coach reads it fresh on each check rather than through a computed that
+ * would have to track the DOM.
+ */
+function tourState(): TourState {
+  const now = view.value
+  return {
+    view: now.kind,
+    file: now.kind === 'page' ? now.file : null,
+    pages: pages.value,
+    selection: selection.value,
+    components: components.value,
+    models: models.value,
+    query: (selector) => document.querySelector(selector),
+  }
+}
+
+/** The tutorials menu from the top bar. */
+const learning = ref(false)
+function startTour(id: string): void {
+  learning.value = false
+  startTutorial(id, tourState())
+}
 
 /** Opens the page that declares `name` and selects the definition. */
 async function goToComponent(name: string): Promise<void> {
@@ -2216,6 +2245,7 @@ onUnmounted(() => socket.close())
       @redo="redo"
       @code="generateCode()"
       @agent="agent.toggle()"
+      @learn="learning = !learning"
     />
 
     <!--
@@ -2406,6 +2436,7 @@ onUnmounted(() => socket.close())
           :connected="connection === 'open' && documentId !== null"
           @open="openPage"
           @tokens="openTokens"
+          @tutorial="startTour"
         />
       </ErrorBoundary>
 
@@ -2595,10 +2626,68 @@ onUnmounted(() => socket.close())
         </ErrorBoundary>
       </template>
     </div>
+    <!-- The tutorials, from the top bar's Learn button. -->
+    <div v-if="learning" class="learn-panel" role="dialog" aria-label="Tutorials">
+      <header>
+        <span>Learn by building</span>
+        <button type="button" aria-label="Close" @click="learning = false">×</button>
+      </header>
+      <TutorialList compact @start="startTour" />
+      <button
+        v-if="tourRun"
+        type="button"
+        class="stop-tour"
+        @click="(stopTutorial(), (learning = false))"
+      >
+        Stop “{{ tourRun.tutorial.title }}”
+      </button>
+    </div>
+    <TourCoach v-if="tourRun" :state="tourState" />
   </div>
 </template>
 
 <style scoped>
+.learn-panel {
+  position: fixed;
+  top: calc(var(--bar-h) + 8px);
+  right: 12px;
+  z-index: 50;
+  width: 340px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+.learn-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+.learn-panel header button {
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.stop-tour {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .shell {
   display: flex;
   flex-direction: column;
