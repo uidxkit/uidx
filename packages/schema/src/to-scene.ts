@@ -993,6 +993,20 @@ export function instanceSceneProps(
   return instanceProps(instance, [], options, parentLayout)
 }
 
+/**
+ * The definition an `<Instance>` is expanded from, found as the build finds
+ * it — by name, or by the property that names it — with its styles table
+ * expanded into variants. Undefined when it names nothing `options` can
+ * resolve. For the viewer, which asks how the frame inside an instance moves
+ * while a resize is still a preview (`wrappedFrameUpdate`).
+ */
+export function instanceDefinition(
+  instance: UidxNode,
+  options: SceneOptions,
+): UidxNode | undefined {
+  return componentFor(instance, [], options)
+}
+
 type Dimension = 'width' | 'height'
 const DIMENSIONS: readonly Dimension[] = ['width', 'height']
 

@@ -1,6 +1,7 @@
 export {
   toSceneGraph,
   layOutEntity,
+  instanceDefinition,
   instanceFills,
   instanceSceneProps,
   scenePropsFor,
@@ -21,7 +22,14 @@ export {
   type VariantBox,
   type VariantPlacement,
 } from './variant-layout.js'
-export { diffDocuments, applyChanges, type SceneChange, type ApplyResult } from './reconcile.js'
+export {
+  diffDocuments,
+  applyChanges,
+  wrappedFrameUpdate,
+  type ApplyResult,
+  type InstanceVersion,
+  type SceneChange,
+} from './reconcile.js'
 export { fromSceneChange, type ChangeContext } from './from-scene.js'
 export {
   hasAuthoredGeometry,

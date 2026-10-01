@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { parseOrThrow, type UidxDocument, type UidxNode } from '@uidx/format'
+import { parseOrThrow, resolve, type UidxDocument, type UidxNode } from '@uidx/format'
 import {
   applyChanges,
   diffDocuments,
   fromSceneChange,
+  instanceDefinition,
   layOutEntity,
   toSceneGraph,
+  wrappedFrameUpdate,
 } from '../src/index.js'
 
 /**
@@ -409,5 +411,60 @@ id: rows
       resolveComponent: (name) => index.get(name),
     })
     expect(rows(live)).toEqual(rows(build(ROWS(' height={200}'))))
+  })
+})
+
+/**
+ * The canvas draws a resize before the file states it, so it asks the echo's
+ * question early: what the frame inside an instance is given when the
+ * instance goes from one size to another. It is the update `applyChanges`
+ * makes once the file says so, or the pill would move twice.
+ */
+describe('the frame a size reaches, asked before the file states it', () => {
+  /** One instance in two versions, and what the frame inside it is given between them. */
+  const framed = (definition: UidxDocument, from: string, to: string) => {
+    const index = componentIndex(definition)
+    const scope = { resolveComponent: (name: string) => index.get(name) }
+    const prev = resolve(parseOrThrow(placed(from)).tree, 'button1-1')!
+    const next = resolve(parseOrThrow(placed(to)).tree, 'button1-1')!
+    const found = instanceDefinition(next, scope)!
+    return wrappedFrameUpdate(
+      'button1-1',
+      { instance: prev, definition: found },
+      { instance: next, definition: found },
+      scope,
+    )
+  }
+
+  it('finds the definition as the build does, its styles table expanded', () => {
+    const index = componentIndex(STYLED)
+    const instance = resolve(parseOrThrow(placed('')).tree, 'button1-1')!
+    const found = instanceDefinition(instance, { resolveComponent: (name) => index.get(name) })
+    expect(found?.children.map((child) => child.element)).toEqual(['Variant', 'Variant'])
+  })
+
+  it('is the pill, at the new width, for an instance that already states one', () => {
+    expect(framed(STYLED, ' width={160} height={33}', ' width={266} height={33}')).toEqual({
+      id: 'button1-1#root',
+      props: { width: 266 },
+    })
+  })
+
+  it('fixes the pill and lets its stretch go when the instance first states a size', () => {
+    expect(framed(STYLED, '', ' width={266}')).toMatchObject({
+      id: 'button1-1#root',
+      props: { width: 266, primaryAxisSizing: 'FIXED', layoutAlignSelf: 'AUTO' },
+    })
+  })
+
+  it('gives the stretch and the hug back when the size goes again', () => {
+    expect(framed(STYLED, ' width={266}', '')).toMatchObject({
+      id: 'button1-1#root',
+      props: { primaryAxisSizing: 'HUG', layoutAlignSelf: 'STRETCH' },
+    })
+  })
+
+  it('is nothing for a component that lays itself out, whose root the instance is', () => {
+    expect(framed(PLAIN, ' width={160}', ' width={266}')).toBeNull()
   })
 })

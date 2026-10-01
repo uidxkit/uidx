@@ -55,6 +55,7 @@ import {
   resizeWrites,
   sizingFlipFor,
 } from './resize-writes'
+import { createWrappedFrame, type InstanceFraming } from './wrapped-frame'
 import type { PinFrame } from './pin-writes'
 import { provideEditor, useCanvas } from '@open-pencil/vue'
 import {
@@ -1433,6 +1434,10 @@ function render(doc: UidxDocument | null, rebuild = false): void {
 
   applyingRemote = true
   try {
+    // A frame a preview drew away from the file goes back first, so the diff
+    // below lands on the scene the file drew; `reapplyLocalEdits` draws the
+    // preview again over the new document.
+    wrappedFrame.release()
     // Demands capture the callback when layout asks for a font. Hook before
     // building so even the first cold-load request has a layout refresh.
     watchFontSettle()
@@ -1538,7 +1543,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
  * leave the canvas showing the file's value while the field shows the author's.
  * The properties pane holds its own copy for the field; this is the canvas half.
  */
-let panelPreview: { address: string; fields: object } | null = null
+let panelPreview: { address: string; fields: object; framing?: InstanceFraming } | null = null
 
 /** Re-applies the in-flight gesture and panel scrub over a fresh document. */
 function reapplyLocalEdits(): void {
@@ -1548,7 +1553,11 @@ function reapplyLocalEdits(): void {
   const graph = scene.value?.graph
   const held = panelPreview
   if (graph?.getNode(held.address)) {
-    graph.runPreviewUpdates(() => editor.updateNode(held.address, held.fields))
+    const saved = held.framing && current ? resolve(current.tree, held.address) : null
+    graph.runPreviewUpdates(() => {
+      if (saved && held.framing) wrappedFrame.draw(saved, held.framing)
+      editor.updateNode(held.address, held.fields)
+    })
     canvas.renderNow()
   } else {
     // Nothing left to be editing: the node went with the change.
@@ -1841,6 +1850,19 @@ function layoutAbove(node: { parentId: string | null }): SceneNode['layoutMode']
 }
 
 /**
+ * The frame a styles table wraps an instance's component in, drawn for the
+ * size a preview gives the instance (`wrapped-frame.ts`). A build was the only
+ * thing that put the size there, so a resize moved the box and left the pill
+ * at its old size until the file's echo.
+ */
+const wrappedFrame = createWrappedFrame({
+  graph: () => editor.graph,
+  scope: sceneOptions,
+  saved: (address) => (current ? resolve(current.tree, address) : null),
+  update: (id, fields) => editor.updateNode(id, fields),
+})
+
+/**
  * The box a resize started from: its first frame remembers it, because after
  * that the preview has already moved the node, and its last lets it go.
  */
@@ -1888,6 +1910,18 @@ function resizeNode(
   const fields: Record<string, unknown> = placed
     ? { ...instanceResizeWrites(sizing, rect, moved), ...released?.fields }
     : { ...resizeWrites(sizing, rect, { widthOnly }), ...geometry }
+  // The size the file will hold once this lands — what the frame a styles
+  // table wraps the component in is drawn for meanwhile (`wrappedFrame`).
+  const framing: InstanceFraming | null =
+    instance && mode !== 'cancel'
+      ? {
+          size: {
+            ...(moved.width ? { width: rect.width } : {}),
+            ...(moved.height ? { height: rect.height } : {}),
+          },
+          removals: released?.removals ?? [],
+        }
+      : null
   if (mode === 'cancel') {
     // The preview may have pinned an automatic size, or let an instance's
     // fill go. Restore the saved modes as well as the original box when the
@@ -1921,8 +1955,18 @@ function resizeNode(
     ),
   }
   try {
-    if (mode !== 'commit') editor.graph.runPreviewUpdates(() => editor.updateNode(id, fields))
-    else {
+    if (mode !== 'commit') {
+      editor.graph.runPreviewUpdates(() => {
+        if (instance) wrappedFrame.draw(saved, framing)
+        editor.updateNode(id, fields)
+      })
+    } else {
+      // Drawn for the commit's rounded box, then let go: the echo makes the
+      // same update, so there is nothing left to put back.
+      if (instance) {
+        editor.graph.runPreviewUpdates(() => wrappedFrame.draw(saved, framing))
+        wrappedFrame.settle()
+      }
       editor.updateNode(id, fields)
       recordSceneWrite(id, fields)
       // In the resize's own envelope, after the scene's write of the same
@@ -2242,6 +2286,17 @@ function applyProp(
       ...(prop === 'layoutPositioning' ? ['x', 'y'] : []),
     ]),
   }
+  // A size typed onto an instance is drawn on the frame its component wraps
+  // too, as a drag's is (`wrappedFrame`). It accrues with the scrub.
+  const held = panelPreview?.address === address ? panelPreview : null
+  const size = prop === 'width' || prop === 'height' ? sized[prop] : undefined
+  const framing: InstanceFraming | undefined =
+    instance && typeof size === 'number'
+      ? {
+          size: { ...held?.framing?.size, [prop]: size },
+          removals: [...(held?.framing?.removals ?? []), ...(released?.removals ?? [])],
+        }
+      : undefined
   // Remembered so a remote document landing mid-scrub can be re-covered by the
   // value under the author's finger; a commit ends the scrub and lets go. A
   // compound control previews several props per step, so the fields accrue.
@@ -2249,12 +2304,21 @@ function applyProp(
     mode === 'preview'
       ? {
           address,
-          fields: panelPreview?.address === address ? { ...panelPreview.fields, ...sized } : sized,
+          fields: held ? { ...held.fields, ...sized } : sized,
+          framing: framing ?? held?.framing,
         }
       : null
   try {
-    if (mode === 'preview') graph.runPreviewUpdates(() => editor.updateNode(address, sized))
-    else {
+    if (mode === 'preview') {
+      graph.runPreviewUpdates(() => {
+        if (docNode && framing) wrappedFrame.draw(docNode, framing)
+        editor.updateNode(address, sized)
+      })
+    } else if (docNode && framing) {
+      graph.runPreviewUpdates(() => wrappedFrame.draw(docNode, framing))
+      wrappedFrame.settle()
+    }
+    if (mode === 'commit') {
       editor.updateNode(address, sized)
       recordSceneWrite(address, sized)
     }

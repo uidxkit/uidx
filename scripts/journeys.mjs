@@ -185,6 +185,104 @@ try {
     await uidx(['check', join(docroot, '*.uidx')])
   })
 
+  await journey('an instance resizes on the canvas while its handle is held', async () => {
+    // Button has a styles table, so an instance draws its pill on a frame
+    // inside a variant wrapper — a frame only a build used to resize, so the
+    // pill stayed put under the moving handle and jumped once the file came
+    // back. The spacers hold the fit still, whatever the button measures.
+    await writeFile(
+      join(docroot, 'live-resize.uidx'),
+      [
+        '---',
+        'id: live-resize',
+        '---',
+        '',
+        '## Visual Contract',
+        '',
+        '<Page>',
+        `  <Instance name="go" component="Button" x={0} y={0} width={160} props={{ label: 'Go' }} />`,
+        '  <Frame name="spacer" x={-200} y={-150} width={10} height={10} />',
+        '  <Frame name="spacer-2" x={500} y={200} width={10} height={10} />',
+        '</Page>',
+        '',
+      ].join('\n'),
+    )
+    // A page the server has not listed yet opens the entry page instead.
+    const layer = page.getByText('go', { exact: true })
+    await until(async () => {
+      await open('?page=live-resize.uidx')
+      return (await layer.count()) > 0
+    })
+    // Inside the rulers and above the toolbar, which both paint in blue too.
+    const canvas = await page.locator('canvas').last().boundingBox()
+    const area = {
+      x: canvas.x + 24,
+      y: canvas.y + 24,
+      width: canvas.width - 24,
+      height: canvas.height - 120,
+    }
+    /**
+     * The pill's box on screen: the pixels painted in the button's accent
+     * fill, read back from a screenshot of the canvas. The selection outline,
+     * its handles and the white label all fall outside the test.
+     */
+    const pill = async () => {
+      const png = await page.screenshot({ clip: area })
+      return page.evaluate(async (data) => {
+        const bitmap = await createImageBitmap(
+          await (await fetch(`data:image/png;base64,${data}`)).blob(),
+        )
+        const surface = new OffscreenCanvas(bitmap.width, bitmap.height)
+        const context = surface.getContext('2d')
+        context.drawImage(bitmap, 0, 0)
+        const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data
+        const box = { left: Infinity, right: -Infinity, top: Infinity, bottom: -Infinity }
+        for (let y = 0; y < bitmap.height; y++) {
+          for (let x = 0; x < bitmap.width; x++) {
+            const at = (y * bitmap.width + x) * 4
+            const [r, g, b] = [pixels[at], pixels[at + 1], pixels[at + 2]]
+            if (!(b > 200 && r < 110 && g > 120 && g < 190)) continue
+            box.left = Math.min(box.left, x)
+            box.right = Math.max(box.right, x)
+            box.top = Math.min(box.top, y)
+            box.bottom = Math.max(box.bottom, y)
+          }
+        }
+        return { ...box, width: box.right - box.left + 1 }
+      }, png.toString('base64'))
+    }
+    await layer.first().click()
+    await page.waitForTimeout(300)
+    const before = await pill()
+    assert.ok(before.width > 100, `no button on the canvas: ${JSON.stringify(before)}`)
+    // The east handle sits on the box's right edge, halfway down.
+    const grip = {
+      x: area.x + before.right + 1,
+      y: area.y + Math.round((before.top + before.bottom) / 2),
+    }
+    await page.mouse.move(grip.x, grip.y)
+    await page.mouse.down()
+    for (let step = 1; step <= 10; step++) await page.mouse.move(grip.x + step * 10, grip.y)
+    await page.waitForTimeout(200)
+    const held = await pill()
+    await page.mouse.up()
+    assert.ok(
+      Math.abs(held.width - (before.width + 100)) <= 3,
+      `the pill drew ${held.width} wide under a handle dragged from ${before.width} to ${before.width + 100}`,
+    )
+    await until(async () =>
+      /name="go"[^\n]*width=\{2\d\d\}/.test(
+        await readFile(join(docroot, 'live-resize.uidx'), 'utf8'),
+      ),
+    )
+    await page.waitForTimeout(500)
+    const settled = await pill()
+    assert.ok(
+      Math.abs(settled.width - held.width) <= 2,
+      `the pill drew ${held.width} wide while held and ${settled.width} once the file came back`,
+    )
+  })
+
   await journey('no page raised an uncaught error', async () => {
     assert.deepEqual(errors, [])
   })

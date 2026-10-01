@@ -713,42 +713,14 @@ export function applyChanges(
           graph.getNode(change.id),
         )
         if (props) graph.updateNode(change.id, props)
-        // The frame a wrapper-shaped component lays itself out on is drawn at
-        // the size the instance states (`pinnedFrame`), so a size on the
-        // instance reaches one level down as well — where a rebuild puts it.
-        const prevRoot =
-          variantFor(change.prevDefinition, change.prevInstance, options.resolveAlias) ??
-          change.prevDefinition
-        const nextRoot =
-          variantFor(change.nextDefinition, change.nextInstance, options.resolveAlias) ??
-          change.nextDefinition
-        // Not a repeat's: its first row is one of many, and none of them is
-        // pinned (`pinnableFrame`).
-        const only = nextRoot.children.length === 1 ? nextRoot.children[0]! : undefined
-        const frame = only && !repeatOf(only) ? only : undefined
-        const before = prevRoot.children.find((child) => child.name === frame?.name)
-        const frameId = frame ? addressOf(change.id, frame.name) : ''
-        if (!frame || !before || !graph.getNode(frameId)) break
-        const framed = movedProps(
-          generatedChildProps(
-            change.prevInstance,
-            change.prevDefinition,
-            before,
-            before.name,
-            options,
-            parentLayout,
-          ),
-          generatedChildProps(
-            change.nextInstance,
-            change.nextDefinition,
-            frame,
-            frame.name,
-            options,
-            parentLayout,
-          ),
-          NODE_TYPE[frame.element as SceneElement],
+        const framed = wrappedFrameUpdate(
+          change.id,
+          { instance: change.prevInstance, definition: change.prevDefinition },
+          { instance: change.nextInstance, definition: change.nextDefinition },
+          options,
+          parentLayout,
         )
-        if (framed) graph.updateNode(frameId, framed)
+        if (framed && graph.getNode(framed.id)) graph.updateNode(framed.id, framed.props)
         break
       }
       case 'pin':
@@ -774,6 +746,50 @@ export function applyChanges(
   const unique = [...new Set(touched)]
   for (const id of unique) layOutAround(graph, id, rootId, pins)
   return { applied: changes.length, touched: unique }
+}
+
+/** One version of an instance, with the definition it is drawn from. */
+export interface InstanceVersion {
+  instance: UidxNode
+  definition: UidxNode
+}
+
+/**
+ * The frame a wrapper-shaped component lays itself out on is drawn at the
+ * size the instance states (`pinnedFrame`), so a size on the instance reaches
+ * one level down as well — where a rebuild puts it. This is that frame's id
+ * and what moves on it when the instance goes from `prev` to `next`, or null
+ * when the component wraps no such frame or nothing on it moves.
+ *
+ * `applyChanges` asks when the file says so. The canvas asks while a resize
+ * is still under the author's hand, with the instance as the gesture would
+ * leave the file: a build was the only thing that put the size on the frame,
+ * so the box moved and the pill inside it waited for the echo. Asking the
+ * same question here is what keeps the preview and the echo from disagreeing.
+ */
+export function wrappedFrameUpdate(
+  id: string,
+  prev: InstanceVersion,
+  next: InstanceVersion,
+  options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
+): { id: string; props: Partial<SceneNode> } | null {
+  const prevRoot =
+    variantFor(prev.definition, prev.instance, options.resolveAlias) ?? prev.definition
+  const nextRoot =
+    variantFor(next.definition, next.instance, options.resolveAlias) ?? next.definition
+  // Not a repeat's: its first row is one of many, and none of them is pinned
+  // (`pinnableFrame`).
+  const only = nextRoot.children.length === 1 ? nextRoot.children[0]! : undefined
+  const frame = only && !repeatOf(only) ? only : undefined
+  const before = prevRoot.children.find((child) => child.name === frame?.name)
+  if (!frame || !before) return null
+  const props = movedProps(
+    generatedChildProps(prev.instance, prev.definition, before, before.name, options, parentLayout),
+    generatedChildProps(next.instance, next.definition, frame, frame.name, options, parentLayout),
+    NODE_TYPE[frame.element as SceneElement],
+  )
+  return props ? { id: addressOf(id, frame.name), props } : null
 }
 
 /** Addresses are scene ids, except the root `<Page>`, which is the graph's page. */
