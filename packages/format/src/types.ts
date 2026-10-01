@@ -430,6 +430,19 @@ export type UidxPatch =
   | { op: 'model'; name: string; declaration?: ModelDeclaration }
   /** One `<Field>` of a model, written or removed; absent, the field goes. */
   | { op: 'field'; model: string; name: string; declaration?: ContractDeclaration }
+  /**
+   * Writes a prose region whole (ADR 0012): `## Behavior` (one `- id:
+   * sentence` bullet per rule) or `## Examples` (`<Example>` elements), as
+   * the text under its heading. The region is created in canonical order
+   * when absent; no `body`, or an empty one, removes it. What the text says
+   * is checked by the parser like any other write.
+   */
+  | { op: 'region'; name: 'Behavior' | 'Examples'; body?: string }
+  /**
+   * Rewrites the intent: the prose between the frontmatter and `## Visual
+   * Contract` that says what the file is for and when to use it.
+   */
+  | { op: 'intent'; text: string }
   // structural ops
   | { op: 'insert-node'; parent: string; index: number; node: UidxNodeSpec }
   | { op: 'remove-node'; address: string }

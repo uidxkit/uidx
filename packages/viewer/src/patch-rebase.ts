@@ -99,6 +99,8 @@ export function rebasePatches(
       case 'contract':
       case 'model':
       case 'field':
+      case 'region':
+      case 'intent':
         rebased.push(patch)
         break
       case 'retag': {

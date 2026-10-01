@@ -103,7 +103,7 @@ describe('spec regions', () => {
     expect(spec.contract!.composes).toEqual(['Field'])
 
     expect(spec.behavior!.map((rule) => rule.id)).toEqual(['toggle', 'change-event'])
-    expect(spec.behavior![0]!.text).toBe('click or Space flips checked.')
+    expect(spec.behavior![0]!.text).toBe('click or Space flips `checked`.')
 
     const contact = spec.models![0]!
     expect(contact.name).toBe('Contact')

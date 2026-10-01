@@ -2044,7 +2044,10 @@ onUnmounted(() => socket.close())
           :docs="docsModel"
           :render="renderExample"
           :stamp="`${definitions}:${fontGeneration}:${tokenGeneration}`"
+          :doc="view.kind === 'docs' ? (pages.get(view.file) ?? null) : null"
+          :writable="connection === 'open'"
           @open="onDocsOpen"
+          @patches="(file, patches) => commitAcrossPages(new Map([[file, patches]]))"
         />
       </ErrorBoundary>
       <ErrorBoundary v-else-if="view.kind === 'models'" pane="Models">

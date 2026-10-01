@@ -537,7 +537,14 @@ export class SpecLowerer {
         continue
       }
       for (const item of node.children ?? []) {
-        const text = textOf(item).replace(/\s+/g, ' ').trim()
+        // Read from the source rather than the parsed text, which drops the
+        // backticks of a `code` span: a rule names props and events that way.
+        const range = rangeOf(item)
+        const text = this.source
+          .slice(range.start, range.end)
+          .replace(/^\s*[-*+]\s+/, '')
+          .replace(/\s+/g, ' ')
+          .trim()
         const match = /^([a-z][a-z0-9-]*):\s*(.+)$/.exec(text)
         if (!match) {
           this.error(

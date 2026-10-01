@@ -1,8 +1,21 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
-import type { JsonValue } from '@uidx/format'
+import { computed, onMounted, ref, watch, type Ref } from 'vue'
+import type { JsonValue, UidxDocument, UidxPatch } from '@uidx/format'
 
 import type { ComponentDocs, DocsExample } from './docs-model'
+import {
+  behaviorPatch,
+  exampleProblem,
+  examplesOf,
+  examplesPatch,
+  intentOf,
+  ruleProblem,
+  rulesOf,
+  setChoices,
+  type ExampleDraft,
+  type RuleDraft,
+  type SetChoice,
+} from './docs-edits'
 
 /**
  * The Docs face: one component's documentation page, read from its identity
@@ -17,12 +30,105 @@ const props = defineProps<{
   render: (example: DocsExample) => Promise<string | null>
   /** Redraw stamp: moves when anything an example draws through moves. */
   stamp: string
+  /** The component's file, parsed, for the editors; none makes the page read-only. */
+  doc?: UidxDocument | null
+  writable?: boolean
 }>()
 
 const emit = defineEmits<{
   /** Open a page on the canvas, selecting an address when one is given. */
   open: [file: string, address?: string]
+  /** Writes to the component's file: its intent, behaviour or examples. */
+  patches: [file: string, patches: UidxPatch[]]
 }>()
+
+/**
+ * One section at a time is edited, as a draft: Save sends the whole region
+ * as one op (one undo step), Cancel throws the draft away. A draft that the
+ * parser would refuse says why and stays open.
+ */
+const editable = computed(() => props.writable === true && !!props.doc && !!props.docs)
+const editing = ref<'intent' | 'behavior' | 'examples' | null>(null)
+const problem = ref<string | null>(null)
+const intentDraft = ref('')
+const rulesDraft = ref<RuleDraft[]>([])
+// Typed by hand: Vue's UnwrapRef over JsonValue's recursion is too deep for TS (TS2589).
+const examplesDraft = ref([]) as Ref<ExampleDraft[]>
+const choices = computed<SetChoice[]>(() => (props.doc ? setChoices(props.doc) : []))
+watch(
+  () => props.docs?.file,
+  () => (editing.value = null),
+)
+
+function edit(section: 'intent' | 'behavior' | 'examples'): void {
+  const doc = props.doc
+  if (!doc) return
+  problem.value = null
+  intentDraft.value = intentOf(doc)
+  rulesDraft.value = rulesOf(doc)
+  if (section === 'behavior' && !rulesDraft.value.length) rulesDraft.value = [{ id: '', text: '' }]
+  examplesDraft.value = examplesOf(doc)
+  if (section === 'examples' && !examplesDraft.value.length) addExample()
+  editing.value = section
+}
+
+function save(): void {
+  const docs = props.docs
+  if (!docs || !editing.value) return
+  let patch: UidxPatch
+  if (editing.value === 'intent') patch = { op: 'intent', text: intentDraft.value }
+  else if (editing.value === 'behavior') {
+    const rules = rulesDraft.value.filter((rule) => rule.id.trim() || rule.text.trim())
+    problem.value = ruleProblem(rules)
+    if (problem.value) return
+    patch = behaviorPatch(rules)
+  } else {
+    problem.value = exampleProblem(examplesDraft.value)
+    if (problem.value) return
+    patch = examplesPatch(examplesDraft.value)
+  }
+  // Nothing written and nothing to remove is not an edit.
+  const empty = patch.op === 'region' && patch.body === undefined
+  const had =
+    patch.op === 'region' &&
+    (patch.name === 'Behavior' ? docs.behavior.length > 0 : docs.examples.length > 0)
+  if (!empty || had) emit('patches', docs.file, [patch])
+  editing.value = null
+}
+
+function addExample(): void {
+  const taken = new Set(examplesDraft.value.map((example) => example.name))
+  let name = 'example'
+  for (let n = 2; taken.has(name); n++) name = `example-${n}`
+  const first = choices.value[0]
+  examplesDraft.value.push({
+    name,
+    sets: first ? [{ at: first.name, value: defaultFor(first) }] : [],
+  })
+}
+
+function defaultFor(choice: SetChoice | undefined): JsonValue {
+  if (!choice) return ''
+  if (choice.kind === 'choice') return choice.values![0]!
+  if (choice.kind === 'boolean') return true
+  if (choice.kind === 'number') return 0
+  return ''
+}
+
+function choiceFor(name: string | undefined): SetChoice | undefined {
+  return choices.value.find((choice) => choice.name === name)
+}
+
+function retarget(set: { at?: string; value?: JsonValue }, at: string): void {
+  set.at = at
+  set.value = defaultFor(choiceFor(at))
+}
+
+function typed(set: { at?: string }, text: string): JsonValue {
+  return choiceFor(set.at)?.kind === 'number' && text.trim() !== '' && !Number.isNaN(Number(text))
+    ? Number(text)
+    : text
+}
 
 const pictures = ref<Record<string, string | null>>({})
 
@@ -112,7 +218,28 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
         </button>
       </header>
 
-      <section v-if="docs.intent" class="intent">
+      <section v-if="editing === 'intent'" class="intent editor" data-editor="intent">
+        <textarea
+          v-model="intentDraft"
+          rows="6"
+          aria-label="Description"
+          placeholder="What this component is for, when to use it, and when to reach for something else. Markdown: blank lines between paragraphs, - for a list, `code` for names."
+        />
+        <div class="editor-actions">
+          <button type="button" class="primary" @click="save">Save</button>
+          <button type="button" @click="editing = null">Cancel</button>
+        </div>
+      </section>
+      <section v-else-if="docs.intent" class="intent">
+        <button
+          v-if="editable"
+          type="button"
+          class="link edit"
+          aria-label="Edit description"
+          @click="edit('intent')"
+        >
+          Edit
+        </button>
         <template v-for="(block, b) in blocks(docs.intent)" :key="b">
           <p v-if="block.kind === 'p'">
             <template v-for="(span, s) in spans(block.lines[0]!)" :key="s">
@@ -131,12 +258,115 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
         </template>
       </section>
       <p v-else class="empty">
-        No description yet. Write what the component is for above
-        <code>## Visual Contract</code>.
+        No description yet.
+        <button v-if="editable" type="button" class="link" @click="edit('intent')">
+          Write what it is for
+        </button>
+        <template v-else>
+          Write what the component is for above <code>## Visual Contract</code>.
+        </template>
       </p>
 
-      <section v-if="docs.examples.length" aria-labelledby="docs-examples">
+      <section
+        v-if="editing === 'examples'"
+        aria-labelledby="docs-examples"
+        class="editor"
+        data-editor="examples"
+      >
         <h2 id="docs-examples" class="section-label">EXAMPLES</h2>
+        <p class="dim">
+          Each example is the component with some properties set — the combinations worth showing a
+          reader, drawn here and in the review site.
+        </p>
+        <div v-for="(example, e) in examplesDraft" :key="e" class="example-draft" :data-example="e">
+          <div class="draft-row">
+            <input v-model="example.name" class="name-input" aria-label="Example name" />
+            <button
+              type="button"
+              class="link danger"
+              :aria-label="`Remove example ${example.name}`"
+              @click="examplesDraft.splice(e, 1)"
+            >
+              Remove
+            </button>
+          </div>
+          <div v-for="(set, i) in example.sets" :key="i" class="draft-row set-row">
+            <template v-if="set.at !== undefined">
+              <select
+                :value="set.at"
+                aria-label="Property"
+                @change="retarget(set, ($event.target as HTMLSelectElement).value)"
+              >
+                <option v-if="!choiceFor(set.at)" :value="set.at">{{ set.at }}</option>
+                <option v-for="choice in choices" :key="choice.name" :value="choice.name">
+                  {{ choice.name }}
+                </option>
+              </select>
+              <select
+                v-if="choiceFor(set.at)?.kind === 'choice'"
+                v-model="set.value"
+                aria-label="Value"
+              >
+                <option v-for="value in choiceFor(set.at)!.values" :key="value" :value="value">
+                  {{ value }}
+                </option>
+              </select>
+              <label v-else-if="choiceFor(set.at)?.kind === 'boolean'" class="check">
+                <input v-model="set.value" type="checkbox" aria-label="Value" />
+                {{ set.value ? 'on' : 'off' }}
+              </label>
+              <input
+                v-else
+                :value="show(set.value)"
+                aria-label="Value"
+                @input="set.value = typed(set, ($event.target as HTMLInputElement).value)"
+              />
+            </template>
+            <span v-else class="dim"
+              >fills slot <code>{{ set.slot }}</code
+              ><template v-if="set.count !== undefined"> × {{ set.count }}</template></span
+            >
+            <button
+              type="button"
+              class="link"
+              aria-label="Remove row"
+              @click="example.sets.splice(i, 1)"
+            >
+              ×
+            </button>
+          </div>
+          <button
+            v-if="choices.length"
+            type="button"
+            class="link"
+            @click="example.sets.push({ at: choices[0]!.name, value: defaultFor(choices[0]) })"
+          >
+            + Set a property
+          </button>
+        </div>
+        <button type="button" class="link" @click="addExample">+ Add example</button>
+        <p v-if="problem" class="problem" role="alert">{{ problem }}</p>
+        <div class="editor-actions">
+          <button type="button" class="primary" @click="save">Save examples</button>
+          <button type="button" @click="editing = null">Cancel</button>
+        </div>
+      </section>
+      <section v-else-if="docs.examples.length || editable" aria-labelledby="docs-examples">
+        <h2 id="docs-examples" class="section-label">
+          EXAMPLES
+          <button
+            v-if="editable"
+            type="button"
+            class="link edit"
+            aria-label="Edit examples"
+            @click="edit('examples')"
+          >
+            {{ docs.examples.length ? 'Edit' : '+ Add' }}
+          </button>
+        </h2>
+        <p v-if="!docs.examples.length" class="empty">
+          No examples yet: add the combinations a reader should see.
+        </p>
         <div class="examples">
           <figure v-for="example in docs.examples" :key="example.name" class="example">
             <div class="picture">
@@ -283,8 +513,60 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
         </section>
       </template>
 
-      <section v-if="docs.behavior.length" aria-labelledby="docs-behavior">
+      <section
+        v-if="editing === 'behavior'"
+        aria-labelledby="docs-behavior"
+        class="editor"
+        data-editor="behavior"
+      >
         <h2 id="docs-behavior" class="section-label">BEHAVIOUR</h2>
+        <p class="dim">
+          One rule per line: a short id, then what happens. Developers and agents implement these;
+          tests cite them by id.
+        </p>
+        <div v-for="(rule, r) in rulesDraft" :key="r" class="draft-row rule-row" :data-rule="r">
+          <input v-model="rule.id" class="rule-id-input" aria-label="Rule id" placeholder="press" />
+          <input
+            v-model="rule.text"
+            class="rule-text-input"
+            aria-label="Rule"
+            placeholder="click, Enter or Space fires `press` once"
+            @keydown.enter="rulesDraft.push({ id: '', text: '' })"
+          />
+          <button
+            type="button"
+            class="link"
+            :aria-label="`Remove rule ${rule.id}`"
+            @click="rulesDraft.splice(r, 1)"
+          >
+            ×
+          </button>
+        </div>
+        <button type="button" class="link" @click="rulesDraft.push({ id: '', text: '' })">
+          + Add rule
+        </button>
+        <p v-if="problem" class="problem" role="alert">{{ problem }}</p>
+        <div class="editor-actions">
+          <button type="button" class="primary" @click="save">Save rules</button>
+          <button type="button" @click="editing = null">Cancel</button>
+        </div>
+      </section>
+      <section v-else-if="docs.behavior.length || editable" aria-labelledby="docs-behavior">
+        <h2 id="docs-behavior" class="section-label">
+          BEHAVIOUR
+          <button
+            v-if="editable"
+            type="button"
+            class="link edit"
+            aria-label="Edit behaviour"
+            @click="edit('behavior')"
+          >
+            {{ docs.behavior.length ? 'Edit' : '+ Add' }}
+          </button>
+        </h2>
+        <p v-if="!docs.behavior.length" class="empty">
+          No behaviour rules yet: say what happens on click, keyboard and focus.
+        </p>
         <ul class="rules">
           <li v-for="rule in docs.behavior" :id="`behavior-${rule.id}`" :key="rule.id">
             <code class="rule-id">{{ rule.id }}</code>
@@ -314,6 +596,85 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
 </template>
 
 <style scoped>
+.edit {
+  margin-left: 8px;
+  font-size: 11px;
+  letter-spacing: 0;
+}
+.intent > .edit {
+  float: right;
+}
+.editor textarea,
+.editor input,
+.editor select {
+  padding: 5px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color-scheme: dark;
+}
+.editor textarea {
+  width: 100%;
+  resize: vertical;
+}
+.draft-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 6px 0;
+}
+.rule-id-input {
+  width: 140px;
+  font-family: ui-monospace, monospace;
+}
+.rule-text-input {
+  flex: 1;
+}
+.example-draft {
+  margin: 10px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.example-draft .name-input {
+  font-weight: 600;
+}
+.set-row {
+  padding-left: 12px;
+}
+.check {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+}
+.editor-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.editor-actions button {
+  padding: 5px 12px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  cursor: pointer;
+}
+.editor-actions .primary {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.problem {
+  color: var(--danger);
+}
+.danger {
+  color: var(--danger);
+}
 .docs-pane {
   height: 100%;
   min-height: 0;

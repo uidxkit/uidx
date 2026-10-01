@@ -24,6 +24,7 @@ export {
 } from './patch.js'
 export { predictDocument } from './predict.js'
 export { declarationOf, inversePatches, toNodeSpec } from './inverse.js'
+export { regionBody, type WholeRegion } from './region-patch.js'
 export { diffToPatches } from './diff-patches.js'
 export { applyPatchesIncremental, type IncrementalResult } from './incremental.js'
 export {
