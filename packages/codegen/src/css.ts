@@ -99,6 +99,26 @@ export function cssPaint(value: JsonValue): string | null {
 
 export type CssKind = 'container' | 'text' | 'vector'
 
+const STROKE_SIDES = [
+  'strokeTopWeight',
+  'strokeRightWeight',
+  'strokeBottomWeight',
+  'strokeLeftWeight',
+] as const
+
+/**
+ * Whether an auto-layout frame sizes `axis` to its content (Figma's Hug). The
+ * primary axis is the layout's direction, the counter axis the other one; a
+ * frame with no sizing mode on an axis but no number either hugs it too.
+ */
+function hugs(attrs: Record<string, JsonValue>, axis: 'width' | 'height'): boolean {
+  const mode = attrs.layoutMode
+  if (mode !== 'HORIZONTAL' && mode !== 'VERTICAL') return false
+  const primary = (mode === 'HORIZONTAL') === (axis === 'width')
+  const sizing = primary ? attrs.primaryAxisSizingMode : attrs.counterAxisSizingMode
+  return sizing === 'AUTO' || (sizing === undefined && attrs[axis] === undefined)
+}
+
 /**
  * The declarations for one node's attributes. `kind` decides what a fill is:
  * a frame's fill is its background, a text's fill is its colour. A vector's
@@ -127,6 +147,13 @@ export function cssDeclarations(
         if (color) {
           const weight = attrs.strokeWeight === undefined ? '1px' : cssLength(attrs.strokeWeight)
           set('border', `${weight ?? '1px'} solid ${color}`)
+          // Weights set per side (the panel writes all four when the weight
+          // is typed) win over the uniform one, as the canvas draws them.
+          const sides = STROKE_SIDES.map((side) =>
+            attrs[side] === undefined ? (weight ?? '1px') : cssLength(attrs[side]!),
+          )
+          if (STROKE_SIDES.some((side) => attrs[side] !== undefined) && sides.every(Boolean))
+            set('border-width', sides.join(' '))
         }
         break
       }
@@ -147,6 +174,10 @@ export function cssDeclarations(
         break
       case 'width':
       case 'height':
+        // An axis that hugs is sized by its content; the number stored beside
+        // it is only what the content measured when it was drawn.
+        if (!hugs(attrs, name)) set(name, cssLength(value))
+        break
       case 'minWidth':
       case 'maxWidth':
       case 'minHeight':
@@ -166,10 +197,7 @@ export function cssDeclarations(
         if (value === 'HORIZONTAL' || value === 'VERTICAL') {
           // A frame that hugs its width sizes to its content, as the canvas
           // draws it; a block-level flex box would stretch to its container.
-          const widthSizing =
-            value === 'HORIZONTAL' ? attrs.primaryAxisSizingMode : attrs.counterAxisSizingMode
-          const hugs = widthSizing === 'AUTO' && attrs.width === undefined
-          out.display = hugs ? 'inline-flex' : 'flex'
+          out.display = hugs(attrs, 'width') ? 'inline-flex' : 'flex'
           out['flex-direction'] = value === 'HORIZONTAL' ? 'row' : 'column'
         }
         break

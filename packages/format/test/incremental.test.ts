@@ -239,6 +239,57 @@ describe('the attribute fast path (no parse at all)', () => {
   })
 })
 
+describe('the regions after the tree', () => {
+  const SPECCED = `---
+id: switch
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="draft">
+    <Text name="label" characters="{label}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string">The words.</Prop>
+</Props>
+`
+  const spans = (doc: ReturnType<typeof parseOrThrow>) =>
+    JSON.stringify([doc.spec, doc.trailing?.loc])
+
+  // Connecting an element (an attribute on the tree) then filling the contract
+  // from the library: the contract op must splice where the region now is.
+  it('move with an edit inside the tree, so a contract op after it lands in place', () => {
+    const edits: UidxPatch[][] = [
+      [{ op: 'add', address: 'Switch', prop: 'implements', value: 'sl-switch' }],
+      [
+        {
+          op: 'insert-node',
+          parent: 'Switch',
+          index: 0,
+          node: { element: 'Frame', attrs: { name: 'base' } },
+        },
+      ],
+    ]
+    for (const patches of edits) {
+      const first = applyPatchesIncremental(parseOrThrow(SPECCED), patches).doc
+      expect(spans(first)).toBe(spans(parseOrThrow(first.source)))
+      const declare: UidxPatch = {
+        op: 'contract',
+        kind: 'prop',
+        name: 'checked',
+        declaration: { attrs: { type: 'boolean' }, description: 'On.' },
+      }
+      const next = applyPatchesIncremental(first, [declare]).doc
+      expect(next.spec!.contract!.props.map((prop) => prop.name)).toEqual(['label', 'checked'])
+    }
+  })
+})
+
 describe('on a large variant document', () => {
   const src = largeDocument()
   it('an attribute op inside a variant is fast and agrees with the full parse', () => {

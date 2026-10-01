@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow } from '@uidx/format'
 import PropertiesPane from '../src/PropertiesPane.vue'
 import { routeDerivedPatches } from '../src/derived-edits'
+import { bindVariable, detachVariable } from '../src/variable-binding'
 
 /**
  * Designing a state on the canvas (ADR 0016 §4).
@@ -113,6 +114,30 @@ describe('routing an edit on a derived variant', () => {
     expect(applyPatches(SOURCE, routed.patches).source).toContain(
       '<Style state="hover" root:opacity={0.5} />',
     )
+  })
+})
+
+describe('a token bound on a derived variant', () => {
+  // The variant has no node in the file; the binding must still reach the
+  // router, which writes the state's row (or the base, for the default).
+  it('lands on the state row, and on the base tree for the default combination', () => {
+    const bound = [
+      ...bindVariable(doc, 'Checkbox#state=hover/root', 'opacity', 'opacity#disabled')!,
+      ...bindVariable(doc, 'Checkbox#state=default/root/ring', 'opacity', 'opacity#disabled')!,
+    ]
+    expect(routeDerivedPatches(doc, bound)).toEqual({
+      patches: [
+        {
+          op: 'style',
+          keys: { state: 'hover' },
+          target: 'root',
+          prop: 'opacity',
+          value: '{opacity#disabled}',
+        },
+        { op: 'add', address: 'Checkbox#ring', prop: 'opacity', value: '{opacity#disabled}' },
+      ],
+    })
+    expect(detachVariable(doc, 'Checkbox#state=hover/root', 'opacity', 0.4)).not.toBeNull()
   })
 })
 

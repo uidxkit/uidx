@@ -10,7 +10,7 @@ import {
   type UidxPatch,
   type VariableType,
 } from '@uidx/format'
-import type { TokenIndex } from '@uidx/schema'
+import { derivedTarget, type TokenIndex } from '@uidx/schema'
 import { colorToHex, type Rgba } from './paint-edit'
 
 /**
@@ -82,13 +82,25 @@ export function variableTypeForControl(control: string): VariableType | null {
  * would hand D4 a string where it reflows numbers. A patch says exactly what
  * the file should hold.
  */
+/**
+ * The node a binding writes to. A variant of a derived component (ADR 0016
+ * §4) has no node in the file — `Switch#state=disabled/root` is drawn, not
+ * written — so its authored base answers whether the prop exists, and the
+ * shell routes the patch to the variant's style row, or to the base itself
+ * for the default combination. Without this a token picked for a state did
+ * nothing at all.
+ */
+function boundNode(doc: UidxDocument, address: string): UidxNode | null {
+  return resolve(doc.tree, address) ?? derivedTarget(doc, address)?.base ?? null
+}
+
 export function bindVariable(
   doc: UidxDocument,
   address: string,
   prop: string,
   token: string,
 ): UidxPatch[] | null {
-  const node = resolve(doc.tree, address)
+  const node = boundNode(doc, address)
   if (!node) return null
   const op = node.attrs[prop] === undefined ? 'add' : 'set'
   return [{ op, address, prop, value: toAlias(token) }]
@@ -162,7 +174,7 @@ export function detachVariable(
   resolved: JsonValue | undefined,
 ): UidxPatch[] | null {
   if (resolved === undefined) return null
-  const node = resolve(doc.tree, address)
+  const node = boundNode(doc, address)
   if (!node) return null
   return [{ op: node.attrs[prop] === undefined ? 'add' : 'set', address, prop, value: resolved }]
 }

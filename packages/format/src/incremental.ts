@@ -220,7 +220,38 @@ function takeAttribute(doc: UidxDocument, patch: PlainAttributePatch): UidxDocum
     if (a.loc.start >= from) attrs[k] = shiftAttr(a, delta)
   }
   const tree = moveAfter(doc.tree, from, delta, node.address, attrs)
-  return { ...doc, tree, source }
+  return { ...doc, ...movedTail(doc, delta), tree, source }
+}
+
+const RANGE_KEYS = new Set(['loc', 'valueLoc', 'openTagLoc'])
+
+/** Every span inside a spec value, moved by `by`. */
+function movedSpans<T>(value: T, by: number): T {
+  if (Array.isArray(value)) return value.map((item) => movedSpans(item, by)) as T
+  if (!value || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value)) {
+    const range = child as Range
+    out[key] =
+      RANGE_KEYS.has(key) && typeof range?.start === 'number' && typeof range.end === 'number'
+        ? { start: range.start + by, end: range.end + by }
+        : movedSpans(child, by)
+  }
+  return out as T
+}
+
+/**
+ * The regions after the tree — the contract, behaviour, models, styles — and
+ * their verbatim text sit wholly after any edit inside the tree, so a change
+ * of `by` characters moves every one of their spans. Left stale, the next
+ * contract op splices at the old offsets and writes into the middle of a tag.
+ */
+function movedTail(doc: UidxDocument, by: number): Pick<UidxDocument, 'spec' | 'trailing'> {
+  if (by === 0) return { spec: doc.spec, trailing: doc.trailing }
+  return {
+    spec: doc.spec && movedSpans(doc.spec, by),
+    trailing: doc.trailing && { ...doc.trailing, loc: moveRange(doc.trailing.loc, 0, by) },
+  }
 }
 
 /** A range after `from` moves; one spanning it grows at the end. */
@@ -514,6 +545,7 @@ function relower(
   const tree = rebuild(0)
   const next: UidxDocument = {
     ...doc,
+    ...movedTail(doc, delta),
     tree,
     source: nextSource,
     sourceHash: fnv1a(nextSource),

@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { CODES, parseOrThrow } from '@uidx/format'
-import { generate, tsType, componentModel, partTag, stateSelector } from '../src/index.js'
+import {
+  cssDeclarations,
+  generate,
+  tsType,
+  componentModel,
+  partTag,
+  stateSelector,
+} from '../src/index.js'
 import { CHECKBOX, CONTACT_ITEM, CONTACT_LIST, FIELD, MANIFEST, TOKENS } from './fixtures.js'
 
 /**
@@ -917,5 +924,45 @@ id: input
     const react = output.files.get('react/Input.tsx')!
     expect(react).toContain('label?: string')
     expect(react).toContain('label={label} placeholder={placeholder}')
+  })
+})
+
+describe('what a frame drawn on the canvas becomes in CSS', () => {
+  it('sizes a hugging axis by its content, whatever number was measured beside it', () => {
+    const css = cssDeclarations(
+      {
+        layoutMode: 'HORIZONTAL',
+        primaryAxisSizingMode: 'AUTO',
+        counterAxisSizingMode: 'FIXED',
+        width: 89,
+        height: 20,
+      },
+      'container',
+    )
+    expect(css.width).toBeUndefined()
+    expect(css.height).toBe('20px')
+    expect(css.display).toBe('inline-flex')
+    // A column hugs its height on the primary axis, its width on the counter.
+    const column = cssDeclarations(
+      { layoutMode: 'VERTICAL', counterAxisSizingMode: 'AUTO', width: 45, height: 17 },
+      'container',
+    )
+    expect([column.width, column.height]).toEqual([undefined, '17px'])
+  })
+
+  it('draws a stroke with the weights set per side, over the uniform one', () => {
+    const css = cssDeclarations(
+      {
+        strokes: [{ type: 'SOLID', color: '{color#text}' }],
+        strokeWeight: 1,
+        strokeTopWeight: 2,
+        strokeRightWeight: 2,
+        strokeBottomWeight: 2,
+        strokeLeftWeight: 2,
+      },
+      'container',
+    )
+    expect(css.border).toBe('1px solid var(--color-text)')
+    expect(css['border-width']).toBe('2px 2px 2px 2px')
   })
 })

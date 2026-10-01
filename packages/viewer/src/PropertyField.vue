@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LengthFieldRoot from './LengthFieldRoot.vue'
+import { focusEdit } from './focus-edit'
 import LengthUnitSelect from './LengthUnitSelect.vue'
 import { computed, ref } from 'vue'
 import { SegmentedControlItem, SegmentedControlRoot } from '@open-pencil/vue'
@@ -347,6 +348,7 @@ const segmented = computed(
             type="text"
             :value="draftValue"
             :disabled="!editable"
+            @vue:mounted="focusEdit"
             @input="actions.input($event)"
             @keydown="actions.keydown($event)"
             @keydown.enter.prevent="($event.target as HTMLInputElement).blur()"

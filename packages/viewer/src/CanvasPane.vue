@@ -1516,18 +1516,30 @@ function reapplyLocalEdits(): void {
  * change; re-selecting the same ids would be harmless but would repaint on
  * every click, and the guard says plainly that this is a one-way sync.
  */
+/**
+ * The scene node an address is drawn as: its own, or — for a base layer of a
+ * derived component, which has none (ADR 0016 §4) — its twin under the
+ * default state. The rail and the panel name the base layer; selection and
+ * edits must land on the twin, or a width typed into the panel goes nowhere.
+ */
+function drawnId(address: string): string | undefined {
+  return scene.value?.addresses.sceneIdOf(address) ?? twinId(address)
+}
+
+/** The default-state twin of a base layer of a derived component, if it has one. */
+function twinId(address: string): string | undefined {
+  const twin = props.doc ? defaultVariantAddress(props.doc, address) : null
+  return twin === null ? undefined : scene.value?.addresses.sceneIdOf(twin)
+}
+
 function applySelection(addresses: readonly string[]): void {
   const graph = scene.value
   if (!graph || !ready.value) return
 
   // A base layer of a derived component has no node of its own: the default
   // state draws it (ADR 0016 §4), so the rail's address lands on that twin.
-  const twin = (address: string): string | undefined => {
-    const drawn = props.doc ? defaultVariantAddress(props.doc, address) : null
-    return drawn === null ? undefined : graph.addresses.sceneIdOf(drawn)
-  }
   const ids = addresses
-    .map((address) => graph.addresses.sceneIdOf(address) ?? twin(address))
+    .map(drawnId)
     .filter((id): id is string => id !== undefined && id !== graph.rootId)
 
   const selected = editor.state.selectedIds
@@ -1954,7 +1966,17 @@ function applyProp(
 ): void {
   if (props.writable === false) return
   const graph = scene.value?.graph
-  if (!graph || !graph.getNode(address)) return
+  if (!graph) return
+  // The panel names a base layer of a derived component — or the component
+  // itself — when the rail chose it. The canvas draws it as its default-state
+  // twin (the component as that variant's root, not the set around the
+  // variants), and an edit there is what writes the base.
+  const twin = twinId(address)
+  if (twin !== undefined && twin !== address) {
+    if (graph.getNode(twin)) applyProp(twin, prop, value, mode)
+    return
+  }
+  if (!graph.getNode(address)) return
   const saved = current ? resolve(current.tree, address) : null
   const stroke = saved
     ? strokeEdit(saved, prop, value, resolveAlias, rootFontSizeOf(current))
@@ -2072,7 +2094,7 @@ function applyProp(
  * these overlays, so this only has to say which one and on what.
  */
 function applyHover(address: string, prop: string | null): void {
-  const id = scene.value?.addresses.sceneIdOf(address)
+  const id = drawnId(address)
   const target = prop ? hoverTargetFor(prop) : null
   if (!id || !target) {
     editor.setAutoLayoutHover(null)

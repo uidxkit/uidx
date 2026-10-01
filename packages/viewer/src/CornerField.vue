@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import LengthFieldRoot from './LengthFieldRoot.vue'
+import { focusEdit } from './focus-edit'
 import LengthUnitSelect from './LengthUnitSelect.vue'
 import { computed, ref, watch, inject } from 'vue'
 import { parseLength, type JsonValue } from '@uidx/format'
@@ -167,6 +168,7 @@ function commitSmoothing(percent: JsonValue): void {
                 type="text"
                 :value="draftValue"
                 :disabled="!editable"
+                @vue:mounted="focusEdit"
                 @input="actions.input($event)"
                 @keydown="actions.keydown($event)"
                 @blur="actions.commitEdit($event)"
@@ -232,6 +234,7 @@ function commitSmoothing(percent: JsonValue): void {
                 type="text"
                 :value="draftValue"
                 :disabled="!editable"
+                @vue:mounted="focusEdit"
                 @input="actions.input($event)"
                 @keydown="actions.keydown($event)"
                 @blur="actions.commitEdit($event)"
@@ -305,6 +308,7 @@ function commitSmoothing(percent: JsonValue): void {
             type="text"
             :value="draftValue"
             :disabled="!editable"
+            @vue:mounted="focusEdit"
             @input="actions.input($event)"
             @keydown="actions.keydown($event)"
             @blur="actions.commitEdit($event)"
