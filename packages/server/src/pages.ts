@@ -14,8 +14,36 @@ class PageError extends Error {
   }
 }
 
+/** What a new file holds: a canvas, one component's identity, or the tokens. */
+export type NewFileKind = 'page' | 'component' | 'tokens'
+
+const pascal = (text: string): string =>
+  text
+    .split(/[^A-Za-z0-9]+/)
+    .filter(Boolean)
+    .map((word) => word[0]!.toUpperCase() + word.slice(1))
+    .join('')
+    .replace(/^[0-9]+/, '')
+
+/** The starting source for each kind — valid, and saying what to write next. */
+export function starterSource(kind: NewFileKind, stem: string, name: string): string {
+  const front = `---\nid: ${JSON.stringify(stem)}\n---\n\n`
+  if (kind === 'tokens') {
+    return `${front}The design system's foundations: name each collection after what it holds, and give a collection modes (light and dark) when its values change with them.\n\n## Visual Contract\n\n<Tokens>\n  <Collection name="color">\n    <Variable name="accent" type="COLOR" value={{ r: 0.145, g: 0.388, b: 0.922, a: 1 }} />\n  </Collection>\n  <Collection name="space">\n    <Variable name="md" type="FLOAT" value={12} />\n  </Collection>\n</Tokens>\n`
+  }
+  if (kind === 'component') {
+    const component = pascal(name) || 'Component'
+    return `${front}Describe what ${component} is for, and when to reach for something else.\n\n## Visual Contract\n\n<Page>\n  <Component name="${component}" status="draft"\n    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"\n    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"\n    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={6}\n    fills={[{ type: 'SOLID', color: { r: 0.933, g: 0.941, b: 0.957, a: 1 } }]}>\n    <Text name="label" characters="{label}" fontSize={14} />\n  </Component>\n</Page>\n\n## Contract\n\n<Props>\n  <Prop name="label" type="string" sample="${component}">The words it shows.</Prop>\n</Props>\n`
+  }
+  return `${front}## Core Intent\n\nDescribe what this page is for.\n\n## Visual Contract\n\n<Page>\n</Page>\n`
+}
+
 /** Page names become filenames; callers never supply a write path. */
-async function createPage(workspace: Workspace, value: unknown): Promise<string> {
+async function createPage(
+  workspace: Workspace,
+  value: unknown,
+  kind: NewFileKind = 'page',
+): Promise<string> {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > 100) {
     throw new PageError(400, 'Enter a page name of 1–100 characters.')
   }
@@ -75,7 +103,7 @@ async function createPage(workspace: Workspace, value: unknown): Promise<string>
       )
     }
   }
-  const source = `---\nid: ${JSON.stringify(stem)}\n---\n\n## Core Intent\n\nDescribe what this page is for.\n\n## Visual Contract\n\n<Page>\n</Page>\n`
+  const source = starterSource(kind, stem, name)
   parseOrThrow(source)
   try {
     // Exclusive creation also prevents overwriting a file created by another client.
@@ -124,7 +152,11 @@ export function pagesRoutePlugin(holder: { current: Workspace | null }): ViewerP
         } catch {
           return answer(400, { error: 'The body must be JSON.' })
         }
-        void createPage(workspace, (body as { name?: unknown } | null)?.name).then(
+        const request_ = body as { name?: unknown; kind?: unknown } | null
+        const kind = request_?.kind ?? 'page'
+        if (kind !== 'page' && kind !== 'component' && kind !== 'tokens')
+          return answer(400, { error: 'A new file is a page, a component or tokens.' })
+        void createPage(workspace, request_?.name, kind).then(
           (file) => answer(201, { file }),
           (error: unknown) =>
             answer(error instanceof PageError ? error.status : 500, {

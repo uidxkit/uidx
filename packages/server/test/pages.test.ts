@@ -31,13 +31,28 @@ describe.each(['built', 'development'] as const)('%s page creation', (mode) => {
       port: 4840,
     })
   }
-  function post(name: unknown, origin = server!.url!) {
+  function post(name: unknown, origin = server!.url!, kind?: unknown) {
     return fetch(`${server!.url}/__uidx/pages`, {
       method: 'POST',
       headers: { origin, 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify(kind === undefined ? { name } : { name, kind }),
     })
   }
+
+  it('creates a component identity or a tokens file when asked for one', async () => {
+    await start()
+    expect((await post('Primary button', undefined, 'component')).status).toBe(201)
+    const component = parseOrThrow(await readFile(join(dir, 'primary-button.uidx'), 'utf8'))
+    expect(component.tree.children[0]).toMatchObject({
+      element: 'Component',
+      name: 'PrimaryButton',
+    })
+    expect(component.spec!.contract!.props.map((prop) => prop.name)).toEqual(['label'])
+    expect((await post('Tokens', undefined, 'tokens')).status).toBe(201)
+    const tokens = parseOrThrow(await readFile(join(dir, 'tokens.uidx'), 'utf8'))
+    expect(tokens.tree.element).toBe('Tokens')
+    expect((await post('Other', undefined, 'script')).status).toBe(400)
+  })
 
   it('creates a valid blank page and announces it before responding', async () => {
     await start()

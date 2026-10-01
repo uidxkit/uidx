@@ -78,9 +78,12 @@ export { buildDependentsIndex, type Dependent, type DependentsIndex } from './sy
 export {
   deleteCollection,
   deleteToken,
+  renameCollection,
   renameComponent,
   renameToken,
   rewriteAliases,
+  setCollectionModes,
+  type ModeShape,
   type DeletePlan,
   type DeleteCollectionPlan,
   type RefactorPlan,

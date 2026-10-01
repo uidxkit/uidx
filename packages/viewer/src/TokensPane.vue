@@ -53,10 +53,94 @@ export interface TokenEditIntent {
 const emit = defineEmits<{
   select: [address: string]
   edit: [payload: TokenEditIntent]
-  'add-token': [collection: string]
+  'add-token': [collection: string, type: VariableType]
   'add-collection': []
   'remove-collection': [collection: string]
+  'rename-collection': [collection: string, name: string]
+  'set-tier': [collection: string, tier: TokenTier | null]
+  'add-mode': [collection: string, mode: string]
+  'rename-mode': [collection: string, mode: string, name: string]
+  'remove-mode': [collection: string, mode: string]
+  'new-tokens-file': []
 }>()
+
+/** What "+ New token" offers, most likely first: the collection's own type. */
+const NEW_TOKEN_TYPES: { type: VariableType; label: string; hint: string }[] = [
+  { type: 'COLOR', label: 'Color', hint: 'A fill, text or border colour' },
+  { type: 'FLOAT', label: 'Number', hint: 'A size, space, radius, opacity or weight' },
+  { type: 'STRING', label: 'Text', hint: 'A font family or other word' },
+  { type: 'BOOLEAN', label: 'Toggle', hint: 'On or off, to show or hide a layer' },
+]
+const typeMenuFor = ref<string | null>(null)
+function newTokenTypes(group: CollectionGroup) {
+  const own = group.rows[0]?.type
+  return own
+    ? [...NEW_TOKEN_TYPES].sort((a, b) => Number(b.type === own) - Number(a.type === own))
+    : NEW_TOKEN_TYPES
+}
+function chooseNewToken(collection: string, type: VariableType): void {
+  typeMenuFor.value = null
+  emit('add-token', collection, type)
+}
+
+/**
+ * The collection heading or mode column being renamed, or the collection a
+ * mode is being added to: one inline field at a time, Enter to commit and
+ * Escape to leave it.
+ */
+const naming = ref<
+  | { kind: 'collection'; collection: string }
+  | { kind: 'mode'; collection: string; mode: string }
+  | { kind: 'new-mode'; collection: string }
+  | null
+>(null)
+const NAME = /^[a-z][a-z0-9-]*$/i
+const namingError = ref('')
+function startNaming(next: NonNullable<typeof naming.value>): void {
+  naming.value = next
+  namingError.value = ''
+  void nextTick(() => paneEl.value?.querySelector<HTMLInputElement>('.inline-name')?.select())
+}
+function isNaming(kind: string, collection: string, mode?: string): boolean {
+  const now = naming.value
+  return (
+    now !== null &&
+    now.kind === kind &&
+    now.collection === collection &&
+    (mode === undefined || (now.kind === 'mode' && now.mode === mode))
+  )
+}
+function commitNaming(event: Event): void {
+  const now = naming.value
+  if (!now) return
+  const text = (event.target as HTMLInputElement).value.trim()
+  const group = props.groups.find((candidate) => candidate.name === now.collection)
+  const current = now.kind === 'collection' ? now.collection : now.kind === 'mode' ? now.mode : ''
+  if (!text || text === current) {
+    naming.value = null
+    return
+  }
+  if (!NAME.test(text)) {
+    namingError.value = 'Letters, digits and dashes, starting with a letter'
+    return
+  }
+  if (now.kind === 'collection') {
+    if (props.groups.some((candidate) => candidate.name === text)) {
+      namingError.value = `There is already a collection named ${text}`
+      return
+    }
+    emit('rename-collection', now.collection, text)
+  } else {
+    const modes = group?.modes.length && group.modes.length > 1 ? group.modes : []
+    if (modes.includes(text)) {
+      namingError.value = `${now.collection} already has a ${text} mode`
+      return
+    }
+    if (now.kind === 'mode') emit('rename-mode', now.collection, now.mode, text)
+    else emit('add-mode', now.collection, text)
+  }
+  naming.value = null
+}
 
 /**
  * The one cell being edited as text, if any. Shallow, and the draft text in a
@@ -93,6 +177,8 @@ async function revealCollection(name: string): Promise<void> {
   picking.value = null
   binding.value = null
   createdCollection.value = name
+  // A new collection is named collection-N; offer its real name at once.
+  if (props.canCreateCollections) naming.value = { kind: 'collection', collection: name }
   await nextTick()
   const pane = paneEl.value
   const section = Array.from(pane?.querySelectorAll<HTMLElement>('[data-collection]') ?? []).find(
@@ -111,7 +197,11 @@ async function revealCollection(name: string): Promise<void> {
       (toolbarEl.value?.offsetHeight ?? 0) -
       12,
   })
-  section.querySelector<HTMLButtonElement>('.add')?.focus({ preventScroll: true })
+  const field = section.querySelector<HTMLInputElement>('.inline-name')
+  if (field) {
+    field.focus({ preventScroll: true })
+    field.select()
+  } else section.querySelector<HTMLButtonElement>('.add')?.focus({ preventScroll: true })
 }
 
 function focusCollectionTools(): void {
@@ -499,21 +589,100 @@ function chainText(cell: TokenCell): string {
           :data-collection="group.name"
         >
           <header class="collection-heading">
-            <h3>{{ group.name }}</h3>
+            <input
+              v-if="isNaming('collection', group.name)"
+              class="inline-name heading-name"
+              :value="group.name"
+              aria-label="Collection name"
+              @keydown.enter.prevent="commitNaming"
+              @keydown.escape="naming = null"
+              @blur="commitNaming"
+            />
+            <h3
+              v-else
+              :title="canCreateCollections ? 'Double-click to rename' : undefined"
+              @dblclick="
+                canCreateCollections && startNaming({ kind: 'collection', collection: group.name })
+              "
+            >
+              {{ group.name }}
+            </h3>
+            <button
+              v-if="canCreateCollections && !isNaming('collection', group.name)"
+              class="icon-action"
+              type="button"
+              :aria-label="`Rename collection ${group.name}`"
+              title="Rename collection; every reference follows"
+              @click="startNaming({ kind: 'collection', collection: group.name })"
+            >
+              ✎
+            </button>
             <span v-if="createdCollection === group.name" class="created-label" role="status">
               Collection created
             </span>
-            <span class="tier-badge" :data-tier="group.tier ?? 'unassigned'">{{
+            <select
+              v-if="canCreateCollections"
+              class="tier-badge tier-pick"
+              :data-tier="group.tier ?? 'unassigned'"
+              :value="group.tier && group.tier !== 'unassigned' ? group.tier : ''"
+              :aria-label="`Tier of ${group.name}`"
+              title="Which tier this collection is: raw values, meanings, or one component's"
+              @change="
+                emit(
+                  'set-tier',
+                  group.name,
+                  (($event.target as HTMLSelectElement).value || null) as TokenTier | null,
+                )
+              "
+            >
+              <option value="">No tier</option>
+              <option v-for="tier in TOKEN_TIERS" :key="tier.id" :value="tier.id">
+                {{ tier.label }}
+              </option>
+            </select>
+            <span v-else class="tier-badge" :data-tier="group.tier ?? 'unassigned'">{{
               tierLabel(group.tier)
             }}</span
-            ><span class="collection-count">{{ group.rows.length }} tokens</span
-            ><button
+            ><span class="collection-count">{{ group.rows.length }} tokens</span>
+            <span class="new-token">
+              <button
+                class="add"
+                type="button"
+                :aria-label="`Add token to ${group.name}`"
+                :aria-expanded="typeMenuFor === group.name"
+                @click="typeMenuFor = typeMenuFor === group.name ? null : group.name"
+              >
+                {{ group.rows.length ? '+ New token' : '+ Add first token' }}
+              </button>
+              <span
+                v-if="typeMenuFor === group.name"
+                class="type-menu"
+                role="menu"
+                :aria-label="`Type of the new token in ${group.name}`"
+                @keydown.escape="typeMenuFor = null"
+              >
+                <button
+                  v-for="choice in newTokenTypes(group)"
+                  :key="choice.type"
+                  type="button"
+                  role="menuitem"
+                  :data-type="choice.type"
+                  :title="choice.hint"
+                  @click="chooseNewToken(group.name, choice.type)"
+                >
+                  {{ choice.label }}
+                </button>
+              </span>
+            </span>
+            <button
+              v-if="canCreateCollections"
               class="add"
               type="button"
-              :aria-label="`Add token to ${group.name}`"
-              @click="emit('add-token', group.name)"
+              :aria-label="`Add mode to ${group.name}`"
+              title="A mode is a column of values the canvas can switch, such as light and dark"
+              @click="startNaming({ kind: 'new-mode', collection: group.name })"
             >
-              {{ group.rows.length ? '+ New token' : '+ Add first token' }}
+              + Mode
             </button>
             <button
               v-if="canCreateCollections"
@@ -526,14 +695,68 @@ function chainText(cell: TokenCell): string {
               <FieldIcon name="trash" />
             </button>
           </header>
+          <div v-if="isNaming('new-mode', group.name)" class="mode-adder">
+            <span
+              >New mode, starting from
+              {{ group.modes.length > 1 ? group.modes[0] : 'the current values' }}:</span
+            >
+            <input
+              class="inline-name"
+              placeholder="dark"
+              aria-label="New mode name"
+              @keydown.enter.prevent="commitNaming"
+              @keydown.escape="naming = null"
+              @blur="naming = null"
+            />
+          </div>
+          <p
+            v-if="namingError && naming && naming.collection === group.name"
+            class="naming-error"
+            role="alert"
+          >
+            {{ namingError }}
+          </p>
           <div class="table-scroll">
             <table>
               <thead>
                 <tr>
                   <th class="name">Token</th>
                   <th class="purpose">Visual type / role</th>
-                  <th v-for="mode in group.modes" :key="mode" class="value">
-                    {{ group.modes.length > 1 ? mode : 'Value' }}
+                  <th v-for="mode in group.modes" :key="mode" class="value" :data-mode="mode">
+                    <input
+                      v-if="isNaming('mode', group.name, mode)"
+                      class="inline-name"
+                      :value="mode"
+                      :aria-label="`Rename mode ${mode}`"
+                      @keydown.enter.prevent="commitNaming"
+                      @keydown.escape="naming = null"
+                      @blur="commitNaming"
+                    />
+                    <span v-else-if="group.modes.length > 1" class="mode-head">
+                      <span
+                        :title="canCreateCollections ? 'Double-click to rename' : undefined"
+                        @dblclick="
+                          canCreateCollections &&
+                          startNaming({ kind: 'mode', collection: group.name, mode })
+                        "
+                        >{{ mode }}</span
+                      >
+                      <button
+                        v-if="canCreateCollections"
+                        type="button"
+                        class="icon-action"
+                        :aria-label="`Remove mode ${mode}`"
+                        :title="
+                          group.modes.length === 2
+                            ? `Remove ${mode}; every token keeps its other value`
+                            : `Remove ${mode} and its values`
+                        "
+                        @click="emit('remove-mode', group.name, mode)"
+                      >
+                        ×
+                      </button>
+                    </span>
+                    <template v-else>Value</template>
                   </th>
                   <th class="usage">Uses</th>
                   <th class="row-actions" aria-label="Details" />
@@ -756,6 +979,14 @@ function chainText(cell: TokenCell): string {
           </p>
           <button v-if="hasFilters" type="button" class="add" @click="resetFilters">
             Clear filters
+          </button>
+          <button
+            v-else-if="!groups.length && !canCreateCollections"
+            type="button"
+            class="add root"
+            @click="emit('new-tokens-file')"
+          >
+            + New tokens file
           </button>
         </div>
       </section>
@@ -1131,9 +1362,91 @@ h3 {
   margin: 0;
 }
 .collection-heading .add {
-  margin-left: auto;
   padding: 4px 8px;
   background: transparent;
+}
+.new-token {
+  position: relative;
+  margin-left: auto;
+}
+.type-menu {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 4px);
+  right: 0;
+  display: grid;
+  min-width: 120px;
+  padding: 4px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.3);
+}
+.type-menu button {
+  padding: 6px 8px;
+  text-align: left;
+  font-size: 11px;
+  color: var(--text);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+}
+.type-menu button:hover,
+.type-menu button:focus-visible {
+  background: var(--raised, var(--line));
+}
+.icon-action {
+  padding: 0 4px;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-faint);
+  background: transparent;
+  border: 0;
+  opacity: 0;
+}
+.collection-heading:hover .icon-action,
+th:hover .icon-action,
+.icon-action:focus-visible {
+  opacity: 1;
+}
+.icon-action:hover {
+  color: var(--text);
+}
+.mode-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.inline-name {
+  width: 100%;
+  max-width: 180px;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--raised, var(--panel));
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+}
+.mode-adder {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 15px 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.naming-error {
+  margin: 0;
+  padding: 0 15px 10px;
+  font-size: 11px;
+  color: var(--danger);
+}
+.tier-pick {
+  cursor: pointer;
+  font: inherit;
+  font-size: 9px;
+  color-scheme: dark;
 }
 .remove-collection {
   display: grid;

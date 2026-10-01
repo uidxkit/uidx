@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
+import type { JsonValue, VariableScope, VariableType } from '@uidx/format'
 import type { Dependent } from '@uidx/schema'
 import type { TokenRow } from './tokens-view-model'
 import TokenSpecimen from './TokenSpecimen.vue'
@@ -31,7 +32,59 @@ const emit = defineEmits<{
   rename: [newName: string]
   delete: []
   deprecate: [value: boolean]
+  /** Sets one of the variable's own attributes; null removes it. */
+  attr: [prop: 'description' | 'scopes', value: JsonValue | null]
 }>()
+
+/** Where a token of each type can be offered, in the pickers' words. */
+const SCOPES_BY_TYPE: Record<VariableType, [VariableScope, string][]> = {
+  COLOR: [
+    ['ALL_FILLS', 'All fills'],
+    ['FRAME_FILL', 'Frame fill'],
+    ['SHAPE_FILL', 'Shape fill'],
+    ['TEXT_FILL', 'Text fill'],
+    ['STROKE_COLOR', 'Stroke'],
+    ['EFFECT_COLOR', 'Effects'],
+  ],
+  FLOAT: [
+    ['CORNER_RADIUS', 'Corner radius'],
+    ['WIDTH_HEIGHT', 'Width and height'],
+    ['GAP', 'Gap'],
+    ['SPACING', 'Padding'],
+    ['STROKE_FLOAT', 'Stroke width'],
+    ['EFFECT_FLOAT', 'Effects'],
+    ['OPACITY', 'Opacity'],
+    ['FONT_SIZE', 'Font size'],
+    ['FONT_WEIGHT', 'Font weight'],
+    ['LINE_HEIGHT', 'Line height'],
+    ['LETTER_SPACING', 'Letter spacing'],
+    ['PARAGRAPH_SPACING', 'Paragraph spacing'],
+    ['PARAGRAPH_INDENT', 'Paragraph indent'],
+  ],
+  STRING: [
+    ['TEXT_CONTENT', 'Text content'],
+    ['FONT_FAMILY', 'Font family'],
+    ['FONT_STYLE', 'Font style'],
+  ],
+  BOOLEAN: [],
+}
+const scopeChoices = computed(() => SCOPES_BY_TYPE[props.row.type] ?? [])
+const everywhere = computed(
+  () => props.row.scopes.length === 0 || props.row.scopes.includes('ALL_SCOPES'),
+)
+
+function toggleScope(scope: VariableScope, on: boolean): void {
+  const current = everywhere.value ? [] : props.row.scopes.filter((s) => s !== 'ALL_SCOPES')
+  const next = on ? [...current, scope] : current.filter((s) => s !== scope)
+  // Nothing ticked is the default: offered everywhere, written as no attribute.
+  emit('attr', 'scopes', next.length ? next : null)
+}
+
+function setDescription(event: Event): void {
+  const text = (event.target as HTMLTextAreaElement).value.trim()
+  if (text === props.row.description) return
+  emit('attr', 'description', text || null)
+}
 
 const confirming = ref<'rename' | 'delete' | null>(null)
 const newName = ref('')
@@ -107,11 +160,40 @@ function describe(dependent: Dependent): string {
         <span>{{ cell.mode }}</span>
       </div>
       <strong>{{ visualRole(row) }}</strong>
-      <p v-if="row.description">{{ row.description }}</p>
       <p v-if="row.inferredScopes" class="inferred-note">
         Visual type inferred from the collection or its aliases. No scope is declared.
       </p>
     </section>
+
+    <label class="edit-field">
+      <span>Description</span>
+      <textarea
+        :key="row.address"
+        rows="2"
+        :value="row.description"
+        placeholder="When to use it, and when not to"
+        aria-label="Token description"
+        @change="setDescription"
+      />
+    </label>
+
+    <fieldset v-if="scopeChoices.length" class="edit-field scopes">
+      <legend>
+        Offered for
+        <span class="hint">{{ everywhere ? 'everywhere' : `${row.scopes.length} only` }}</span>
+      </legend>
+      <label v-for="[scope, label] in scopeChoices" :key="scope" class="scope" :data-scope="scope">
+        <input
+          type="checkbox"
+          :checked="!everywhere && row.scopes.includes(scope)"
+          @change="toggleScope(scope, ($event.target as HTMLInputElement).checked)"
+        />
+        {{ label }}
+      </label>
+      <p class="hint">
+        Ticking narrows which pickers offer it; binding elsewhere stays allowed, with a warning.
+      </p>
+    </fieldset>
 
     <dl class="record">
       <dt>Tier</dt>
@@ -185,6 +267,47 @@ function describe(dependent: Dependent): string {
 </template>
 
 <style scoped>
+.edit-field {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 14px;
+  padding: 0;
+  border: 0;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.edit-field textarea {
+  resize: vertical;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--raised, var(--bg));
+  border: 1px solid var(--line);
+  border-radius: 5px;
+}
+.scopes {
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 10px;
+}
+.scopes legend {
+  margin-bottom: 4px;
+}
+.scopes .hint {
+  grid-column: 1 / -1;
+  margin: 2px 0 0;
+}
+.hint {
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.scope {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  cursor: pointer;
+}
 .token-detail {
   min-height: 0;
   background: var(--panel);

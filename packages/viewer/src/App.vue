@@ -18,10 +18,14 @@ import {
   defaultTuple,
   deleteCollection,
   deleteToken,
+  IMPLICIT_MODE,
+  renameCollection,
   renameToken,
+  setCollectionModes,
   TokenResolver,
   tupleAt,
   type Dependent,
+  type ModeShape,
   modelIndex,
   derivedTarget,
 } from '@uidx/schema'
@@ -85,6 +89,7 @@ import { tokensViewModel } from './tokens-view-model'
 import { tokenAliasCandidates } from './token-alias-candidates'
 import { addCollectionPatch, addTokenPatch, editCellPatch } from './token-edits'
 import HomePane from './HomePane.vue'
+import NewPageDialog from './NewPageDialog.vue'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
 import { createUidxSocket, type ConnectionState } from './socket'
@@ -959,13 +964,13 @@ const TOKEN_SEED: Record<VariableType, JsonValue> = {
  * shape from there. (The design studies put the row straight into edit state;
  * that refinement rides on the rename flow rather than a dialog here.)
  */
-function onAddToken(collection: string): void {
+function onAddToken(collection: string, chosen?: VariableType): void {
   const group = tokenGroups.value.find((g) => g.name === collection)
   if (!group) return
   const declaring = pages.value.get(group.file)
   const node = declaring?.tree.children.find((c) => c.name === collection)
   if (!declaring || !node) return
-  const type = group.rows[0]?.type ?? 'FLOAT'
+  const type = chosen ?? group.rows[0]?.type ?? 'FLOAT'
   const name = freshName('new-token', (candidate) =>
     tokenIndex.value.entries.has(`${collection}#${candidate}`),
   )
@@ -1042,6 +1047,91 @@ function onTokenDelete(): void {
   selection.value = []
 }
 
+const creatingTokensFile = ref(false)
+function onTokensFileCreated(file: string): void {
+  creatingTokensFile.value = false
+  openPage(file)
+}
+
+/** A refactor plan sent file by file, or its refusal shown, never half-built. */
+function commitPlan(build: () => { byFile: ReadonlyMap<string, readonly UidxPatch[]> }): boolean {
+  try {
+    commitAcrossPages(build().byFile)
+    return true
+  } catch (error) {
+    onRefused(error instanceof Error ? error.message : String(error))
+    return false
+  }
+}
+
+function onRenameCollection(name: string, newName: string): void {
+  if (!commitPlan(() => renameCollection(pages.value, dependents.value, name, newName))) return
+  selection.value = selection.value.map((address) =>
+    address.startsWith(`${name}#`) ? `${newName}${address.slice(name.length)}` : address,
+  )
+}
+
+function onSetTier(name: string, tier: string | null): void {
+  const group = tokenGroups.value.find((candidate) => candidate.name === name)
+  const node = group && pages.value.get(group.file)?.tree.children.find((c) => c.name === name)
+  if (!group || !node) return
+  const has = node.attrs.tier !== undefined
+  if (tier === null && !has) return
+  dispatch(
+    group.file,
+    [
+      tier === null
+        ? { op: 'remove', address: node.address, prop: 'tier' }
+        : { op: has ? 'set' : 'add', address: node.address, prop: 'tier', value: tier },
+    ],
+    true,
+  )
+}
+
+/** The collection's modes as authored: the implicit one when it declares none. */
+function modeShapes(name: string): ModeShape[] {
+  const modes = tokenIndex.value.collections.get(name)?.modes ?? [IMPLICIT_MODE]
+  return modes.map((mode) => ({ name: mode, from: mode }))
+}
+
+function onAddMode(name: string, mode: string): void {
+  const current = modeShapes(name)
+  // A collection without modes gets two: its values become the first, named
+  // as the opposite of the new one when that is obvious.
+  const first =
+    current.length === 1
+      ? [
+          {
+            name: mode === 'dark' ? 'light' : mode === 'light' ? 'dark' : current[0]!.name,
+            from: current[0]!.from,
+          },
+        ]
+      : current
+  commitPlan(() =>
+    setCollectionModes(pages.value, name, [...first, { name: mode, from: first[0]!.from }]),
+  )
+}
+
+function onRenameMode(name: string, mode: string, newName: string): void {
+  commitPlan(() =>
+    setCollectionModes(
+      pages.value,
+      name,
+      modeShapes(name).map((shape) => (shape.name === mode ? { ...shape, name: newName } : shape)),
+    ),
+  )
+}
+
+function onRemoveMode(name: string, mode: string): void {
+  commitPlan(() =>
+    setCollectionModes(
+      pages.value,
+      name,
+      modeShapes(name).filter((shape) => shape.name !== mode),
+    ),
+  )
+}
+
 const removingCollection = ref<string | null>(null)
 watch(view, () => {
   removingCollection.value = null
@@ -1091,6 +1181,21 @@ function onTokenDeprecate(value: boolean): void {
       ? { op: 'set', address: row.address, prop: 'deprecated', value: true }
       : { op: 'add', address: row.address, prop: 'deprecated', value: true }
     : { op: 'remove', address: row.address, prop: 'deprecated' }
+  commitAcrossPages(new Map([[row.file, [patch]]]))
+}
+
+function onTokenAttr(prop: string, value: JsonValue | null): void {
+  const row = selectedTokenRow.value
+  if (!row) return
+  const declaring = pages.value.get(row.file)
+  const node = declaring ? findTokenNode(declaring, row.address) : null
+  if (!node) return
+  const has = node.attrs[prop] !== undefined
+  if (value === null && !has) return
+  const patch: UidxPatch =
+    value === null
+      ? { op: 'remove', address: row.address, prop }
+      : { op: has ? 'set' : 'add', address: row.address, prop, value }
   commitAcrossPages(new Map([[row.file, [patch]]]))
 }
 
@@ -1906,6 +2011,18 @@ onUnmounted(() => socket.close())
             @add-token="onAddToken"
             @add-collection="onAddCollection"
             @remove-collection="onRemoveCollection"
+            @rename-collection="onRenameCollection"
+            @set-tier="onSetTier"
+            @add-mode="onAddMode"
+            @rename-mode="onRenameMode"
+            @remove-mode="onRemoveMode"
+            @new-tokens-file="creatingTokensFile = true"
+          />
+          <NewPageDialog
+            v-if="creatingTokensFile"
+            kind="tokens"
+            @created="onTokensFileCreated"
+            @close="creatingTokensFile = false"
           />
         </ErrorBoundary>
         <ErrorBoundary v-if="selectedTokenRow" pane="Token">
@@ -1920,6 +2037,7 @@ onUnmounted(() => socket.close())
             @rename="onTokenRename"
             @delete="onTokenDelete"
             @deprecate="onTokenDeprecate"
+            @attr="onTokenAttr"
           />
         </ErrorBoundary>
       </template>
