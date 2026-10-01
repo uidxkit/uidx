@@ -186,48 +186,52 @@ const kpis = computed(() => {
   flex: 1;
   min-width: 0;
   overflow: auto;
-  padding: var(--section-pad);
+  padding: 36px max(24px, calc((100% - 1200px) / 2)) 64px;
   background: var(--bg);
 }
 .masthead {
-  margin-bottom: var(--section-pad);
+  margin-bottom: 28px;
 }
 .doc {
   margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  line-height: 24px;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  line-height: 32px;
 }
 .sub {
-  margin: 2px 0 0;
-  color: var(--text-faint);
+  margin: 6px 0 0;
+  color: var(--text-dim);
+  font-size: 13px;
 }
 .kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: var(--gap);
-  margin: 0 0 var(--section-pad);
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin: 0 0 36px;
   padding: 0;
   list-style: none;
 }
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--pad) var(--gap);
+  gap: 4px;
+  padding: 16px 18px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
 }
 .kpi-label {
-  color: var(--text-faint);
-  font-size: var(--ui-size-sm);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  font-size: 12px;
+  font-weight: 500;
 }
 .kpi-value {
-  font-size: 22px;
-  line-height: 28px;
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 34px;
+  letter-spacing: -0.01em;
   font-variant-numeric: tabular-nums;
 }
 .kpi[data-alarm='true'] .kpi-value {
@@ -235,10 +239,10 @@ const kpis = computed(() => {
 }
 .kpi-note {
   color: var(--text-faint);
-  font-size: var(--ui-size-sm);
+  font-size: 11px;
 }
 .block {
-  margin-bottom: var(--section-pad);
+  margin-bottom: 36px;
 }
 .pages-heading {
   display: flex;
@@ -250,13 +254,23 @@ const kpis = computed(() => {
   margin: 0;
 }
 .new-page {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  border: 0;
+  border-radius: 7px;
   background: var(--accent);
-  color: var(--text);
+  color: var(--on-accent);
   font: inherit;
-  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 0 14px;
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+}
+.new-page:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 .new-page:disabled {
   opacity: 0.5;
@@ -268,13 +282,20 @@ const kpis = computed(() => {
 .block-title {
   display: flex;
   align-items: center;
-  gap: var(--gap-sm);
-  margin: 0 0 var(--gap);
-  color: var(--text-faint);
-  font-size: var(--ui-size-sm);
-  font-weight: 400;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  gap: 8px;
+  margin: 0 0 12px;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+.block-title .count {
+  padding: 0 7px;
+  border-radius: 10px;
+  background: var(--raised);
+  color: var(--text-dim);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 18px;
 }
 .count {
   font-variant-numeric: tabular-nums;
@@ -282,7 +303,7 @@ const kpis = computed(() => {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: var(--gap);
+  gap: 16px;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -292,15 +313,17 @@ const kpis = computed(() => {
   padding: 0;
   list-style: none;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   overflow: hidden;
+  box-shadow: var(--shadow-sm);
 }
 .collection {
   display: flex;
   align-items: center;
   gap: var(--gap);
-  height: var(--field-h);
-  padding: 0 var(--gap);
+  height: 40px;
+  padding: 0 16px;
+  font-size: 12px;
   background: var(--panel);
   border: none;
   color: inherit;
@@ -310,7 +333,7 @@ const kpis = computed(() => {
   width: 100%;
 }
 .collection:hover {
-  background: var(--panel-raised, var(--panel));
+  background: var(--raised);
 }
 li + li .collection {
   border-top: 1px solid var(--line);

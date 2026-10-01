@@ -35,9 +35,18 @@ import {
   inversePatches,
   predictDocument,
   resolve,
+  addressOf,
+  autoName,
 } from '@uidx/format'
 import { applyDelta } from './apply-delta'
-import type { Diagnostic, JsonValue, UidxDocument, UidxPatch, VariableType } from '@uidx/format'
+import type {
+  Diagnostic,
+  JsonValue,
+  UidxDocument,
+  UidxNodeSpec,
+  UidxPatch,
+  VariableType,
+} from '@uidx/format'
 
 import CanvasPane from './CanvasPane.vue'
 import type { DrawingTool } from './graphics-tools'
@@ -53,7 +62,9 @@ import type { PinFrame } from './pin-writes'
 import { departedPages, pageEntries } from './page-list'
 import PropertiesPane from './PropertiesPane.vue'
 import EditToolbar from './EditToolbar.vue'
-import WorkspaceNav from './WorkspaceNav.vue'
+import AppBar from './AppBar.vue'
+import { theme } from './theme'
+import InsertPanel from './InsertPanel.vue'
 import FontsPane from './FontsPane.vue'
 import { fontGeneration, fontsInFileKey, openFontsKey } from './font-library'
 import {
@@ -66,9 +77,8 @@ import {
   refreshHeadless,
 } from './headless'
 import { routeDerivedPatches } from './derived-edits'
-import WorkspaceStatus from './WorkspaceStatus.vue'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
-import { canRemove, componentFrom, remapAddress } from './layer-moves'
+import { canInsert, canRemove, componentFrom, parentOf, remapAddress } from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
 import { enclosingComponent } from './component-prop-edits'
 import { newSlotFor, slotTargetFor } from './slot-edits'
@@ -387,7 +397,7 @@ const stamps = computed(() => {
   for (const card of home.value.cards) {
     const defs = card.instances > 0 ? definitions.value : 0
     const art = card.assets > 0 ? assetGeneration.value : 0
-    out.set(card.file, `${defs}:${art}:${fontGeneration.value}`)
+    out.set(card.file, `${defs}:${art}:${fontGeneration.value}:${theme.value}`)
   }
   return out
 })
@@ -842,9 +852,6 @@ function adoptPage(file: string): boolean {
  */
 const view = ref<View>(HOME)
 
-/** A project always has an overview, including before its second page exists. */
-const canGoHome = computed(() => documentId.value !== null)
-
 /** The history entry for a view. Home carries no page, the way its URL does not. */
 function stateFor(next: View): { page: string | null } {
   return { page: next.kind === 'home' ? null : next.file }
@@ -982,6 +989,70 @@ watch(
   },
   { immediate: true },
 )
+
+/** The left panel's tab on a page: what is on it, or what can be added. */
+const railTab = ref<'layers' | 'insert'>('layers')
+
+/** A face chosen in the top bar; from the overview it opens on the page the canvas holds. */
+function faceFromBar(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
+  if (view.value.kind === 'home') {
+    if (entry.value) openView({ kind, file: entry.value })
+    return
+  }
+  toggleFace(kind)
+}
+
+/**
+ * An Insert-panel block: into the selected frame when it takes children, else
+ * beside the selection, else on the page — placed to the right of what is
+ * already there when the page arranges nothing itself — then selected.
+ */
+function insertBlock(spec: UidxNodeSpec): void {
+  const docNow = sceneDoc.value
+  if (!docNow) return
+  const selected = selection.value.length === 1 ? selection.value[0]! : null
+  const candidates = [
+    selected,
+    selected ? (parentOf(docNow, selected)?.address ?? null) : null,
+    '',
+  ].filter((address): address is string => address !== null)
+  const parent = candidates.find((address) => canInsert(docNow, address, spec.element))
+  if (parent === undefined) {
+    onRefused('Nothing here can hold a new block; select a frame first.')
+    return
+  }
+  const parentNode = parent === '' ? docNow.tree : resolve(docNow.tree, parent)
+  if (!parentNode) return
+  const wanted = String(spec.attrs.name ?? autoName(spec.element, parentNode.children))
+  const name = parentNode.children.some((child) => child.name === wanted)
+    ? autoName(spec.element, parentNode.children)
+    : wanted
+  const attrs: Record<string, JsonValue> = { ...spec.attrs, name }
+  const auto =
+    typeof parentNode.attrs.layoutMode?.value === 'string' &&
+    parentNode.attrs.layoutMode.value !== 'NONE'
+  if (parent === '' && !auto) {
+    let right = 0
+    let top: number | null = null
+    for (const child of parentNode.children) {
+      const box = canvasPane.value?.exportBounds(child.address)
+      if (!box) continue
+      right = Math.max(right, box.maxX)
+      top = top === null ? box.minY : Math.min(top, box.minY)
+    }
+    attrs.x = parentNode.children.length ? Math.round(right + 48) : 0
+    attrs.y = Math.round(top ?? 0)
+  }
+  commitPatches([
+    {
+      op: 'insert-node',
+      parent,
+      index: parentNode.children.length,
+      node: { ...spec, attrs },
+    },
+  ])
+  selection.value = [addressOf(parent, name)]
+}
 
 /** Workspace faces. Elements is disabled for a token-only page. */
 function toggleFace(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
@@ -1997,18 +2068,28 @@ onUnmounted(() => socket.close())
 
 <template>
   <div class="shell">
-    <div v-if="view.kind === 'home'" class="home-bar">
-      <WorkspaceNav
-        :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
-        :page="String(doc?.frontmatter.id ?? entry ?? '')"
-        :view="view.kind"
-        :can-go-home="canGoHome"
-        :renderable="renderable"
-        @home="openHome"
-        @face="toggleFace"
-      />
-      <WorkspaceStatus :connection="connection" :revision="null" />
-    </div>
+    <AppBar
+      :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
+      :page="String(doc?.frontmatter.id ?? entry ?? '')"
+      :view="view.kind"
+      :renderable="renderable"
+      :connection="connection"
+      :saving="savesInFlight > 0"
+      :saved="savedOnce"
+      :can-undo="undoStack.canUndo"
+      :can-redo="undoStack.canRedo"
+      :code-out="codegenState.out"
+      :code-running="codegenState.running"
+      :code-notice="codegenState.notice"
+      :agent-online="agent.status.value.online"
+      :agent-open="agent.open.value"
+      @home="openHome"
+      @face="faceFromBar"
+      @undo="undo"
+      @redo="redo"
+      @code="generateCode()"
+      @agent="agent.toggle()"
+    />
 
     <!--
       Mounted only while it is open, so the name it suggests is read from the
@@ -2112,47 +2193,64 @@ onUnmounted(() => socket.close())
       }"
     >
       <aside v-if="view.kind !== 'home'" class="rail" aria-label="Document navigation">
-        <WorkspaceNav
-          :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
-          :page="String(doc?.frontmatter.id ?? entry ?? '')"
-          :view="view.kind"
-          :can-go-home="canGoHome"
-          :renderable="renderable"
-          @home="openHome"
-          @face="toggleFace"
-        />
-        <ErrorBoundary pane="Pages">
-          <PagesList
-            :entries="pageList"
-            :open="entry"
-            :writable="connection === 'open'"
-            :uses-outside="usesOutside"
-            @open="openPage"
-            @home="openHome"
-            @rename="onRenamePage"
-            @delete="onDeletePage"
-          />
-        </ErrorBoundary>
-        <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
-          <LayersPane
-            ref="layersPane"
-            :doc="sceneDoc"
-            :selection="railSelection"
+        <nav v-if="view.kind === 'page'" class="rail-tabs" aria-label="Left panel">
+          <button
+            type="button"
+            :aria-pressed="railTab === 'layers'"
+            data-rail-tab="layers"
+            @click="railTab = 'layers'"
+          >
+            Layers
+          </button>
+          <button
+            type="button"
+            :aria-pressed="railTab === 'insert'"
+            data-rail-tab="insert"
+            @click="railTab = 'insert'"
+          >
+            Insert
+          </button>
+        </nav>
+        <ErrorBoundary v-if="view.kind === 'page' && railTab === 'insert'" pane="Insert">
+          <InsertPanel
             :components="components"
-            :vector-editing="vertexEditing"
-            :writable="connection === 'open'"
-            @edit-vector="editVector"
-            @select="selection = [$event]"
-            @patches="commitPatches"
-            @moved="onMoved"
+            :writable="connection === 'open' && sceneDoc !== null"
+            :tool="tool"
+            :placing="placing"
+            @tool="armTool"
+            @insert="insertBlock"
+            @image="(file) => canvasPane?.placeImage(file)"
+            @place="placeInstance"
           />
         </ErrorBoundary>
-        <WorkspaceStatus
-          :connection="connection"
-          :revision="revision"
-          :saving="savesInFlight > 0"
-          :saved="savedOnce"
-        />
+        <template v-else>
+          <ErrorBoundary pane="Pages">
+            <PagesList
+              :entries="pageList"
+              :open="entry"
+              :writable="connection === 'open'"
+              :uses-outside="usesOutside"
+              @open="openPage"
+              @home="openHome"
+              @rename="onRenamePage"
+              @delete="onDeletePage"
+            />
+          </ErrorBoundary>
+          <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
+            <LayersPane
+              ref="layersPane"
+              :doc="sceneDoc"
+              :selection="railSelection"
+              :components="components"
+              :vector-editing="vertexEditing"
+              :writable="connection === 'open'"
+              @edit-vector="editVector"
+              @select="selection = [$event]"
+              @patches="commitPatches"
+              @moved="onMoved"
+            />
+          </ErrorBoundary>
+        </template>
       </aside>
 
       <!--
@@ -2187,7 +2285,7 @@ onUnmounted(() => socket.close())
         <DocsPane
           :docs="docsModel"
           :render="renderExample"
-          :stamp="`${definitions}:${fontGeneration}:${tokenGeneration}`"
+          :stamp="`${definitions}:${fontGeneration}:${tokenGeneration}:${theme}`"
           :doc="view.kind === 'docs' ? (pages.get(view.file) ?? null) : null"
           :writable="connection === 'open'"
           @open="onDocsOpen"
@@ -2346,18 +2444,6 @@ onUnmounted(() => socket.close())
   height: 100dvh;
   overflow: hidden;
 }
-.home-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: none;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.home-bar :deep(.workspace-status) {
-  border: 0;
-  padding-right: 20px;
-}
 .banner {
   flex: none;
   display: flex;
@@ -2410,8 +2496,43 @@ onUnmounted(() => socket.close())
   background: var(--panel);
   border-right: 1px solid var(--line);
 }
-.rail > :deep(.workspace-status) {
-  margin-top: auto;
+.rail-tabs {
+  display: flex;
+  flex: none;
+  gap: 16px;
+  height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+.rail-tabs button {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rail-tabs button:hover {
+  color: var(--text);
+}
+.rail-tabs button[aria-pressed='true'] {
+  color: var(--text);
+}
+.rail-tabs button[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.rail > :deep(.insert) {
+  flex: 1;
 }
 .rail :deep(.layers),
 .rail :deep(.pages) {

@@ -2626,7 +2626,6 @@ h2 {
   font: inherit;
   font-size: var(--ui-size-sm);
   cursor: pointer;
-  color-scheme: dark;
 }
 .meta[data-meta='status'][data-value='stable'] {
   border-color: var(--ok);

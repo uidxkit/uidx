@@ -1,7 +1,6 @@
 /* Inspector-wide control rules. Component styles keep their layout; these
    shared surfaces and states also reach fragment roots and SDK primitives. */
 .properties {
-  color-scheme: dark;
 }
 
 .properties
@@ -36,7 +35,6 @@
   width: 100%;
   padding: 2px 6px;
   cursor: pointer;
-  color-scheme: dark;
 }
 
 .properties .editor :is(.field-caption, .smoothing-label, .effect-label) {
@@ -280,7 +278,6 @@
   border: 1px solid transparent;
   border-radius: var(--radius-lg);
   padding: 2px 8px;
-  color-scheme: dark;
 }
 .properties .graphics-section :is(button, select):hover:not(:disabled) {
   border-color: var(--line);

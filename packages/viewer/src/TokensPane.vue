@@ -1446,7 +1446,6 @@ th:hover .icon-action,
   cursor: pointer;
   font: inherit;
   font-size: 9px;
-  color-scheme: dark;
 }
 .remove-collection {
   display: grid;

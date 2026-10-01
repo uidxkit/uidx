@@ -614,7 +614,6 @@ function flags(prop: { controllable?: boolean; visual?: boolean }): string[] {
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: 5px;
-  color-scheme: dark;
 }
 .editor textarea {
   width: 100%;

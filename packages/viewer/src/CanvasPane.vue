@@ -70,6 +70,7 @@ import { coverageForFont, fontGeneration, fontLibraryError, projectFonts } from 
 import { collapseBurst, novelPatches } from './patch-burst'
 import { useCanvasControls } from './useCanvasControls'
 import { hoverTargetFor } from './hover-map'
+import { theme } from './theme'
 
 const props = defineProps<{
   doc: UidxDocument | null
@@ -175,8 +176,34 @@ const onSurfaceReady = (): void => {
   ready.value = true
   void renderWithAssets(props.doc)
 }
+/**
+ * The rulers in the chrome's theme. They are drawn by the renderer, not CSS,
+ * so the colours are handed over as floats when the theme changes.
+ */
+const RULERS = {
+  dark: {
+    background: { r: 0.157, g: 0.157, b: 0.169, a: 1 },
+    tick: { r: 0.4, g: 0.4, b: 0.42, a: 1 },
+    text: { r: 0.6, g: 0.6, b: 0.62, a: 1 },
+    // Drawn on the accent-coloured selection badges.
+    label: { r: 1, g: 1, b: 1, a: 1 },
+  },
+  light: {
+    background: { r: 1, g: 1, b: 1, a: 1 },
+    tick: { r: 0.8, g: 0.81, b: 0.83, a: 1 },
+    text: { r: 0.45, g: 0.47, b: 0.52, a: 1 },
+    label: { r: 1, g: 1, b: 1, a: 1 },
+  },
+} as const
+editor.state.rulerTheme = RULERS[theme.value]
+
 const sceneCanvas = useCanvas(sceneEl, editor, { layer: 'scene', onReady: onSurfaceReady })
 const overlayCanvas = useCanvas(canvasEl, editor, { layer: 'overlays', onReady: onSurfaceReady })
+// The renderer reads the theme on every frame; a switch only needs one drawn.
+watch(theme, (value) => {
+  editor.state.rulerTheme = RULERS[value]
+  if (ready.value) overlayCanvas.renderNow()
+})
 /** Both layers at once, lower first — every caller here means the whole picture. */
 const canvas = {
   renderNow: (): void => {
@@ -1038,10 +1065,18 @@ const RASTER_FILE = /\.(png|jpe?g|gif|webp|avif)$/i
  * server, then placed as a rectangle filled with it at its own size (halved
  * for a 2x export, capped so a camera photo does not cover the page).
  */
-async function dropRaster(file: File, event: DragEvent): Promise<void> {
+/** An image chosen in the Insert panel: placed at the middle of what is on screen. */
+function placeImage(file: File): Promise<void> {
+  const el = canvasEl.value
+  const box = el?.getBoundingClientRect()
+  const at = box ? editor.screenToCanvas(box.width / 2, box.height / 2) : { x: 0, y: 0 }
+  return dropRaster(file, at)
+}
+
+async function dropRaster(file: File, point: DragEvent | { x: number; y: number }): Promise<void> {
   const built = scene.value
   if (!built || !current) return
-  const at = toCanvasPoint(event)
+  const at = 'clientX' in point ? toCanvasPoint(point) : point
   const chain = containerChainAt(built.graph, built.rootId, at, '')
     .map((id) => built.addresses.addressOf(id))
     .filter((address): address is string => address !== undefined)
@@ -2161,6 +2196,7 @@ function invalidateAsset(src: string): void {
 }
 
 defineExpose({
+  placeImage,
   editVector,
   vectorAction: (action: VectorAction) => controls.vectorAction(action),
   finishDrawing,

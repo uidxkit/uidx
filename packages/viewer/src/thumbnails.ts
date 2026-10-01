@@ -12,6 +12,7 @@ import type { JsonValue, UidxDocument, UidxNode } from '@uidx/format'
 
 import { createAssetStore, type AssetFetch, type AssetStore } from './asset-store'
 import { seedFonts } from './fonts'
+import { theme } from './theme'
 
 /**
  * A page, drawn small.
@@ -50,7 +51,10 @@ import { seedFonts } from './fonts'
  * rasteriser, so it cannot be a custom property, and the alternative is reading
  * a computed style off an element the renderer does not have.
  */
-const TILE_GROUND = { r: 0x1e / 255, g: 0x1e / 255, b: 0x1e / 255, a: 1 }
+const TILE_GROUND = {
+  dark: { r: 0x1e / 255, g: 0x1e / 255, b: 0x1e / 255, a: 1 },
+  light: { r: 0xec / 255, g: 0xee / 255, b: 0xf1 / 255, a: 1 },
+}
 
 export interface ThumbnailRequest {
   /** The page id, which is also the cache key's first half. */
@@ -172,7 +176,8 @@ export function thumbnailKey(request: ThumbnailRequest): string {
   const definitions = request.definitions === null ? '' : `+defs${request.definitions}`
   const assets = request.assets === null ? '' : `+art${request.assets}`
   const fonts = request.fonts ? `+fonts${request.fonts}` : ''
-  return `${request.file}@${revision}${definitions}${assets}${fonts}@${request.width}x${request.height}`
+  // The ground follows the chrome's theme, so a tile drawn in one is not reused in the other.
+  return `${request.file}@${revision}${definitions}${assets}${fonts}@${request.width}x${request.height}@${theme.value}`
 }
 
 /**
@@ -277,7 +282,7 @@ export function createThumbnailer(options: ThumbnailerOptions = {}): Thumbnailer
       // 1440x3616 — arrives as a slab of white in a dark well, which reads as a
       // broken render rather than a shape. The canvas ground makes the bars
       // disappear into the tile.
-      renderer.pageColor = TILE_GROUND
+      renderer.pageColor = TILE_GROUND[theme.value]
       await renderer.loadFonts()
       return { ck, renderer }
     })()
@@ -326,6 +331,7 @@ export function createThumbnailer(options: ThumbnailerOptions = {}): Thumbnailer
     if (request.doc.tree.element === 'Tokens') return null
 
     const { ck, renderer } = await ready()
+    renderer.pageColor = TILE_GROUND[theme.value]
     if (disposed) return null
 
     const scene = sceneForThumbnail(request, assets)

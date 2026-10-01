@@ -1754,7 +1754,6 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 .pick {
   width: 100%;
   cursor: pointer;
-  color-scheme: dark;
 }
 .row[data-set='false'] .pick,
 .row[data-set='false'] .text {
