@@ -1,0 +1,61 @@
+---
+id: checkbox
+---
+
+An on/off choice with its label. Shoelace's `sl-checkbox` supplies toggling,
+keyboard and form behaviour; this identity draws the box and the check.
+
+## Visual Contract
+
+<Page>
+  <Component name="Checkbox" status="stable" implements="sl-checkbox"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+    <Frame name="base" part="base" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+      counterAxisAlignItems="CENTER" itemSpacing="{space#sm}">
+      <Frame name="control" part="control" width={18} height={18} cornerRadius="{radius#sm}"
+        layoutMode="HORIZONTAL" primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+        fills="{color#surface}" strokes="{color#border}" strokeWeight={1}>
+        <Vector name="check" part="checked-icon" visible={false} width={12} height={12}
+          strokes="{color#on-accent}" strokeWeight={2}
+          vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 6 L5 9 L10 3' }]} />
+      </Frame>
+      <Frame name="label" part="label" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+        <Slot name="default">
+          <Text name="text" characters="{label}" fontSize="{type#md}" fills="{color#text}" />
+        </Slot>
+      </Frame>
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" control:fills="{color#accent}" control:strokes="{color#accent}" check:visible={true} />
+  <Style state="focus" control:strokes="{color#text}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email me updates">The choice, given as its content.</Prop>
+  <Prop name="checked" type="boolean" default={false} visual>Chosen.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Not changeable, dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="change">Fires once per toggle.</Event>
+</Events>
+<Slots>
+  <Slot name="default">The label.</Slot>
+</Slots>
+<Parts>
+  <Part name="base">The control and label in a row.</Part>
+  <Part name="control">The box.</Part>
+  <Part name="checked-icon">The check mark.</Part>
+  <Part name="label">The label's container.</Part>
+</Parts>
+<Form participates submits="value while checked, nothing otherwise" />
+<Accessibility role="checkbox" keyboard="Space toggles" />
+
+## Behavior
+
+- toggle: click or Space flips `checked` and fires `change` once.

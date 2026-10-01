@@ -37,12 +37,17 @@ export function adoptElement(
     escape(member.description ?? `${PLACEHOLDER}the ${what} "${member.name}".`)
 
   const anatomy: string[] = []
+  const namedSlots = element.members.slots.filter((slot) => slot.name !== '')
+  // A part and a slot may share a name (Shoelace's sl-input has both a
+  // `prefix` part and a `prefix` slot); layers are siblings, so the part's
+  // layer takes a suffix. Its `part` attribute is what binds it.
+  const slotNames = new Set(namedSlots.map((slot) => slot.name))
   for (const part of element.parts) {
+    const layer = slotNames.has(part.name) ? `${part.name}-part` : part.name
     anatomy.push(
-      `    <Frame name="${part.name}" part="${part.name}" width={16} height={16} cornerRadius={4} />`,
+      `    <Frame name="${layer}" part="${part.name}" width={16} height={16} cornerRadius={4} />`,
     )
   }
-  const namedSlots = element.members.slots.filter((slot) => slot.name !== '')
   const defaultSlot = element.members.slots.some((slot) => slot.name === '')
   for (const slot of namedSlots) anatomy.push(`    <Slot name="${slot.name}" />`)
   if (defaultSlot) {

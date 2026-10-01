@@ -1,0 +1,135 @@
+{
+  "id": "switch",
+  "components": [
+    {
+      "name": "Switch",
+      "implements": "sl-switch",
+      "status": "stable",
+      "boundParts": [
+        "base",
+        "control",
+        "thumb",
+        "label"
+      ],
+      "treeSlots": [
+        "default"
+      ],
+      "axes": {
+        "state": [
+          "default",
+          "checked",
+          "disabled",
+          "focus"
+        ]
+      }
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The setting, given as its content.",
+        "sample": "Dark mode"
+      },
+      {
+        "name": "checked",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "On.",
+        "default": false
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Not changeable, dimmed.",
+        "default": false
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires once per toggle."
+      }
+    ],
+    "states": [],
+    "parts": [
+      {
+        "name": "base",
+        "description": "The track and label in a row."
+      },
+      {
+        "name": "control",
+        "description": "The track."
+      },
+      {
+        "name": "thumb",
+        "description": "The thumb."
+      },
+      {
+        "name": "label",
+        "description": "The label's container."
+      }
+    ],
+    "slots": [
+      {
+        "name": "default",
+        "description": "The label."
+      }
+    ],
+    "composes": [],
+    "form": {
+      "participates": true,
+      "submits": "on while checked"
+    },
+    "accessibility": {
+      "role": "switch",
+      "keyboard": "Space toggles"
+    }
+  },
+  "behavior": [
+    {
+      "id": "toggle",
+      "text": "click or Space flips `checked` and fires `change` once."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "checked"
+      },
+      "values": {
+        "control": {
+          "fills": "{color#accent}",
+          "primaryAxisAlignItems": "MAX"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "control": {
+          "strokes": "{color#text}",
+          "strokeWeight": 2
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ]
+}

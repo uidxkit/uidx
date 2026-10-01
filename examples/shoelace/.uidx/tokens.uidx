@@ -1,0 +1,82 @@
+---
+id: tokens
+---
+
+The foundations every component references: a raw palette, semantic colours
+that change with the light and dark modes, and the space, radius and type
+scales. Components alias the semantic tier, never the palette.
+
+## Visual Contract
+
+<Tokens>
+  <Collection name="palette">
+    <Variable name="white" type="COLOR" value={{ r: 1, g: 1, b: 1, a: 1 }} />
+    <Variable name="gray-50" type="COLOR" value={{ r: 0.973, g: 0.976, b: 0.984, a: 1 }} />
+    <Variable name="gray-100" type="COLOR" value={{ r: 0.933, g: 0.941, b: 0.957, a: 1 }} />
+    <Variable name="gray-300" type="COLOR" value={{ r: 0.788, g: 0.808, b: 0.847, a: 1 }} />
+    <Variable name="gray-500" type="COLOR" value={{ r: 0.42, g: 0.447, b: 0.502, a: 1 }} />
+    <Variable name="gray-800" type="COLOR" value={{ r: 0.122, g: 0.141, b: 0.188, a: 1 }} />
+    <Variable name="gray-900" type="COLOR" value={{ r: 0.071, g: 0.082, b: 0.11, a: 1 }} />
+    <Variable name="blue-500" type="COLOR" value={{ r: 0.145, g: 0.388, b: 0.922, a: 1 }} />
+    <Variable name="blue-600" type="COLOR" value={{ r: 0.114, g: 0.306, b: 0.847, a: 1 }} />
+    <Variable name="blue-400" type="COLOR" value={{ r: 0.376, g: 0.647, b: 0.98, a: 1 }} />
+    <Variable name="red-500" type="COLOR" value={{ r: 0.863, g: 0.149, b: 0.149, a: 1 }} />
+  </Collection>
+  <Collection name="color" modes={['light', 'dark']}>
+    <Variable name="surface" type="COLOR">
+      <Mode name="light" value="{palette#white}" />
+      <Mode name="dark" value="{palette#gray-900}" />
+    </Variable>
+    <Variable name="surface-raised" type="COLOR">
+      <Mode name="light" value="{palette#gray-50}" />
+      <Mode name="dark" value="{palette#gray-800}" />
+    </Variable>
+    <Variable name="text" type="COLOR">
+      <Mode name="light" value="{palette#gray-900}" />
+      <Mode name="dark" value="{palette#gray-50}" />
+    </Variable>
+    <Variable name="text-muted" type="COLOR">
+      <Mode name="light" value="{palette#gray-500}" />
+      <Mode name="dark" value="{palette#gray-300}" />
+    </Variable>
+    <Variable name="border" type="COLOR">
+      <Mode name="light" value="{palette#gray-300}" />
+      <Mode name="dark" value="{palette#gray-500}" />
+    </Variable>
+    <Variable name="accent" type="COLOR">
+      <Mode name="light" value="{palette#blue-500}" />
+      <Mode name="dark" value="{palette#blue-400}" />
+    </Variable>
+    <Variable name="accent-hover" type="COLOR">
+      <Mode name="light" value="{palette#blue-600}" />
+      <Mode name="dark" value="{palette#blue-500}" />
+    </Variable>
+    <Variable name="on-accent" type="COLOR">
+      <Mode name="light" value="{palette#white}" />
+      <Mode name="dark" value="{palette#gray-900}" />
+    </Variable>
+    <Variable name="danger" type="COLOR">
+      <Mode name="light" value="{palette#red-500}" />
+      <Mode name="dark" value="{palette#red-500}" />
+    </Variable>
+  </Collection>
+  <Collection name="space">
+    <Variable name="xs" type="FLOAT" value={4} />
+    <Variable name="sm" type="FLOAT" value={8} />
+    <Variable name="md" type="FLOAT" value={12} />
+    <Variable name="lg" type="FLOAT" value={16} />
+  </Collection>
+  <Collection name="radius">
+    <Variable name="sm" type="FLOAT" value={4} />
+    <Variable name="md" type="FLOAT" value={6} />
+    <Variable name="full" type="FLOAT" value={999} />
+  </Collection>
+  <Collection name="type">
+    <Variable name="sm" type="FLOAT" value={12} />
+    <Variable name="md" type="FLOAT" value={14} />
+    <Variable name="lg" type="FLOAT" value={16} />
+  </Collection>
+  <Collection name="opacity">
+    <Variable name="disabled" type="FLOAT" value={0.45} />
+  </Collection>
+</Tokens>

@@ -18,6 +18,7 @@ import {
   type RepeatInfo,
   vectorPaint,
 } from './model.js'
+import { slotsWithin } from './html.js'
 
 /**
  * The React target (ADR 0017 §3): one component per identity, wrapping the
@@ -201,12 +202,22 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
   const textBound = new Set<string>()
 
   // Which props are rendered as text somewhere: those accept a ReactNode.
-  const scanText = (node: UidxNode): void => {
+  // Text the library draws inside a shadow part (outside any slot) is not
+  // ours to render: when the element takes it as an attribute, it stays a
+  // string prop passed through, as Shoelace's sl-input takes its label.
+  const scanText = (node: UidxNode, shadowed: boolean): void => {
+    const part = model.partOf.get(node)
+    const kind =
+      part === undefined ? undefined : model.parts.find((entry) => entry.name === part)?.kind
+    const inShadow = node.element === 'Slot' ? false : shadowed || kind === 'shadow'
     const prop = boundProp(model, node.attrs.characters?.value ?? null)
-    if (prop && node.element === 'Text') textBound.add(prop.name)
-    for (const child of node.children) scanText(child)
+    if (prop && node.element === 'Text') {
+      const attribute = model.elementAttributes.has(attributeName(model, prop.name))
+      if (!(inShadow && attribute)) textBound.add(prop.name)
+    }
+    for (const child of node.children) scanText(child, inShadow)
   }
-  scanText(model.node)
+  scanText(model.node, false)
 
   const attributeProps: PropSpec[] = []
   for (const prop of contract?.props ?? []) {
@@ -291,7 +302,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     const part = model.partOf.get(node)
     const info = part === undefined ? undefined : model.parts.find((entry) => entry.name === part)
     // As in the HTML target: a shadow part is drawn by the library.
-    if (info?.kind === 'shadow') return []
+    if (info?.kind === 'shadow') return slotsWithin(node, (slot) => render(slot, depth, scopes))
     // ADR 0017 §2: an element with `repeat` maps over its list; the n-th row
     // binds `{as.field}` to the item. A repeating slot lets the consumer draw
     // the row instead, through its render prop.
@@ -379,9 +390,10 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       case 'Slot': {
         const prop = node.name === 'default' ? 'children' : node.name
         const fallback = node.children.length ? children() : []
+        const slot = model.slotted.has(node.name) ? ` slot="${node.name}"` : ''
         if (fallback.length) {
           return [
-            `${pad}<span data-slot="${node.name}">`,
+            `${pad}<span${slot} data-slot="${node.name}">`,
             `${pad}  {${prop} !== undefined ? ${prop} : (`,
             ...fallback.map((line) => `  ${line}`),
             `${pad}  )}`,
@@ -389,7 +401,7 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
           ]
         }
         return [
-          `${pad}{${prop} !== undefined ? <span data-slot="${node.name}">{${prop}}</span> : null}`,
+          `${pad}{${prop} !== undefined ? <span${slot} data-slot="${node.name}">{${prop}}</span> : null}`,
         ]
       }
       case 'Text': {
@@ -425,7 +437,12 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       const isBoolean = prop.type === 'boolean'
       const name = attributeName(model, prop.name)
       const attr = model.profile.props === 'data-attribute' ? `data-${name}` : name
-      return `${attr}={${isBoolean ? `${prop.name} || undefined` : prop.name}}`
+      // On a custom element React sets the property, and `undefined` does not
+      // clear a reflected boolean in Lit — `disabled` would stick once on — so
+      // the element gets a real boolean. Elsewhere `undefined` drops the
+      // attribute rather than writing `"false"`.
+      const flag = model.tag && attr === name ? `!!${prop.name}` : `${prop.name} || undefined`
+      return `${attr}={${isBoolean ? flag : prop.name}}`
     })
     .join(' ')
   // The `empty` state (ADR 0017 §4) is the consumer's data, not a prop, so

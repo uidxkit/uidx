@@ -125,7 +125,7 @@
     },
     {
       "id": "form",
-      "text": "the group submits the chosen option's value under the shared name."
+      "text": "the group submits the chosen option's `value` under the shared `name`."
     }
   ],
   "styles": [

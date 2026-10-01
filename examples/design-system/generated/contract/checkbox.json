@@ -89,19 +89,19 @@
   "behavior": [
     {
       "id": "toggle",
-      "text": "click or Space flips checked; a click while indeterminate sets checked and clears indeterminate."
+      "text": "click or Space flips `checked`; a click while `indeterminate` sets `checked` and clears `indeterminate`."
     },
     {
       "id": "change-event",
-      "text": "change fires once per user toggle, never when checked is set from code."
+      "text": "`change` fires once per user toggle, never when `checked` is set from code."
     },
     {
       "id": "disabled",
-      "text": "no interaction and no events while disabled; still focusable for assistive technology, as native."
+      "text": "no interaction and no events while `disabled`; still focusable for assistive technology, as native."
     },
     {
       "id": "form",
-      "text": "submits value while checked and nothing otherwise, matching native <input type=checkbox>."
+      "text": "submits `value` while checked and nothing otherwise, matching native `<input type=checkbox>`."
     },
     {
       "id": "label",

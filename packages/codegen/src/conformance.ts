@@ -17,6 +17,25 @@ import {
  * from `custom-elements.json`, which the headless build generates from its
  * source, so drift on either side fails a build rather than a user.
  */
+/** Events every element dispatches, which a manifest does not list. */
+const NATIVE_EVENTS = new Set([
+  'click',
+  'dblclick',
+  'input',
+  'change',
+  'focus',
+  'blur',
+  'focusin',
+  'focusout',
+  'keydown',
+  'keyup',
+  'pointerdown',
+  'pointerup',
+  'submit',
+  'reset',
+  'toggle',
+])
+
 export function checkConformance(model: ComponentModel, manifest: Manifest): Diagnostic[] {
   const out: Diagnostic[] = []
   if (!model.tag || !model.contract) return out
@@ -32,7 +51,10 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
   // Compared in the library's spelling: a binding may rename an attribute
   // or an event, and the contract still has to cover what the element does.
   const props = new Set(model.contract.props.map((prop) => attributeName(model, prop.name)))
-  for (const attribute of root.attributes ?? []) {
+  // A subset of a general library: what the element has and the design
+  // system leaves out is a choice, not drift.
+  const full = model.profile.coverage === 'full'
+  for (const attribute of full ? (root.attributes ?? []) : []) {
     if (!props.has(attribute.name)) {
       report(
         `${model.tag} exposes the attribute "${attribute.name}", which the contract does not declare as a prop`,
@@ -40,7 +62,7 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     }
   }
   const events = new Set(model.contract.events.map((event) => eventName(model, event.name)))
-  for (const event of root.events ?? []) {
+  for (const event of full ? (root.events ?? []) : []) {
     if (!events.has(event.name)) {
       report(
         `${model.tag} dispatches "${event.name}", which the contract does not declare as an event`,
@@ -48,7 +70,10 @@ export function checkConformance(model: ComponentModel, manifest: Manifest): Dia
     }
   }
   for (const event of model.contract.events) {
-    if (!(root.events ?? []).some((entry) => entry.name === eventName(model, event.name))) {
+    const name = eventName(model, event.name)
+    // Every element dispatches the DOM's own events; manifests list only their own.
+    if (NATIVE_EVENTS.has(name)) continue
+    if (!(root.events ?? []).some((entry) => entry.name === name)) {
       report(
         `the contract declares the event "${event.name}", which ${model.tag} does not dispatch`,
       )

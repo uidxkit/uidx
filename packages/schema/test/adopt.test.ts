@@ -46,4 +46,28 @@ describe('adoptElement', () => {
     expect(contract.slots.map((slot) => slot.name)).toEqual(['hint', 'default'])
     expect(contract.parts.map((part) => part.name)).toEqual(['thumb'])
   })
+
+  it('drafts an element whose part and slot share a name (Shoelace sl-input)', () => {
+    const shared = parseHeadless('custom-elements.json', {
+      modules: [
+        {
+          declarations: [
+            {
+              tagName: 'sl-input',
+              cssParts: [{ name: 'prefix' }, { name: 'base' }],
+              slots: [{ name: 'prefix' }, { name: '' }],
+            },
+          ],
+        },
+      ],
+    })
+    const doc = parseOrThrow(adoptElement(shared.roots[0]!).source)
+    const layers = doc.tree.children[0]!.children
+    expect(layers.map((layer) => [layer.name, layer.attrs.part?.value])).toEqual([
+      ['prefix-part', 'prefix'],
+      ['base', 'base'],
+      ['prefix', undefined],
+      ['default', undefined],
+    ])
+  })
 })

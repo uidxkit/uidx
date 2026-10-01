@@ -93,11 +93,11 @@
   "behavior": [
     {
       "id": "activation",
-      "text": "click, Enter or Space activates; type=\"submit\" calls requestSubmit on the enclosing form, type=\"reset\" resets it, type=\"button\" does nothing to the form."
+      "text": "click, Enter or Space activates; `type=\"submit\"` calls `requestSubmit` on the enclosing form, `type=\"reset\"` resets it, `type=\"button\"` does nothing to the form."
     },
     {
       "id": "disabled",
-      "text": "no activation and no events while disabled."
+      "text": "no activation and no events while `disabled`."
     },
     {
       "id": "icon",

@@ -1,5 +1,5 @@
 import { aliasTarget, type JsonValue, type UidxDocument } from '@uidx/format'
-import { resolveTokenValues } from '@uidx/schema'
+import { buildTokenIndex, defaultTuple, mergeModes, TokenResolver } from '@uidx/schema'
 
 /**
  * UIDX properties as CSS (ADR 0017 §3).
@@ -97,11 +97,13 @@ export function cssPaint(value: JsonValue): string | null {
   return null
 }
 
-export type CssKind = 'container' | 'text'
+export type CssKind = 'container' | 'text' | 'vector'
 
 /**
  * The declarations for one node's attributes. `kind` decides what a fill is:
- * a frame's fill is its background, a text's fill is its colour.
+ * a frame's fill is its background, a text's fill is its colour. A vector's
+ * paths paint with `currentColor`, so its fill — or, when it is only
+ * outlined, its stroke — is its colour, never a box border.
  */
 export function cssDeclarations(
   attrs: Record<string, JsonValue>,
@@ -114,10 +116,14 @@ export function cssDeclarations(
   for (const [name, value] of Object.entries(attrs)) {
     switch (name) {
       case 'fills':
-        set(kind === 'text' ? 'color' : 'background-color', cssPaint(value))
+        set(kind === 'container' ? 'background-color' : 'color', cssPaint(value))
         break
       case 'strokes': {
         const color = cssPaint(value)
+        if (kind === 'vector') {
+          if (cssPaint(attrs.fills ?? null) === null) set('color', color)
+          break
+        }
         if (color) {
           const weight = attrs.strokeWeight === undefined ? '1px' : cssLength(attrs.strokeWeight)
           set('border', `${weight ?? '1px'} solid ${color}`)
@@ -254,21 +260,52 @@ export function cssRule(selector: string, declarations: Record<string, string>):
  * that use them add the unit (`cssLength`), so one token serves a radius and
  * a font size alike.
  */
+function tokenText(value: JsonValue): string | null {
+  const color = cssColor(value)
+  if (color !== null) return color
+  if (typeof value === 'number') return round(value)
+  if (typeof value === 'string') return value
+  if (typeof value === 'boolean') return String(value)
+  return null
+}
+
+function tokenBlock(selector: string, values: Map<string, string>): string {
+  const lines = [...values]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([address, text]) => `  ${cssVariable(address)}: ${text};`)
+  return lines.length ? `${selector} {\n${lines.join('\n')}\n}\n` : ''
+}
+
+/**
+ * Every token as a custom property: the default modes on `:root`, then one
+ * block per other mode of each collection — `[data-color="dark"]` — holding
+ * only the variables that mode changes. Setting the attribute on any element
+ * (usually `<html>`) switches that subtree, the way a frame's mode selection
+ * does on the canvas.
+ */
 export function tokensCss(docs: readonly UidxDocument[]): string {
-  const values = resolveTokenValues(docs)
-  const lines: string[] = []
-  for (const [address, value] of [...values].sort(([a], [b]) => a.localeCompare(b))) {
-    const color = cssColor(value)
-    const text =
-      color ??
-      (typeof value === 'number'
-        ? round(value)
-        : typeof value === 'string'
-          ? value
-          : typeof value === 'boolean'
-            ? String(value)
-            : null)
-    if (text !== null) lines.push(`  ${cssVariable(address)}: ${text};`)
+  const index = buildTokenIndex(docs)
+  const resolver = new TokenResolver(index)
+  const base = defaultTuple(index)
+  const texts = (tuple: typeof base) => {
+    const out = new Map<string, string>()
+    for (const [address, value] of resolver.resolve(tuple)) {
+      const text = tokenText(value)
+      if (text !== null) out.set(address, text)
+    }
+    return out
   }
-  return lines.length ? `:root {\n${lines.join('\n')}\n}\n` : ''
+  const defaults = texts(base)
+  const blocks = [tokenBlock(':root', defaults)]
+  for (const [collection, info] of index.collections) {
+    for (const mode of info.modes.slice(1)) {
+      const changed = new Map<string, string>()
+      for (const [address, text] of texts(mergeModes(base, { [collection]: mode }, index))) {
+        if (defaults.get(address) !== text) changed.set(address, text)
+      }
+      const name = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-')
+      blocks.push(tokenBlock(`[data-${name(collection)}="${mode.replace(/"/g, '')}"]`, changed))
+    }
+  }
+  return blocks.filter(Boolean).join('\n')
 }

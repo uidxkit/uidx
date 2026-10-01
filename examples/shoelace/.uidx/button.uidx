@@ -1,0 +1,77 @@
+---
+id: button
+---
+
+The action every screen has. Shoelace's `sl-button` supplies the behaviour —
+focus, keyboard activation, disabled and loading semantics, form submission —
+and this identity supplies the look, drawn on its `base` and `label` parts.
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="stable" implements="sl-button"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+    <Frame name="base" part="base"
+      layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+      primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+      itemSpacing="{space#xs}" paddingLeft="{space#lg}" paddingRight="{space#lg}"
+      paddingTop="{space#sm}" paddingBottom="{space#sm}" cornerRadius="{radius#md}"
+      fills="{color#accent}" strokes="{color#accent}" strokeWeight={1}>
+      <Slot name="prefix" />
+      <Frame name="label" part="label" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+        <Slot name="default">
+          <Text name="text" characters="{label}" fontSize="{type#md}" fontWeight="MEDIUM" fills="{color#on-accent}" />
+        </Slot>
+      </Frame>
+      <Slot name="suffix" />
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style variant="neutral" base:fills="{color#surface-raised}" base:strokes="{color#border}" text:fills="{color#text}" />
+  <Style variant="danger" base:fills="{color#danger}" base:strokes="{color#danger}" />
+  <Style size="small" base:paddingLeft="{space#md}" base:paddingRight="{space#md}" base:paddingTop="{space#xs}" base:paddingBottom="{space#xs}" text:fontSize="{type#sm}" />
+  <Style size="large" base:paddingLeft="{space#lg}" base:paddingRight="{space#lg}" base:paddingTop="{space#md}" base:paddingBottom="{space#md}" text:fontSize="{type#lg}" />
+  <Style state="hover" base:fills="{color#accent-hover}" base:strokes="{color#accent-hover}" />
+  <Style state="hover" variant="neutral" base:fills="{color#surface}" />
+  <Style state="focus" base:strokes="{color#text}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Save changes">The words on the button, given as its content.</Prop>
+  <Prop name="variant" type="'primary' | 'neutral' | 'danger'" default="primary" visual>How loudly it asks.</Prop>
+  <Prop name="size" type="'medium' | 'small' | 'large'" default="medium" visual>Padding and type scale.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="press">Fires once per activation, never while disabled.</Event>
+</Events>
+<Slots>
+  <Slot name="prefix">An icon before the label.</Slot>
+  <Slot name="default">The label.</Slot>
+  <Slot name="suffix">An icon after the label.</Slot>
+</Slots>
+<Parts>
+  <Part name="base">The button's box: its fill, border and padding.</Part>
+  <Part name="label">The label's container.</Part>
+</Parts>
+<Accessibility role="button" keyboard="Enter and Space activate" />
+
+## Behavior
+
+- activation: click, Enter or Space fires `press` once.
+- disabled: no activation and no events while `disabled`; still announced as a disabled button.
+
+## Examples
+
+<Example name="neutral">
+  <Set at="variant" value="neutral" />
+</Example>
+
+<Example name="danger">
+  <Set at="variant" value="danger" />
+</Example>

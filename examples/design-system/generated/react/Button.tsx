@@ -23,7 +23,7 @@ export interface ButtonProps {
 function ButtonBase({ label, variant = "primary", size = "medium", disabled, type = "button", className, style }: ButtonProps) {
   const ref = useRef<HTMLElement>(null)
   return (
-    <hwc-button ref={ref} className={className} style={style} variant={variant} size={size} disabled={disabled || undefined} type={type}>
+    <hwc-button ref={ref} className={className} style={style} variant={variant} size={size} disabled={!!disabled} type={type}>
       <hwc-button-leading-icon><svg viewBox="0 0 14 14" width={14} height={14} aria-hidden="true"><path d="M2 7 H12 M7 2 V12" fill="currentColor" /></svg></hwc-button-leading-icon>
       <hwc-button-label>{label}</hwc-button-label>
     </hwc-button>

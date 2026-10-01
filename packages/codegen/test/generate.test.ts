@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { CODES, parseOrThrow } from '@uidx/format'
-import { generate, tsType, componentModel, partTag } from '../src/index.js'
+import { generate, tsType, componentModel, partTag, stateSelector } from '../src/index.js'
 import { CHECKBOX, CONTACT_ITEM, CONTACT_LIST, FIELD, MANIFEST, TOKENS } from './fixtures.js'
 
 /**
@@ -156,6 +156,34 @@ describe('tokens.css', () => {
   it('names every token as a custom property, colours as colours, numbers unitless', () => {
     expect(file('html/tokens.css')).toBe(
       `:root {\n  --radius-sm: 4;\n  --space-sm: 8;\n  --surface-accent: rgb(0 128 255);\n  --surface-control: rgb(255 255 255);\n}\n`,
+    )
+  })
+
+  it('adds a block per extra mode holding only what that mode changes', () => {
+    const moded = parseOrThrow(`---
+id: tokens
+---
+
+## Visual Contract
+
+<Tokens>
+  <Collection name="color" modes={['light', 'dark']}>
+    <Variable name="surface" type="COLOR">
+      <Mode name="light" value={{ r: 1, g: 1, b: 1, a: 1 }} />
+      <Mode name="dark" value={{ r: 0, g: 0, b: 0, a: 1 }} />
+    </Variable>
+    <Variable name="accent" type="COLOR">
+      <Mode name="light" value={{ r: 0, g: 0, b: 1, a: 1 }} />
+      <Mode name="dark" value={{ r: 0, g: 0, b: 1, a: 1 }} />
+    </Variable>
+  </Collection>
+</Tokens>
+`)
+    const css = generate({ pages: [], tokens: [moded], targets: ['html'] }).files.get(
+      'html/tokens.css',
+    )
+    expect(css).toBe(
+      `:root {\n  --color-accent: rgb(0 0 255);\n  --color-surface: rgb(255 255 255);\n}\n\n[data-color="dark"] {\n  --color-surface: rgb(0 0 0);\n}\n`,
     )
   })
 })
@@ -413,7 +441,7 @@ describe('the React target', () => {
     expect(tsx).toContain(`onChange?: (detail: { checked: boolean }) => void`)
     expect(tsx).toContain(`useElementEvent(ref, 'change', onChange)`)
     expect(tsx).toContain(
-      `<hwc-checkbox ref={ref} className={className} style={style} checked={checked || undefined}`,
+      `<hwc-checkbox ref={ref} className={className} style={style} checked={!!checked}`,
     )
     expect(tsx).toContain(`size = "md"`)
     expect(tsx).not.toContain('ReactNode')
@@ -707,5 +735,187 @@ describe('the cem target', () => {
     expect(checkbox.attributes.map((a: { name: string }) => a.name)).toContain('checked')
     expect(checkbox.cssParts.map((p: { name: string }) => p.name)).toContain('checked-indicator')
     expect(checkbox['x-uidx']).toHaveProperty('accessibility')
+  })
+})
+
+describe('a general web-component library (Shoelace)', () => {
+  const MANIFEST = {
+    modules: [
+      {
+        declarations: [
+          {
+            tagName: 'sl-button',
+            attributes: [{ name: 'variant' }, { name: 'href' }, { name: 'disabled' }],
+            events: [{ name: 'sl-focus' }],
+            slots: [{ name: '' }, { name: 'prefix' }],
+            cssParts: [{ name: 'base' }, { name: 'label' }],
+          },
+        ],
+      },
+    ],
+  }
+  const PAGE = parseOrThrow(`---
+id: button
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="stable" implements="sl-button">
+    <Frame name="base" part="base" fills="{color#accent}" cornerRadius={6}>
+      <Slot name="prefix" />
+      <Frame name="label" part="label" layoutMode="HORIZONTAL">
+        <Slot name="default">
+          <Text name="text" characters="{label}" />
+        </Slot>
+      </Frame>
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Save">Words.</Prop>
+  <Prop name="variant" type="'primary' | 'neutral'" default="primary" visual>Emphasis.</Prop>
+</Props>
+<Events>
+  <Event name="press">Activation.</Event>
+</Events>
+<Slots>
+  <Slot name="prefix">An icon.</Slot>
+  <Slot name="default">The label.</Slot>
+</Slots>
+<Parts>
+  <Part name="base">The box.</Part>
+  <Part name="label">The label.</Part>
+</Parts>
+`)
+  const run = (profile: Record<string, string>) =>
+    generate({
+      pages: [{ file: 'button.uidx', doc: PAGE }],
+      tokens: [],
+      manifest: MANIFEST,
+      library: { profile, components: { Button: { events: { press: 'click' } } } },
+      targets: ['html', 'react'],
+    })
+
+  it('requires the whole element under full coverage, a declared subset under subset', () => {
+    const full = run({}).diagnostics.map((d) => d.message)
+    expect(full.some((m) => m.includes('"href"'))).toBe(true)
+    expect(full.some((m) => m.includes('sl-focus'))).toBe(true)
+    // press is renamed to the DOM's own click, which no manifest lists.
+    expect(full.some((m) => m.includes('"press"'))).toBe(false)
+    expect(run({ coverage: 'subset' }).diagnostics).toEqual([])
+  })
+
+  it('colours an outlined vector with its stroke, as currentColor, never a border', () => {
+    const check = parseOrThrow(`---
+id: tick
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Tick" status="draft" layoutMode="HORIZONTAL">
+    <Vector name="mark" width={12} height={12} strokes="{color#ink}" strokeWeight={2}
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 6 L5 9 L10 3' }]} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="size" type="number">Unused.</Prop>
+</Props>
+`)
+    const files = generate({
+      pages: [{ file: 'tick.uidx', doc: check }],
+      tokens: [],
+      targets: ['html'],
+    }).files
+    const css = files.get('html/tick.css')!
+    expect(css).toContain('color: var(--color-ink);')
+    expect(css).not.toContain('border:')
+    expect(files.get('html/tick.html')).toContain('stroke="currentColor" stroke-width="2"')
+  })
+
+  it('selects focus on a shadow host as :focus-within, which it matches, not :focus-visible', () => {
+    const shadowed = componentModel(PAGE.tree.children[0]!, PAGE, MANIFEST)
+    expect(stateSelector('focus', undefined, shadowed)).toBe(':focus-within')
+    expect(stateSelector('focus')).toBe(':focus-visible')
+  })
+
+  it("passes slot content through the library's shadow parts, with slot names it declares", () => {
+    const files = run({ coverage: 'subset' }).files
+    const html = files.get('html/button.html')!
+    expect(html).toContain('<sl-button')
+    // An empty slot of the library's prints nothing; its name is not content.
+    expect(html).not.toContain('prefix')
+    expect(html).toContain('<span data-slot="default">')
+    expect(html).toContain('Save')
+    expect(files.get('html/button.css')).toContain('sl-button::part(base)')
+    // `label` is sl-button's own part, not some other element ending in -label.
+    expect(files.get('html/button.css')).toContain('sl-button::part(label)')
+    const react = files.get('react/Button.tsx')!
+    expect(react).toContain('slot="prefix"')
+    expect(react).toContain('data-slot="default"')
+  })
+
+  it('writes sample text the element takes as an attribute onto it, in HTML and React', () => {
+    const field = parseOrThrow(`---
+id: input
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Input" status="stable" implements="sl-input">
+    <Frame name="form-control" part="form-control">
+      <Text name="label" part="form-control-label" characters="{label}" />
+      <Frame name="base" part="base">
+        <Text name="value" part="input" characters="{placeholder}" />
+      </Frame>
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email">Asks.</Prop>
+  <Prop name="placeholder" type="string" sample="you@example.com">Hint.</Prop>
+</Props>
+`)
+    const output = generate({
+      pages: [{ file: 'input.uidx', doc: field }],
+      tokens: [],
+      manifest: {
+        modules: [
+          {
+            declarations: [
+              {
+                tagName: 'sl-input',
+                attributes: [{ name: 'label' }, { name: 'placeholder' }],
+                cssParts: [
+                  { name: 'form-control' },
+                  { name: 'form-control-label' },
+                  { name: 'base' },
+                  { name: 'input' },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+      library: { profile: { coverage: 'subset' } },
+      targets: ['html', 'react'],
+    })
+    expect(output.files.get('html/input.html')).toContain(
+      '<sl-input label="Email" placeholder="you@example.com">',
+    )
+    const react = output.files.get('react/Input.tsx')!
+    expect(react).toContain('label?: string')
+    expect(react).toContain('label={label} placeholder={placeholder}')
   })
 })

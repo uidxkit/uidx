@@ -27,7 +27,7 @@ function CheckboxBase({ checked, indeterminate, disabled, name, value = "on", on
   const ref = useRef<HTMLElement>(null)
   useElementEvent(ref, 'change', onChange)
   return (
-    <hwc-checkbox ref={ref} className={className} style={style} checked={checked || undefined} indeterminate={indeterminate || undefined} disabled={disabled || undefined} name={name} value={value}>
+    <hwc-checkbox ref={ref} className={className} style={style} checked={!!checked} indeterminate={!!indeterminate} disabled={!!disabled} name={name} value={value}>
       <hwc-checkbox-checked-indicator><svg viewBox="0 0 12 12" width={12} height={12} aria-hidden="true"><path d="M2 6.5 L5 9.5 L10.5 3" fill="currentColor" /></svg></hwc-checkbox-checked-indicator>
       <hwc-checkbox-indeterminate-indicator><svg viewBox="0 0 12 12" width={12} height={12} aria-hidden="true"><path d="M2 5.25 H10 V6.75 H2 Z" fill="currentColor" /></svg></hwc-checkbox-indeterminate-indicator>
     </hwc-checkbox>

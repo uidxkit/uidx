@@ -1,0 +1,151 @@
+{
+  "id": "input",
+  "components": [
+    {
+      "name": "Input",
+      "implements": "sl-input",
+      "status": "stable",
+      "boundParts": [
+        "form-control",
+        "form-control-label",
+        "base",
+        "input",
+        "form-control-help-text"
+      ],
+      "treeSlots": [
+        "prefix",
+        "suffix"
+      ],
+      "axes": {
+        "state": [
+          "default",
+          "disabled",
+          "focus"
+        ]
+      }
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "What the field asks for.",
+        "sample": "Email"
+      },
+      {
+        "name": "placeholder",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "A hint shown while the field is empty.",
+        "sample": "you@example.com"
+      },
+      {
+        "name": "helpText",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "A sentence under the field.",
+        "sample": "We never share it."
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "What the field holds."
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Not editable, dimmed.",
+        "default": false
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires when an edit is committed."
+      }
+    ],
+    "states": [],
+    "parts": [
+      {
+        "name": "form-control",
+        "description": "The label, field and help, stacked."
+      },
+      {
+        "name": "form-control-label",
+        "description": "The label."
+      },
+      {
+        "name": "base",
+        "description": "The field's box."
+      },
+      {
+        "name": "input",
+        "description": "The native input."
+      },
+      {
+        "name": "form-control-help-text",
+        "description": "The help sentence."
+      }
+    ],
+    "slots": [
+      {
+        "name": "prefix",
+        "description": "An icon before the text."
+      },
+      {
+        "name": "suffix",
+        "description": "An icon after the text."
+      }
+    ],
+    "composes": [],
+    "form": {
+      "participates": true,
+      "submits": "value under its name"
+    },
+    "accessibility": {
+      "role": "textbox",
+      "label": "from label"
+    }
+  },
+  "behavior": [
+    {
+      "id": "label",
+      "text": "the label names the field for assistive technology."
+    },
+    {
+      "id": "change",
+      "text": "fires `change` when the value is committed, not on every keystroke."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "base": {
+          "strokes": "{color#accent}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,44 @@
+:root {
+  --color-accent: rgb(37 99 235);
+  --color-accent-hover: rgb(29 78 216);
+  --color-border: rgb(201 206 216);
+  --color-danger: rgb(220 38 38);
+  --color-on-accent: rgb(255 255 255);
+  --color-surface: rgb(255 255 255);
+  --color-surface-raised: rgb(248 249 251);
+  --color-text: rgb(18 21 28);
+  --color-text-muted: rgb(107 114 128);
+  --opacity-disabled: 0.45;
+  --palette-blue-400: rgb(96 165 250);
+  --palette-blue-500: rgb(37 99 235);
+  --palette-blue-600: rgb(29 78 216);
+  --palette-gray-100: rgb(238 240 244);
+  --palette-gray-300: rgb(201 206 216);
+  --palette-gray-50: rgb(248 249 251);
+  --palette-gray-500: rgb(107 114 128);
+  --palette-gray-800: rgb(31 36 48);
+  --palette-gray-900: rgb(18 21 28);
+  --palette-red-500: rgb(220 38 38);
+  --palette-white: rgb(255 255 255);
+  --radius-full: 999;
+  --radius-md: 6;
+  --radius-sm: 4;
+  --space-lg: 16;
+  --space-md: 12;
+  --space-sm: 8;
+  --space-xs: 4;
+  --type-lg: 16;
+  --type-md: 14;
+  --type-sm: 12;
+}
+
+[data-color="dark"] {
+  --color-accent: rgb(96 165 250);
+  --color-accent-hover: rgb(37 99 235);
+  --color-border: rgb(107 114 128);
+  --color-on-accent: rgb(18 21 28);
+  --color-surface: rgb(18 21 28);
+  --color-surface-raised: rgb(31 36 48);
+  --color-text: rgb(248 249 251);
+  --color-text-muted: rgb(201 206 216);
+}

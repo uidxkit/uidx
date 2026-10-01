@@ -23,7 +23,7 @@ export interface FieldProps {
 function FieldBase({ label, description, errorMessage, error, control, className, style }: FieldProps) {
   const ref = useRef<HTMLElement>(null)
   return (
-    <hwc-field ref={ref} className={className} style={style} error={error || undefined}>
+    <hwc-field ref={ref} className={className} style={style} error={!!error}>
       {control !== undefined ? <span data-slot="control">{control}</span> : null}
       <div data-node="text">
         <hwc-field-label>{label}</hwc-field-label>

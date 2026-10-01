@@ -92,12 +92,21 @@ export interface LibraryProfile {
   customStates: 'state' | 'data-attribute' | 'class'
   /** Parts: elements of their own (or `cssParts`), or light-DOM `[data-part="x"]`. */
   parts: 'element' | 'data-part'
+  /**
+   * How much of the element the contract must cover. `full`: every attribute
+   * and event the element has is declared — a headless library made for this
+   * design system. `subset`: the design system exposes a chosen part of a
+   * general library (Shoelace's button has nineteen attributes), and only
+   * what it declares is checked against the element.
+   */
+  coverage: 'full' | 'subset'
 }
 
 export const DEFAULT_PROFILE: LibraryProfile = {
   props: 'attribute',
   customStates: 'state',
   parts: 'element',
+  coverage: 'full',
 }
 
 /** The library's names for one component's identity names. Absent entries keep the identity's. */
@@ -126,6 +135,7 @@ export function libraryProfile(library?: LibraryBindings): LibraryProfile {
     props: pick('props', ['attribute', 'data-attribute', 'class']),
     customStates: pick('customStates', ['state', 'data-attribute', 'class']),
     parts: pick('parts', ['element', 'data-part']),
+    coverage: pick('coverage', ['full', 'subset']),
   }
 }
 
@@ -148,10 +158,12 @@ export function partKind(rootTag: string, part: string, manifest?: Manifest): Pa
   if (!manifest) return 'element'
   const tags = manifestTags(manifest)
   const tagSet = new Set(tags.keys())
-  if (tagSet.has(partTag(rootTag, part, tagSet))) return 'element'
-  return (tags.get(rootTag)?.cssParts ?? []).some((entry) => entry.name === part)
-    ? 'shadow'
-    : 'element'
+  if (tagSet.has(`${rootTag}-${part}`)) return 'element'
+  // A part the root declares as its own shadow part wins over a tag that only
+  // happens to end in the same word: Shoelace's sl-button has a `label` part,
+  // and sl-menu-label is another component entirely.
+  if ((tags.get(rootTag)?.cssParts ?? []).some((entry) => entry.name === part)) return 'shadow'
+  return 'element'
 }
 
 export function partTag(rootTag: string, part: string, tags?: ReadonlySet<string>): string {
@@ -200,8 +212,11 @@ export interface SlotInfo {
 export function vectorPaint(node: UidxNode): string {
   const fills = node.attrs.fills?.value
   const strokes = node.attrs.strokes?.value
-  const filled = Array.isArray(fills) && fills.length > 0
-  const stroked = Array.isArray(strokes) && strokes.length > 0
+  // A paint list, or a token alias standing for one.
+  const painted = (value: JsonValue | undefined) =>
+    (Array.isArray(value) && value.length > 0) || (typeof value === 'string' && value !== '')
+  const filled = painted(fills)
+  const stroked = painted(strokes)
   if (!stroked || filled) return 'fill="currentColor"'
   const weight =
     typeof node.attrs.strokeWeight?.value === 'number' ? node.attrs.strokeWeight.value : 1
@@ -265,6 +280,19 @@ export interface ComponentModel {
   profile: LibraryProfile
   /** The library's names for this component's, from `uidx.json`; empty when unbound. */
   binding: ComponentBinding
+  /**
+   * Named slots the library's element declares: content for them carries
+   * `slot="name"`, which a shadow-DOM slot needs to receive it.
+   */
+  slotted: Set<string>
+  /** The attributes the library's element declares, in its spelling. */
+  elementAttributes: Set<string>
+  /**
+   * The element renders a shadow root (its manifest declares CSS parts). Its
+   * host matches `:focus` through focus delegation but never
+   * `:focus-visible`, so a focus state is selected as `:focus-within`.
+   */
+  shadow: boolean
 }
 
 /** The prop a bare `{name}` alias names, if the contract declares it. */
@@ -325,9 +353,26 @@ export function componentModel(
   // reflect as data attributes and parts as data-part, which a div can carry.
   const profile: LibraryProfile =
     implemented === undefined
-      ? { props: 'data-attribute', customStates: 'data-attribute', parts: 'data-part' }
+      ? {
+          props: 'data-attribute',
+          customStates: 'data-attribute',
+          parts: 'data-part',
+          coverage: 'full',
+        }
       : libraryProfile(library)
   const tag = implemented === undefined ? undefined : (binding.tag ?? implemented)
+  const declared = tag ? manifestTags(manifest).get(tag) : undefined
+  const slotted = new Set(
+    ((declared as { slots?: { name?: string }[] } | undefined)?.slots ?? [])
+      .map((slot) => slot.name ?? '')
+      .filter((name) => name !== ''),
+  )
+  const elementAttributes = new Set(
+    ((declared as { attributes?: { name?: string }[] } | undefined)?.attributes ?? [])
+      .map((attribute) => attribute.name ?? '')
+      .filter(Boolean),
+  )
+  const shadow = ((declared as { cssParts?: unknown[] } | undefined)?.cssParts?.length ?? 0) > 0
   const parts: PartInfo[] = []
   const slots: SlotInfo[] = []
   const repeats: RepeatInfo[] = []
@@ -392,6 +437,9 @@ export function componentModel(
     models: models ?? modelIndex([doc]),
     profile,
     binding,
+    slotted,
+    elementAttributes,
+    shadow,
     parts,
     slots,
     repeats,

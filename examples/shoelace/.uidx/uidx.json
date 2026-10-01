@@ -1,0 +1,48 @@
+{
+  "id": "shoelace-example",
+  "files": [
+    "**/*.uidx"
+  ],
+  "assets": [
+    "assets/**"
+  ],
+  "headless": {
+    "manifest": "../node_modules/@shoelace-style/shoelace/dist/custom-elements.json",
+    "profile": {
+      "coverage": "subset"
+    },
+    "bindings": {
+      "Button": {
+        "events": {
+          "press": "click"
+        }
+      },
+      "Input": {
+        "attributes": {
+          "helpText": "help-text"
+        },
+        "events": {
+          "change": "sl-change"
+        }
+      },
+      "Checkbox": {
+        "events": {
+          "change": "sl-change"
+        }
+      },
+      "Switch": {
+        "events": {
+          "change": "sl-change"
+        }
+      }
+    }
+  },
+  "codegen": {
+    "out": "../generated",
+    "targets": [
+      "html",
+      "react",
+      "contract"
+    ]
+  }
+}

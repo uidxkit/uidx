@@ -1,0 +1,65 @@
+---
+id: input
+---
+
+A single-line text field with its label and help. Shoelace's `sl-input`
+supplies typing, validation, form participation and the label's association;
+this identity supplies the look, drawn on its form-control parts.
+
+## Visual Contract
+
+<Page>
+  <Component name="Input" status="stable" implements="sl-input"
+    layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="FIXED" width={280}>
+    <Frame name="form-control" part="form-control" layoutAlign="STRETCH"
+      layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="FIXED" itemSpacing="{space#xs}">
+      <Text name="label" part="form-control-label" characters="{label}" fontSize="{type#sm}" fontWeight="MEDIUM" fills="{color#text}" />
+      <Frame name="base" part="base" layoutAlign="STRETCH"
+        layoutMode="HORIZONTAL" primaryAxisSizingMode="FIXED" counterAxisSizingMode="AUTO"
+        counterAxisAlignItems="CENTER" itemSpacing="{space#sm}"
+        paddingLeft="{space#md}" paddingRight="{space#md}" paddingTop="{space#sm}" paddingBottom="{space#sm}"
+        cornerRadius="{radius#md}" fills="{color#surface}" strokes="{color#border}" strokeWeight={1}>
+        <Slot name="prefix" />
+        <Text name="value" part="input" layoutGrow={1} characters="{placeholder}" fontSize="{type#md}" fills="{color#text-muted}" />
+        <Slot name="suffix" />
+      </Frame>
+      <Text name="help" part="form-control-help-text" characters="{helpText}" fontSize="{type#sm}" fills="{color#text-muted}" />
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="focus" base:strokes="{color#accent}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email">What the field asks for.</Prop>
+  <Prop name="placeholder" type="string" sample="you@example.com">A hint shown while the field is empty.</Prop>
+  <Prop name="helpText" type="string" sample="We never share it.">A sentence under the field.</Prop>
+  <Prop name="value" type="string">What the field holds.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Not editable, dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="change">Fires when an edit is committed.</Event>
+</Events>
+<Slots>
+  <Slot name="prefix">An icon before the text.</Slot>
+  <Slot name="suffix">An icon after the text.</Slot>
+</Slots>
+<Parts>
+  <Part name="form-control">The label, field and help, stacked.</Part>
+  <Part name="form-control-label">The label.</Part>
+  <Part name="base">The field's box.</Part>
+  <Part name="input">The native input.</Part>
+  <Part name="form-control-help-text">The help sentence.</Part>
+</Parts>
+<Form participates submits="value under its name" />
+<Accessibility role="textbox" label="from label" />
+
+## Behavior
+
+- label: the label names the field for assistive technology.
+- change: fires `change` when the value is committed, not on every keystroke.

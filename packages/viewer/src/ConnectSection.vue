@@ -150,6 +150,14 @@ const PROFILE: { key: string; label: string; options: [string, string][] }[] = [
       ['data-part', '[data-part="x"]'],
     ],
   },
+  {
+    key: 'coverage',
+    label: 'Coverage',
+    options: [
+      ['full', 'Every attribute and event'],
+      ['subset', 'A chosen subset (general library)'],
+    ],
+  },
 ]
 function setProfile(key: string, value: string): void {
   const profile = { ...(props.config.headless?.profile ?? {}) }

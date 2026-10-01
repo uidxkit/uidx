@@ -28,7 +28,7 @@ function ContactOptionBase({ item, checked, disabled, value, name, onChange, cla
   const ref = useRef<HTMLElement>(null)
   useElementEvent(ref, 'change', onChange)
   return (
-    <hwc-radio ref={ref} className={className} style={style} checked={checked || undefined} disabled={disabled || undefined} value={value} name={name}>
+    <hwc-radio ref={ref} className={className} style={style} checked={!!checked} disabled={!!disabled} value={value} name={name}>
       <div data-node="ring">
         <hwc-radio-checked-indicator><svg viewBox="0 0 8 8" width={8} height={8} aria-hidden="true"><path d="M4 0a4 4 0 110 8 4 4 0 010-8z" fill="currentColor" /></svg></hwc-radio-checked-indicator>
       </div>

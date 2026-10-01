@@ -78,7 +78,7 @@
     },
     {
       "id": "empty",
-      "text": "with no items the empty slot shows and nothing is chosen."
+      "text": "with no items the `empty` slot shows and nothing is chosen."
     }
   ],
   "examples": [

@@ -86,7 +86,7 @@
     },
     {
       "id": "error",
-      "text": "error mounts the error message and asks the control to expose aria-invalid; announcing it is the application's policy."
+      "text": "`error` mounts the error message and asks the control to expose `aria-invalid`; announcing it is the application's policy."
     },
     {
       "id": "claim",
