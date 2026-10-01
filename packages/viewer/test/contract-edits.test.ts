@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
-import { applyPatches, parseOrThrow, resolve } from '@uidx/format'
+import { applyPatches, parseOrThrow, resolve, type UidxPatch } from '@uidx/format'
 import { defaultVariantAddress, derivedDocument, modelIndex } from '@uidx/schema'
 import ContractSection from '../src/ContractSection.vue'
 import PropertiesPane from '../src/PropertiesPane.vue'
@@ -535,6 +535,108 @@ describe('the Contract section', () => {
 
     const bound = mountFor(CHECKBOX, 'Checkbox')
     expect(bound.find('details[data-field="code-binding"]').attributes('open')).toBeDefined()
+  })
+
+  it('adds a choice prop as a visual enum, refusing fewer than two choices', async () => {
+    const section = mountFor(
+      page('badge', `  <Component name="Badge" status="draft" width={10} height={10} />`),
+      'Badge',
+    )
+    await section.find('[aria-label="Name to add"]').setValue('tone')
+    await section.find('[aria-label="Type to add"]').setValue('choice')
+    const choices = section.find('[aria-label="Choices, separated by commas"]')
+    const plus = section.find('[aria-label="Add declaration"]')
+    await choices.setValue('info')
+    expect(plus.attributes('disabled')).toBeDefined()
+    await choices.setValue('info, warning , danger')
+    await plus.trigger('click')
+    expect(section.emitted('patches')).toEqual([
+      [
+        [
+          {
+            op: 'contract',
+            kind: 'prop',
+            name: 'tone',
+            declaration: {
+              attrs: { type: "'info' | 'warning' | 'danger'", default: 'info', visual: true },
+              description: 'Describe the prop "tone".',
+            },
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('turns a built-in state on as an empty style row, and off with every row it has', async () => {
+    const source = page(
+      'badge',
+      `  <Component name="Badge" status="draft" width={10} height={10} />`,
+      `
+<Styles>
+  <Style state="focus" root:opacity={0.5} />
+  <Style state="focus" tone="info" root:opacity={0.4} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="tone" type="'info' | 'warning'" default="info" visual>Tone.</Prop>
+</Props>
+`,
+    )
+    const section = mountFor(source, 'Badge')
+    const hover = section.find('[data-state="hover"] input')
+    const focus = section.find('[data-state="focus"] input')
+    expect((hover.element as HTMLInputElement).checked).toBe(false)
+    expect((focus.element as HTMLInputElement).checked).toBe(true)
+    // No list prop, so there is no empty state to offer.
+    expect(section.find('[data-state="empty"]').exists()).toBe(false)
+    await hover.setValue(true)
+    await focus.setValue(false)
+    const [on, off] = section.emitted('patches')! as UidxPatch[][][]
+    expect(on![0]).toEqual([
+      { op: 'style', keys: { state: 'hover' }, target: '', prop: '', value: {} },
+    ])
+    expect(off![0]).toEqual([
+      { op: 'style', keys: { state: 'focus' }, target: '', prop: '' },
+      { op: 'style', keys: { state: 'focus', tone: 'info' }, target: '', prop: '' },
+    ])
+    const next = applyPatches(applyPatches(source, on![0]!).source, off![0]!).source
+    expect(next).toContain('<Styles>\n  <Style state="hover" />\n</Styles>')
+  })
+
+  it('keeps a default of false, and puts a cleared description back to the placeholder', async () => {
+    const source = page(
+      'chip',
+      `  <Component name="Chip" status="draft" width={10} height={10} />`,
+      `
+## Contract
+
+<Props>
+  <Prop name="on" type="boolean" default={true}>Whether it is on.</Prop>
+</Props>
+`,
+    )
+    const section = mountFor(source, 'Chip')
+    await section.find('[data-prop="on"] .name').trigger('click')
+    const form = section.find('[data-editor="prop:on"]')
+    await form.find('[aria-label="Default"]').setValue('false')
+    await form.find('.field input').setValue('')
+    const [defaulted, cleared] = section.emitted('patches')! as UidxPatch[][][]
+    expect(defaulted![0]).toEqual([
+      {
+        op: 'contract',
+        kind: 'prop',
+        name: 'on',
+        declaration: {
+          attrs: { type: 'boolean', default: false },
+          description: 'Whether it is on.',
+        },
+      },
+    ])
+    expect(
+      (cleared![0]![0] as { declaration: { description: string } }).declaration.description,
+    ).toBe('Describe the prop "on".')
   })
 
   it('lists parts with their layer, binds an unbound one, and selects a bound one', async () => {

@@ -1047,7 +1047,11 @@ function styleCell(
   patch: Extract<UidxPatch, { op: 'style' }>,
   eol: '\r\n' | '\n',
 ): Range {
-  if (patch.target === '' || patch.prop === '' || Object.keys(patch.keys).length === 0) {
+  const whole = patch.target === '' && patch.prop === ''
+  if (
+    Object.keys(patch.keys).length === 0 ||
+    (!whole && (patch.target === '' || patch.prop === ''))
+  ) {
     throw new PatchError('a style op names a row by its keys, a target and a prop')
   }
   const rows = (doc.spec?.styles ?? []).map((row) => ({
@@ -1057,7 +1061,26 @@ function styleCell(
     ),
   }))
   let row = rows.find((entry) => sameKeys(entry.keys, patch.keys))
-  if (patch.value === undefined) {
+  if (whole) {
+    // The whole row (an empty target and prop): written with these cells, an
+    // empty object making a state exist before it has a look, or removed.
+    if (patch.value === undefined) {
+      if (!row) throw new PatchError(`${addressOfPatch(patch)} is not in the styles table`)
+      rows.splice(rows.indexOf(row), 1)
+    } else {
+      const cells = patch.value
+      if (cells === null || typeof cells !== 'object' || Array.isArray(cells))
+        throw new PatchError('a whole style row is written as { target: { prop: value } }')
+      const values = Object.fromEntries(
+        Object.entries(cells).map(([target, props]) => [
+          target,
+          { ...(props as Record<string, JsonValue>) },
+        ]),
+      )
+      if (row) row.values = values
+      else rows.push({ keys: { ...patch.keys }, values })
+    }
+  } else if (patch.value === undefined) {
     const props = row?.values[patch.target]
     if (!row || !props || !(patch.prop in props)) {
       throw new PatchError(`${addressOfPatch(patch)} has no ${patch.target}:${patch.prop} to clear`)

@@ -2,6 +2,9 @@
 import { computed, ref } from 'vue'
 import {
   declarationOf,
+  enumValues,
+  listProps,
+  STATE_AXIS,
   type ContractKind,
   type JsonValue,
   type UidxDocument,
@@ -210,7 +213,10 @@ function redeclare(
   const current = declarationOf(props.doc, kind, name) ?? { attrs: {}, description: '' }
   const attrs: Record<string, JsonValue> = { ...current.attrs }
   for (const [key, value] of Object.entries(change.attrs ?? {})) {
-    if (value === undefined || value === false) delete attrs[key]
+    // `visual` and `controllable` are flags written only when on; any other
+    // attribute keeps a `false` it is given (a boolean's default, a sample).
+    if (value === undefined || (value === false && (key === 'visual' || key === 'controllable')))
+      delete attrs[key]
     else attrs[key] = value
   }
   // A boolean prop is an axis the moment it is visual (ADR 0016 §1), and an
@@ -218,10 +224,12 @@ function redeclare(
   // gets `false` unless the form said otherwise.
   if (kind === 'prop' && change.attrs?.type === 'boolean' && attrs.default === undefined)
     attrs.default = false
+  // A description cleared goes back to the placeholder, which the tab shows
+  // as empty and the checker reports as still to write.
   const description =
-    change.description === undefined || change.description === ''
+    change.description === undefined
       ? current.description
-      : change.description
+      : change.description || `${PLACEHOLDER}the ${kind} "${name}".`
   send(declare(kind, name, { attrs, description }))
 }
 
@@ -231,18 +239,86 @@ function remove(kind: ContractKind, name: string): void {
 }
 
 /** The type a new prop gets; a boolean is a state the moment it is visual, so it comes with a default. */
-const addType = ref<'string' | 'number' | 'boolean'>('string')
+const addType = ref<'string' | 'number' | 'boolean' | 'choice'>('string')
+/** A choice prop's values as typed, comma-separated: `primary, secondary`. */
+const addOptions = ref('')
+
+/** `primary, secondary` → `'primary' | 'secondary'`; null when fewer than two values. */
+function choiceType(text: string): string | null {
+  const values = [
+    ...new Set(
+      text
+        .split(',')
+        .map((value) => value.trim())
+        .filter(Boolean),
+    ),
+  ]
+  return values.length >= 2
+    ? values.map((value) => `'${value.replace(/'/g, '')}'`).join(' | ')
+    : null
+}
+
+/** A choice prop's options rewritten; its default kept when it is still one of them. */
+function setOptions(name: string, text: string, current: unknown): void {
+  const type = choiceType(text)
+  if (!type) return
+  const values = enumValues(type)!
+  redeclare('prop', name, {
+    attrs: {
+      type,
+      default: typeof current === 'string' && values.includes(current) ? current : values[0]!,
+    },
+  })
+}
+
+/* ------------------------------------------------------------- states */
+
+/** States a component gets without declaring them: the browser's, and `empty` for a list. */
+const builtInStates = computed(() => {
+  const contract = view.value.kind === 'component' ? view.value.component.spec?.contract : undefined
+  const states = [
+    { name: 'hover', label: 'Hover', hint: 'The pointer is over it' },
+    { name: 'focus', label: 'Focus', hint: 'It has keyboard focus' },
+    { name: 'active', label: 'Pressed', hint: 'It is being pressed' },
+  ]
+  if (listProps(contract).length)
+    states.push({ name: 'empty', label: 'Empty', hint: 'Its list has no items' })
+  const rows = props.doc?.spec?.styles ?? []
+  return states.map((state) => ({
+    ...state,
+    on: rows.some((row) => row.keys[STATE_AXIS] === state.name),
+  }))
+})
+
+/**
+ * Turns a built-in state on (an empty row, so the canvas draws it and the
+ * author designs it by selecting it) or off (every row naming it goes).
+ */
+function toggleState(name: string, on: boolean): void {
+  if (on) {
+    send([{ op: 'style', keys: { [STATE_AXIS]: name }, target: '', prop: '', value: {} }])
+    return
+  }
+  const rows = (props.doc?.spec?.styles ?? []).filter((row) => row.keys[STATE_AXIS] === name)
+  send(rows.map((row) => ({ op: 'style', keys: { ...row.keys }, target: '', prop: '' })))
+}
 
 function add(): void {
   const name = addName.value.trim()
   if (!name) return
   const kind = addKind.value
-  const attrs: Record<string, JsonValue> =
-    kind === 'prop'
-      ? addType.value === 'boolean'
-        ? { type: 'boolean', default: false }
-        : { type: addType.value }
-      : {}
+  let attrs: Record<string, JsonValue> = {}
+  if (kind === 'prop') {
+    if (addType.value === 'choice') {
+      const type = choiceType(addOptions.value)
+      if (!type) return
+      // A choice is an axis of the variant set: visual, its first value the default.
+      attrs = { type, default: enumValues(type)![0]!, visual: true }
+      addOptions.value = ''
+    } else
+      attrs =
+        addType.value === 'boolean' ? { type: 'boolean', default: false } : { type: addType.value }
+  }
   send(declare(kind, name, { attrs, description: `${PLACEHOLDER}the ${kind} "${name}".` }))
   addName.value = ''
   open.value = `${kind}:${name}`
@@ -347,6 +423,19 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
                 redeclare('prop', prop.name, {
                   attrs: { type: ($event.target as HTMLInputElement).value.trim() },
                 })
+              "
+            />
+          </label>
+          <label v-if="enumValues(prop.type)" class="field">
+            <span>Choices</span>
+            <input
+              class="text"
+              :value="enumValues(prop.type)!.join(', ')"
+              aria-label="Choices, separated by commas"
+              :disabled="!writable"
+              title="Each choice is a column or row of the variant set"
+              @change="
+                setOptions(prop.name, ($event.target as HTMLInputElement).value, prop.default)
               "
             />
           </label>
@@ -665,17 +754,55 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           <option value="string">text</option>
           <option value="number">number</option>
           <option value="boolean">boolean</option>
+          <option value="choice">choice</option>
         </select>
+        <input
+          v-if="addKind === 'prop' && addType === 'choice'"
+          v-model="addOptions"
+          class="text options"
+          :disabled="!writable"
+          aria-label="Choices, separated by commas"
+          placeholder="primary, secondary"
+          title="Two or more values, separated by commas. Each becomes a column or row of the variant set."
+          @keydown.enter="add"
+        />
         <button
           type="button"
           class="reset"
-          :disabled="!writable || !addName.trim()"
+          :disabled="
+            !writable ||
+            !addName.trim() ||
+            (addKind === 'prop' && addType === 'choice' && !choiceType(addOptions))
+          "
           aria-label="Add declaration"
           title="Declare it; describe it after"
           @click="add"
         >
           +
         </button>
+      </div>
+
+      <header class="head"><span class="title">States</span></header>
+      <p class="hint">
+        Turn a state on to draw it beside the others; then select it on the canvas and change it.
+        Boolean properties marked visual are states too.
+      </p>
+      <div class="state-toggles">
+        <label
+          v-for="state in builtInStates"
+          :key="state.name"
+          class="state-toggle"
+          :title="state.hint"
+          :data-state="state.name"
+        >
+          <input
+            type="checkbox"
+            :checked="state.on"
+            :disabled="!writable"
+            @change="toggleState(state.name, ($event.target as HTMLInputElement).checked)"
+          />
+          {{ state.label }}
+        </label>
       </div>
 
       <template v-if="view.slots.length || view.straySlots.length">
@@ -1522,7 +1649,15 @@ code {
   margin-top: 4px;
 }
 .row.add.typed {
-  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1fr) minmax(0, 0.7fr) 24px;
+  grid-template-columns: 70px minmax(0, 1fr) 84px 24px;
+}
+.row.add .options {
+  grid-column: 1 / -2;
+  grid-row: 2;
+}
+.row.add .options ~ .reset {
+  grid-row: 2;
+  grid-column: -2;
 }
 .pick.narrow {
   min-width: 0;
@@ -1530,5 +1665,22 @@ code {
 .faint {
   color: var(--text-faint);
   font-size: 10px;
+}
+.state-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding: 2px 0 8px;
+}
+.state-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ui-size);
+  color: var(--text);
+  cursor: pointer;
+}
+.text.options {
+  grid-column: 1 / -2;
 }
 </style>

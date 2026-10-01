@@ -109,6 +109,19 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
           Object.keys(entry.keys).length === Object.keys(patch.keys).length &&
           Object.entries(patch.keys).every(([axis, value]) => entry.keys[axis] === value),
       )
+      if (patch.target === '' && patch.prop === '') {
+        if (patch.value === undefined && !row)
+          throw new PatchError('that style row is not in the table; nothing to restore')
+        return [
+          {
+            op: 'style',
+            keys: { ...patch.keys },
+            target: '',
+            prop: '',
+            ...(row ? { value: structuredClone(row.values) as JsonValue } : {}),
+          },
+        ]
+      }
       const old = row?.values[patch.target]?.[patch.prop]
       if (patch.value === undefined && old === undefined) {
         throw new PatchError(`no ${patch.target}:${patch.prop} in that style row to restore`)

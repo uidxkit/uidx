@@ -402,7 +402,10 @@ export type UidxPatch =
    * a node name). No `value` clears the cell; a row left empty is removed and
    * a missing row is added, so the table never holds an empty row. This is
    * how a state is designed from the canvas (ADR 0016 §4): the derived
-   * variant is what is drawn, the row is what is written.
+   * variant is what is drawn, the row is what is written. An empty `target`
+   * and `prop` address the whole row: a `value` of `{ target: { prop: v } }`
+   * writes it (`{}` makes a state exist before it has a look, the one empty
+   * row the table holds), no `value` removes it with every cell.
    */
   | { op: 'style'; keys: Record<string, string>; target: string; prop: string; value?: JsonValue }
   /**

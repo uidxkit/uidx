@@ -110,4 +110,31 @@ describe('the style op', () => {
       /no root:opacity to clear/,
     )
   })
+
+  it('writes and removes a whole row, and inverts both', () => {
+    const source = page('', CONTRACT)
+    const doc = parseOrThrow(source)
+    const seed = style({ state: 'hover' }, '', '', {})
+    const seeded = applyPatches(source, [seed]).source
+    expect(seeded).toContain('<Styles>\n  <Style state="hover" />\n</Styles>')
+    expect(parseOrThrow(seeded).spec!.styles).toMatchObject([
+      { keys: { state: 'hover' }, values: {} },
+    ])
+    expect(applyPatches(seeded, inversePatches(doc, [seed])).source).toBe(source)
+
+    const full = page(
+      `
+<Styles>
+  <Style state="hover" root:opacity={0.8} ring:visible={true} />
+</Styles>
+`,
+      CONTRACT,
+    )
+    const drop = style({ state: 'hover' }, '', '')
+    const dropped = applyPatches(full, [drop]).source
+    expect(dropped).toBe(source)
+    const back = inversePatches(parseOrThrow(full), [drop])
+    expect(applyPatches(dropped, back).source).toBe(full)
+    expect(() => applyPatches(source, [drop])).toThrow(/not in the styles table/)
+  })
 })
