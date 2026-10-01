@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { parseOrThrow, type UidxDocument } from '@uidx/format'
-import { modelIndex, toSceneGraph } from '../src/index.js'
+import { modelIndex, slotOfSceneNode, toSceneGraph } from '../src/index.js'
 
 /**
  * Injecting an item component into a list (ADR 0017 §2): a consumer fills
@@ -72,7 +72,9 @@ const TEAM = page(
   </Instance>`,
 )
 
-function texts(doc: UidxDocument) {
+type Node = { id: string; type: string; text?: string; fontSize?: number; childIds: string[] }
+
+function build(doc: UidxDocument, sampleIndex?: number) {
   const docs = [ROW, CARD, LIST, TEAM]
   const components = new Map(
     docs.flatMap((d) =>
@@ -82,13 +84,18 @@ function texts(doc: UidxDocument) {
   const scene = toSceneGraph(doc, {
     resolveComponent: (name) => components.get(name),
     models: modelIndex(docs),
+    ...(sampleIndex === undefined ? {} : { sampleIndex }),
   })
+  return {
+    scene,
+    nodes: [...(scene.graph as unknown as { nodes: Map<string, Node> }).nodes.values()],
+  }
+}
+
+function texts(doc: UidxDocument, sampleIndex?: number) {
+  const { scene, nodes } = build(doc, sampleIndex)
   const out: [string, string, number][] = []
-  for (const node of (
-    scene.graph as unknown as {
-      nodes: Map<string, { id: string; type: string; text?: string; fontSize?: number }>
-    }
-  ).nodes.values())
+  for (const node of nodes)
     if (node.type === 'TEXT') out.push([node.id, node.text ?? '', node.fontSize ?? 0])
   return { out, addresses: scene.addresses }
 }
@@ -110,5 +117,37 @@ describe('a list filled with another item component', () => {
     const { addresses } = texts(TEAM)
     expect(addresses.sceneIdOf('cards#item/card')).toBe('cards#item/card')
     expect(addresses.addressOf('cards#item-2/card')).toBeUndefined()
+  })
+})
+
+describe('the editor reading the scene', () => {
+  it('marks every slot frame, so an emptied one can be outlined', () => {
+    const emptied = page(
+      'emptied',
+      `  <Instance name="bare" component="List">
+    <Slot name="item" />
+  </Instance>`,
+    )
+    const slots = build(emptied).nodes.filter((node) => slotOfSceneNode(node as never) !== null)
+    expect(slots.length).toBe(3)
+    expect(slots.every((node) => node.childIds.length === 0)).toBe(true)
+    expect(slotOfSceneNode(slots[0] as never)).toBe('item')
+  })
+
+  it('previews a standalone item component with the chosen sample', () => {
+    const solo = page('solo', `  <Instance name="solo" component="Card" />`)
+    expect(texts(solo).out.map(([, text]) => text)).toEqual(['Ada'])
+    expect(texts(solo, 1).out.map(([, text]) => text)).toEqual(['Grace'])
+    // The definition itself, whose model is declared on another page.
+    expect(texts(CARD, 2).out.map(([, text]) => text)).toEqual(['Linus'])
+  })
+
+  it('keeps each row of a repeat on its own sample whatever the preview', () => {
+    const { out } = texts(TEAM, 1)
+    expect(out.filter(([id]) => id.startsWith('plain')).map(([, text]) => text)).toEqual([
+      'Ada',
+      'Grace',
+      'Linus',
+    ])
   })
 })

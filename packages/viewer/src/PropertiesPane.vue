@@ -120,6 +120,9 @@ import PropertyDialog from './PropertyDialog.vue'
 import PropertyLink from './PropertyLink.vue'
 import ComponentVariantsSection from './ComponentVariantsSection.vue'
 import InstancePropsSection from './InstancePropsSection.vue'
+import PreviewDataSection from './PreviewDataSection.vue'
+import SlotCardField from './SlotCardField.vue'
+import { slotCards } from './slot-content'
 import { FieldIcon } from './field-icons'
 import type { SideValues } from './edit-models'
 import {
@@ -174,6 +177,8 @@ const props = defineProps<{
    */
   pages?: ReadonlyMap<string, UidxDocument>
   file?: string
+  /** Which sample row the canvas previews an item component with. */
+  previewIndex?: number
   /**
    * The selected node's visual extent, as the canvas measures it.
    *
@@ -256,6 +261,10 @@ const emit = defineEmits<{
   makeComponent: []
   /** The Contract tab names the model a repeat draws; the shell opens the Models face on it. */
   openModel: [name: string]
+  /** Open a component's definition, on whatever page declares it. */
+  openComponent: [name: string]
+  /** Preview another sample row on the canvas. */
+  previewSample: [index: number]
   /** The Contract tab names layers; choosing one selects it, as the rail would. */
   select: [address: string]
   /** The Contract tab chose a headless library; the shell has the server write it. */
@@ -580,6 +589,25 @@ function resetCell(cell: { prop: string; keys: Record<string, string> }): void {
 const fillSlot = computed(() =>
   active.value && props.doc && resetSlotFor(props.doc, active.value.address) ? active.value : null,
 )
+
+/**
+ * The selected fill as its owner's slot card, so the hole a designer clicked
+ * on the canvas offers what can go in it — not only how to reset it. Null
+ * when the owner's component is not in the index, which keeps the two plain
+ * buttons below as the fallback.
+ */
+const fillCard = computed(() => {
+  const fill = fillSlot.value
+  if (!fill || !props.doc) return null
+  const owner = parentOf(props.doc.tree, fill.address)
+  const named = owner?.element === 'Instance' ? owner.attrs.component?.value : undefined
+  const definition = typeof named === 'string' ? props.components?.get(named) : undefined
+  if (!owner || !definition) return null
+  const card = slotCards(owner, definition, props.components, props.models, props.pages).find(
+    (candidate) => candidate.name === fill.name,
+  )
+  return card ? { card, owner } : null
+})
 
 /** Whether emptying it would say anything — a fill with no children is already empty. */
 const fillHasContents = computed(() => (fillSlot.value?.children.length ?? 0) > 0)
@@ -1764,7 +1792,15 @@ function onDetach(prop: string, value: JsonValue): void {
           >. Its layout belongs to the component that declares it; what is inside is this
           page&rsquo;s.
         </p>
-        <div class="fill-buttons">
+        <SlotCardField
+          v-if="fillCard"
+          :card="fillCard.card"
+          :instance="fillCard.owner"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @select="emit('select', $event)"
+        />
+        <div v-else class="fill-buttons">
           <button
             type="button"
             :disabled="writable === false"
@@ -1839,7 +1875,7 @@ function onDetach(prop: string, value: JsonValue): void {
         below it.
       -->
         <div
-          v-if="swapRow"
+          v-if="swapRow && (swapRow.boundTo || swapRow.candidates)"
           class="instance-swap-row"
           :data-linked="swapRow.boundTo ? 'true' : undefined"
         >
@@ -1870,15 +1906,30 @@ function onDetach(prop: string, value: JsonValue): void {
           :instance="active"
           :definition="definitionFor(active)"
           :components="components"
+          :models="models"
+          :pages="pages"
+          :preview-index="previewIndex ?? 0"
           :writable="writable !== false"
           @patches="emit('patches', $event)"
           @select="emit('select', $event)"
+          @open-component="emit('openComponent', $event)"
+          @open-model="emit('openModel', $event)"
+          @preview="emit('previewSample', $event)"
         />
 
         <!--
         A component's states come before its properties: a state is the coarser
         fact — which button this is, before what it says.
       -->
+        <PreviewDataSection
+          v-if="active.element === 'Component'"
+          :component="active"
+          :models="models"
+          :index="previewIndex ?? 0"
+          @preview="emit('previewSample', $event)"
+          @open-model="emit('openModel', $event)"
+        />
+
         <ComponentVariantsSection
           v-if="active.element === 'Component' && active.attrs.variants !== undefined"
           :doc="doc"

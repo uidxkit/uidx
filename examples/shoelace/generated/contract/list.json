@@ -19,7 +19,7 @@
         "type": "Person[]",
         "controllable": false,
         "visual": false,
-        "description": "Describe the prop \"items\"."
+        "description": "The people to list, in order."
       }
     ],
     "events": [],
@@ -28,7 +28,7 @@
     "slots": [
       {
         "name": "item",
-        "description": "Describe the slot \"item\"."
+        "description": "What each person is drawn with. Receives the person as `item`; defaults to a PersonRow."
       }
     ],
     "composes": []

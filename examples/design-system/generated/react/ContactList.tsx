@@ -12,9 +12,9 @@ export interface ContactListProps {
   name?: string
   /** Every option inert. */
   disabled?: boolean
-  /** Shown instead of the options while items is empty. */
+  /** Shown instead of the options while `items` is empty. */
   empty?: ReactNode
-  /** One option per element of items . */
+  /** One option per element of `items`. */
   renderOption?: (item: Contact, index: number) => ReactNode
   /** Extra class names for the root element. */
   className?: string

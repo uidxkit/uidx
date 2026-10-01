@@ -2,7 +2,7 @@
 id: "personrow"
 ---
 
-Describe what PersonRow is for, and when to reach for something else.
+A compact row for one person: avatar, name and role. The list draws it by default.
 
 ## Visual Contract
 
@@ -40,13 +40,13 @@ Describe what PersonRow is for, and when to reach for something else.
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">Describe the prop "item".</Prop>
+  <Prop name="item" type="Person">The person this row shows.</Prop>
 </Props>
 
 ## Models
 
 <Model name="Person">
-  Describe what one Person carries.
+  One member of the team: who they are and what they do.
   <Field name="id" type="string" key sample={['ada', 'grace', 'linus', 'margaret']}>Stable identity.</Field>
   <Field name="name" type="string" sample={['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds', 'Margaret Hamilton']}>Full display name.</Field>
   <Field name="role" type="string" sample={['Mathematician', 'Rear admiral', 'Kernel maintainer', 'Flight software lead']}>What they do.</Field>

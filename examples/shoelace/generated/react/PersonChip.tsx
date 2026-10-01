@@ -5,7 +5,7 @@ import type { Person } from './models'
 import './person-chip.css'
 
 export interface PersonChipProps {
-  /** Describe the prop "item". */
+  /** The person this chip names. */
   item: Person
   /** Extra class names for the root element. */
   className?: string

@@ -365,7 +365,10 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
         ...inner,
         component: node,
         repeats: [],
-        resolveAlias: withProperties(aliasFor(next), declaredDefaults(node, scope.sampleIndex)),
+        resolveAlias: withProperties(
+          aliasFor(next),
+          declaredDefaults(node, scope.sampleIndex, scope.models),
+        ),
       }
     }
 
@@ -1442,11 +1445,32 @@ export function scenePropsFor(
     // placeholder content, not the engine's 100x100 default — which would
     // hold a one-line placeholder in a square and push everything below it.
     ...(node.element === 'Component' || node.element === 'Slot' ? componentSizing(node) : {}),
+    ...(node.element === 'Slot' ? { pluginData: [slotMark(node.name)] } : {}),
     ...(hasVariants(node) ? variantDefinitions(node) : {}),
     ...(node.element === 'Text' ? textSizing(node) : {}),
     name: node.name,
     ...overridesFor(node, warnings, resolveAlias, resolveAsset, rootFontSize),
   }
+}
+
+/**
+ * Marks a slot's frame in the scene. A slot is a `FRAME` there (ADR 0007 §6),
+ * and an empty one draws nothing, so the editor needs to tell it apart to
+ * outline the hole — on its overlay, never in the scene, which exports.
+ */
+const SLOT_PLUGIN = 'uidx'
+const slotMark = (name: string): { pluginId: string; key: string; value: string } => ({
+  pluginId: SLOT_PLUGIN,
+  key: 'slot',
+  value: name,
+})
+
+/** The slot a scene node is the frame of, or null for any other node. */
+export function slotOfSceneNode(node: Pick<SceneNode, 'pluginData'>): string | null {
+  const mark = node.pluginData?.find(
+    (entry) => entry.pluginId === SLOT_PLUGIN && entry.key === 'slot',
+  )
+  return mark?.value ?? null
 }
 
 /**

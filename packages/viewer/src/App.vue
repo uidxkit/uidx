@@ -113,6 +113,7 @@ import { detachInstance } from './detach'
 import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
+import { componentPreviewKey } from './component-preview'
 import { createUidxSocket, type ConnectionState } from './socket'
 import { selectionReport } from './selection-report'
 import ChatPanel from './ChatPanel.vue'
@@ -448,6 +449,53 @@ function renderExample(example: DocsExample): Promise<string | null> {
 function onDocsOpen(file: string, address?: string): void {
   openView({ kind: 'page', file })
   if (address) selection.value = [address]
+}
+
+/**
+ * One component drawn small, for the slot content picker: a one-instance
+ * page, as the Docs face draws an example, stamped by the definitions so a
+ * component edit redraws it.
+ */
+function renderComponent(name: string): Promise<string | null> {
+  const doc = exampleDocument(name, { name: 'preview', props: {}, notDrawn: [] })
+  if (!doc || !components.value.has(name)) return Promise.resolve(null)
+  return thumbnailer.request({
+    file: `#component/${name}`,
+    doc,
+    tokens: sceneTokens.value,
+    literals: tokens.value,
+    components: components.value,
+    models: models.value,
+    revision: null,
+    definitions: definitions.value,
+    assets: null,
+    fonts: fontGeneration.value,
+    width: 176,
+    height: 128,
+  })
+}
+provide(componentPreviewKey, renderComponent)
+
+/**
+ * Which sample row an item component previews with on the canvas (ADR 0015
+ * §2). Editor state, not the file's: stepping through people to see how a
+ * long name wraps is looking, not designing, so it writes nothing.
+ */
+const previewSample = ref(0)
+
+/** Opens the page that declares `name` and selects the definition. */
+async function goToComponent(name: string): Promise<void> {
+  for (const [file, doc] of pages.value) {
+    if (doc.tree.element === 'Tokens') continue
+    const found = doc.tree.children.find(
+      (child) => child.element === 'Component' && child.name === name,
+    )
+    if (!found) continue
+    if (file !== entry.value) openPage(file)
+    await nextTick()
+    selection.value = [found.address]
+    return
+  }
 }
 
 function renderThumb(card: PageCard): Promise<string | null> {
@@ -2454,6 +2502,7 @@ onUnmounted(() => socket.close())
             :writable="connection === 'open'"
             :components="components"
             :models="models"
+            :preview-sample="previewSample"
             @selection="selection = $event"
             @patches="onCanvasPatches"
             @moved="onMoved"
@@ -2515,6 +2564,7 @@ onUnmounted(() => socket.close())
             :models="models"
             :pages="pages"
             :file="entry ?? undefined"
+            :preview-index="previewSample"
             :writable="connection === 'open'"
             :export-bounds="exportBounds"
             :pin-frame="pinFrame"
@@ -2539,6 +2589,8 @@ onUnmounted(() => socket.close())
             @patches="commitPatches"
             @hover="onHover"
             @open-model="openModel"
+            @open-component="goToComponent"
+            @preview-sample="previewSample = $event"
           />
         </ErrorBoundary>
       </template>

@@ -3,6 +3,7 @@ export {
   layOutEntity,
   scenePropsFor,
   scenePropFor,
+  slotOfSceneNode,
   variantFor,
   NODE_TYPE,
   type AddressMap,

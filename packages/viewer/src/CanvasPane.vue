@@ -62,6 +62,7 @@ import {
   type TokenResolver,
   defaultVariantAddress,
   derivedDocument,
+  slotOfSceneNode,
 } from '@uidx/schema'
 import type { Diagnostic, JsonValue, UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 
@@ -122,6 +123,8 @@ const props = defineProps<{
   components?: ReadonlyMap<string, UidxNode>
   /** Model name -> declaration across every page, for the same reason as `components`. */
   models?: ModelIndex
+  /** Which sample row an item component outside a repeat previews with (ADR 0015 §2). */
+  previewSample?: number
   /**
    * Mode-aware token resolution (G8).
    *
@@ -1417,6 +1420,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
           resolveComponent,
           tokens: props.sceneTokens,
           models: props.models,
+          sampleIndex: props.previewSample ?? 0,
         })
         // The renderer re-records only the chunks holding these (viewer-at-scale
         // spec §4); an unexplained version bump re-records the whole page.
@@ -1461,6 +1465,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
       resolveComponent,
       tokens: props.sceneTokens,
       models: props.models,
+      sampleIndex: props.previewSample ?? 0,
     })
     // Text the fonts could not measure yet is a build that will be wrong until
     // it is done again, once the demand this build just raised settles.
@@ -1890,6 +1895,66 @@ const formatDegrees = (degrees: number): string => `${Math.round(degrees * 10) /
  * which value each column and row of a derived or authored variant grid is.
  * Hidden when zoomed out too far to read them.
  */
+/**
+ * The slots on screen that hold nothing, outlined on the overlay (ADR 0007,
+ * amended): an empty slot draws nothing and has no size, so without this
+ * the hole a designer is meant to fill is invisible. Drawn here rather than
+ * in the scene, which exports and lays out — the outline must not do either.
+ * A repeated slot is outlined once, not once per (equally empty) row.
+ */
+const emptySlots = computed(() => {
+  void sceneTick.value
+  const zoom = cameraZoom.value
+  const pan = cameraPan.value
+  const result = scene.value
+  if (!result || zoom < 0.2) return []
+  const graph = result.graph
+  const out: {
+    key: string
+    name: string
+    x: number
+    y: number
+    width: number
+    height: number
+    select: string | null
+  }[] = []
+  const outlined = new Set<string>()
+  const visit = (id: string): void => {
+    const node = graph.getNode(id)
+    if (!node || node.visible === false) return
+    const name = slotOfSceneNode(node)
+    if (
+      name !== null &&
+      node.childIds.length === 0 &&
+      node.parentId &&
+      !outlined.has(node.parentId)
+    ) {
+      outlined.add(node.parentId)
+      const at = getAbsolutePosition(node, graph)
+      // The nearest layer the file has: a slot inside an instance is generated.
+      let owner: string | null = id
+      let select: string | null = null
+      while (owner) {
+        select = result.addresses.addressOf(owner) ?? null
+        if (select !== undefined && select !== null) break
+        owner = graph.getNode(owner)?.parentId ?? null
+      }
+      out.push({
+        key: id,
+        name,
+        x: at.x * zoom + pan.x,
+        y: at.y * zoom + pan.y,
+        width: Math.max(node.width * zoom, 112),
+        height: Math.max(node.height * zoom, 32),
+        select,
+      })
+    }
+    for (const child of node.childIds) visit(child)
+  }
+  visit(result.rootId)
+  return out
+})
+
 const setHeaders = computed(() => {
   void sceneTick.value
   const zoom = cameraZoom.value
@@ -2316,6 +2381,14 @@ watch(
   },
 )
 
+/** Previewing another sample row redraws every item component outside a repeat. */
+watch(
+  () => props.previewSample,
+  () => {
+    void renderWithAssets(props.doc, true)
+  },
+)
+
 /** Importing a face changes text metrics even when the document did not change. */
 watch(fontGeneration, () => {
   void renderWithAssets(props.doc, true)
@@ -2536,6 +2609,23 @@ onUnmounted(() => unwatchGraph?.())
       {{ header.text }}
     </div>
 
+    <button
+      v-for="hole in emptySlots"
+      :key="hole.key"
+      type="button"
+      class="empty-slot"
+      :style="{
+        left: `${hole.x}px`,
+        top: `${hole.y}px`,
+        width: `${hole.width}px`,
+        height: `${hole.height}px`,
+      }"
+      :title="`Empty slot “${hole.name}” — select to choose what fills it`"
+      @click="hole.select !== null && emit('selection', [hole.select])"
+    >
+      <span class="empty-slot-label">+ {{ hole.name }}</span>
+    </button>
+
     <div
       v-if="rotationReadout"
       class="rotation-readout"
@@ -2655,6 +2745,29 @@ onUnmounted(() => unwatchGraph?.())
 }
 .set-header[data-kind='row'] {
   transform: translate(8px, -50%);
+}
+.empty-slot {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px dashed var(--component, #9747ff);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--component, #9747ff) 8%, transparent);
+  color: var(--component, #9747ff);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.empty-slot:hover {
+  background: color-mix(in srgb, var(--component, #9747ff) 16%, transparent);
+}
+.empty-slot-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rotation-readout {
   position: absolute;

@@ -2,7 +2,7 @@
 id: "personcard"
 ---
 
-Describe what PersonCard is for, and when to reach for something else.
+A roomy card for one person, with the role under the name. For lists that need more breathing room.
 
 ## Visual Contract
 
@@ -27,5 +27,5 @@ Describe what PersonCard is for, and when to reach for something else.
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">Describe the prop "item".</Prop>
+  <Prop name="item" type="Person">The person this card shows.</Prop>
 </Props>

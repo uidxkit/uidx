@@ -2,7 +2,7 @@
 id: "personchip"
 ---
 
-Describe what PersonChip is for, and when to reach for something else.
+A pill with one person's name. For dense lists, like attendees or assignees.
 
 ## Visual Contract
 
@@ -19,5 +19,5 @@ Describe what PersonChip is for, and when to reach for something else.
 ## Contract
 
 <Props>
-  <Prop name="item" type="Person">Describe the prop "item".</Prop>
+  <Prop name="item" type="Person">The person this chip names.</Prop>
 </Props>

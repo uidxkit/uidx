@@ -50,12 +50,12 @@
     "slots": [
       {
         "name": "option",
-        "description": "One option per element of items .",
+        "description": "One option per element of `items`.",
         "accepts": "hwc-radio"
       },
       {
         "name": "empty",
-        "description": "Shown instead of the options while items is empty."
+        "description": "Shown instead of the options while `items` is empty."
       }
     ],
     "composes": [

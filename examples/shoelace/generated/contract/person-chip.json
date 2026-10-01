@@ -17,7 +17,7 @@
         "type": "Person",
         "controllable": false,
         "visual": false,
-        "description": "Describe the prop \"item\"."
+        "description": "The person this chip names."
       }
     ],
     "events": [],

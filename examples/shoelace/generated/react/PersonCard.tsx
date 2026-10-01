@@ -5,7 +5,7 @@ import type { Person } from './models'
 import './person-card.css'
 
 export interface PersonCardProps {
-  /** Describe the prop "item". */
+  /** The person this card shows. */
   item: Person
   /** Extra class names for the root element. */
   className?: string

@@ -4,7 +4,7 @@ id: "team"
 
 ## Core Intent
 
-Describe what this page is for.
+One List, three uses: the default PersonRow, PersonCard and PersonChip injected into its item slot.
 
 ## Visual Contract
 

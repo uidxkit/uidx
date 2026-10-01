@@ -132,7 +132,7 @@ export class SpecLowerer {
     const node: SpecNode = { name, attrs: this.attributes(el), text: '', children: [], loc }
     const text: string[] = []
     this.walk(el.children ?? [], allowed, name, node.children, text)
-    node.text = text.join(' ').replace(/\s+/g, ' ').trim()
+    node.text = text.join('').replace(/\s+/g, ' ').trim()
     return node
   }
 
@@ -160,6 +160,12 @@ export class SpecLowerer {
         continue
       } else if (child.type === 'paragraph') {
         this.walk(child.children ?? [], allowed, parent, into, text)
+        // Paragraphs are separate sentences; the pieces inside one are not.
+        text.push(' ')
+      } else if (child.type === 'inlineCode') {
+        // Kept as written: `item` names a prop, and the code target's doc
+        // comment should say so the way the author did.
+        text.push(`\`${textOf(child)}\``)
       } else {
         text.push(textOf(child))
       }

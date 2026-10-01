@@ -6,9 +6,9 @@ import { PersonRow } from './PersonRow'
 import './list.css'
 
 export interface ListProps {
-  /** Describe the prop "items". */
+  /** The people to list, in order. */
   items: Person[]
-  /** Describe the slot "item". */
+  /** What each person is drawn with. Receives the person as `item`; defaults to a PersonRow. */
   renderItem?: (item: Person, index: number) => ReactNode
   /** Extra class names for the root element. */
   className?: string

@@ -17,7 +17,7 @@
         "type": "Person",
         "controllable": false,
         "visual": false,
-        "description": "Describe the prop \"item\"."
+        "description": "The person this row shows."
       }
     ],
     "events": [],
@@ -29,7 +29,7 @@
   "models": [
     {
       "name": "Person",
-      "description": "Describe what one Person carries.",
+      "description": "One member of the team: who they are and what they do.",
       "fields": [
         {
           "name": "id",

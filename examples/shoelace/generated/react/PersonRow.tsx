@@ -5,7 +5,7 @@ import type { Person } from './models'
 import './person-row.css'
 
 export interface PersonRowProps {
-  /** Describe the prop "item". */
+  /** The person this row shows. */
   item: Person
   /** Extra class names for the root element. */
   className?: string
