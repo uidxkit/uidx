@@ -18,7 +18,7 @@ import checkbox from '../generated/html/checkbox.html?raw'
 import switchHtml from '../generated/html/switch.html?raw'
 
 import { log } from './log'
-import { mountReact } from './react-demo'
+import { mountLists, mountReact } from './react-demo'
 
 /** A generated fragment as an element, optionally with extra attributes for a variant. */
 function fragment(html: string, attributes: Record<string, string> = {}, text?: string): Element {
@@ -90,3 +90,4 @@ theme.addEventListener('sl-change', () => {
 document.getElementById('theme')!.append(theme)
 
 mountReact(document.getElementById('react-target')!)
+mountLists(document.getElementById('lists')!)

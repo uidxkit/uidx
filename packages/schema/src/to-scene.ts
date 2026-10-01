@@ -201,6 +201,12 @@ export interface SceneOptions {
    */
   sampleIndex?: number
   /**
+   * The current row's item, as the bindings `{as.field}` resolve to — handed
+   * to what a consumer fills a repeated slot with, which is written in the
+   * consuming page's scope but drawn once per item of the definition's list.
+   */
+  itemBindings?: ReadonlyMap<string, JsonValue>
+  /**
    * True inside a repeated row: the nodes are generated, so nothing they
    * hold links into the bimap — the same rule an instance's children follow.
    */
@@ -784,12 +790,17 @@ export function withModes(
  * — from the `props` attribute (F6) and from the contract (ADR 0013 §5),
  * which also answers `{item.field}` with a model's sample (ADR 0015 §2).
  */
-function declaredDefaults(component: UidxNode, sampleIndex = 0): Map<string, JsonValue> {
+function declaredDefaults(
+  component: UidxNode,
+  sampleIndex = 0,
+  models?: ModelIndex,
+): Map<string, JsonValue> {
   const out = new Map<string, JsonValue>()
   for (const [name, declaration] of componentProps(component).declared) {
     out.set(name, declaration.default)
   }
-  for (const [name, value] of specBindings(component.spec, sampleIndex)) out.set(name, value)
+  for (const [name, value] of specBindings(component.spec, sampleIndex, models))
+    out.set(name, value)
   return out
 }
 
@@ -1037,7 +1048,7 @@ function expandInstance(
     resolveAlias: withProperties(
       options.resolveAlias,
       new Map([
-        ...declaredDefaults(definition, options.sampleIndex),
+        ...declaredDefaults(definition, options.sampleIndex, options.models),
         ...instanceValues(node, definition, options.resolveAlias),
       ]),
     ),
@@ -1058,15 +1069,19 @@ function expandInstance(
    * `{radius#md}` in a fill is the consuming page's token, and a bare `{label}`
    * there is a mistake rather than the component's property.
    */
-  const authored = (source: UidxNode, parentSceneId: string): void => {
+  const authored = (
+    source: UidxNode,
+    parentSceneId: string,
+    within: SceneOptions = options,
+  ): void => {
     const sceneId = addressOf(parentSceneId, source.name)
-    if (!options.generated) addresses.link(source.address, sceneId)
-    pins.link(sceneId, pinFrom(source.attrs, options.rootFontSize, options.resolveAlias))
+    if (!within.generated) addresses.link(source.address, sceneId)
+    pins.link(sceneId, pinFrom(source.attrs, within.rootFontSize, within.resolveAlias))
     graph.createNodeWithId(
       sceneId,
       nodeTypeFor(source),
       parentSceneId,
-      instanceProps(source, warnings, options),
+      instanceProps(source, warnings, within),
     )
     // An instance inside a fill expands with the consuming page's scope and
     // this instance's own chain, so a cycle that runs through a fill still
@@ -1078,13 +1093,16 @@ function expandInstance(
         pins,
         { ...source, address: sceneId },
         warnings,
-        options,
+        within,
         chain,
       )
       return
     }
-    for (const child of source.children) authored(child, sceneId)
+    for (const child of source.children) authored(child, sceneId, within)
   }
+
+  /** A repeat's echo row is a copy under a new name; this remembers the name it was written with. */
+  const authoredName = new WeakMap<UidxNode, string>()
 
   /**
    * `source` is a node of the definition; `relative` is its path inside the
@@ -1113,16 +1131,13 @@ function expandInstance(
           ...local,
           sampleIndex: index,
           generated: true,
+          itemBindings: bindings,
           resolveAlias: layerProperties(local.resolveAlias, bindings),
           repeats: [...(local.repeats ?? []), { as: repeat.as, model }],
         }
-        clone(
-          { ...row, name: index === 0 ? source.name : `${source.name}-${index + 1}` },
-          parentId,
-          relative,
-          inherited,
-          indexed,
-        )
+        const echo = { ...row, name: index === 0 ? source.name : `${source.name}-${index + 1}` }
+        authoredName.set(echo, source.name)
+        clone(echo, parentId, relative, inherited, indexed)
       }
       return
     }
@@ -1159,10 +1174,27 @@ function expandInstance(
      * "explicitly empty" differs from "unfilled".
      */
     if (source.element === 'Slot') {
-      const fill = fills.get(source.name)
+      // A repeated slot's rows after the first are named `item-2`, `item-3`;
+      // the consumer filled `item`, and fills every row (ADR 0017 §2).
+      const fill = fills.get(authoredName.get(source) ?? source.name)
       if (fill) {
-        addresses.link(fill.address, id)
-        for (const child of fill.children) authored(child, id)
+        // Drawn once per item: the first row is the fill itself, linked and
+        // editable; the rest are echoes, like any repeat's. Each copy receives
+        // its row's item — the n-th sample — as an instance inside a repeat
+        // does, so an injected item component shows the person it is for.
+        const row = local.sampleIndex ?? 0
+        const echo = (local.repeats?.length ?? 0) > 0 && row > 0
+        const filled: SceneOptions = {
+          ...options,
+          sampleIndex: local.sampleIndex,
+          repeats: local.repeats,
+          generated: options.generated || echo,
+          resolveAlias: local.itemBindings
+            ? layerProperties(options.resolveAlias, local.itemBindings)
+            : options.resolveAlias,
+        }
+        if (!filled.generated) addresses.link(fill.address, id)
+        for (const child of fill.children) authored(child, id, filled)
         return
       }
     }

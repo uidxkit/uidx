@@ -1,0 +1,76 @@
+{
+  "id": "personrow",
+  "components": [
+    {
+      "name": "PersonRow",
+      "implements": null,
+      "status": "draft",
+      "boundParts": [],
+      "treeSlots": [],
+      "axes": {}
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "item",
+        "type": "Person",
+        "controllable": false,
+        "visual": false,
+        "description": "Describe the prop \"item\"."
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": []
+  },
+  "models": [
+    {
+      "name": "Person",
+      "description": "Describe what one Person carries.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "key": true,
+          "optional": false,
+          "description": "Stable identity.",
+          "sample": [
+            "ada",
+            "grace",
+            "linus",
+            "margaret"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "key": false,
+          "optional": false,
+          "description": "Full display name.",
+          "sample": [
+            "Ada Lovelace",
+            "Grace Hopper",
+            "Linus Torvalds",
+            "Margaret Hamilton"
+          ]
+        },
+        {
+          "name": "role",
+          "type": "string",
+          "key": false,
+          "optional": false,
+          "description": "What they do.",
+          "sample": [
+            "Mathematician",
+            "Rear admiral",
+            "Kernel maintainer",
+            "Flight software lead"
+          ]
+        }
+      ]
+    }
+  ]
+}

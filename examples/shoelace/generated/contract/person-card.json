@@ -1,0 +1,29 @@
+{
+  "id": "personcard",
+  "components": [
+    {
+      "name": "PersonCard",
+      "implements": null,
+      "status": "draft",
+      "boundParts": [],
+      "treeSlots": [],
+      "axes": {}
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "item",
+        "type": "Person",
+        "controllable": false,
+        "visual": false,
+        "description": "Describe the prop \"item\"."
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": []
+  }
+}

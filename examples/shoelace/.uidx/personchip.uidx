@@ -1,0 +1,23 @@
+---
+id: "personchip"
+---
+
+Describe what PersonChip is for, and when to reach for something else.
+
+## Visual Contract
+
+<Page>
+  <Component name="PersonChip" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius="{radius#full}"
+    fills={[{ type: 'SOLID', color: '{color#accent}' }]}>
+    <Text name="name" characters="{item.name}" fontSize="{type#sm}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#on-accent}' }]} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="item" type="Person">Describe the prop "item".</Prop>
+</Props>

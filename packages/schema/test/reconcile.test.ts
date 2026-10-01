@@ -103,6 +103,24 @@ describe('diffDocuments', () => {
     expect(diffDocuments(before, after)).toBeNull()
   })
 
+  // Rebinding a text from one model field to another changed nothing on the
+  // canvas: both aliases read as unbound without the component's scope.
+  it('rebuilds when a binding to the contract changes, which only a full build resolves', () => {
+    const page = (field: string) =>
+      doc(`<Page>
+  <Component name="Row" status="draft">
+    <Text name="role" characters="{item.${field}}" />
+  </Component>
+</Page>`)
+    expect(diffDocuments(page('role'), page('id'))).toBeNull()
+    // A token alias still updates in place.
+    const tinted = (token: string) =>
+      doc(`<Page>
+  <Frame name="box" fills="{color#${token}}" />
+</Page>`)
+    expect(diffDocuments(tinted('a'), tinted('b'))).not.toBeNull()
+  })
+
   it('sees nothing when the document is unchanged', () => {
     expect(diffDocuments(doc(BASE), doc(BASE))).toEqual([])
   })

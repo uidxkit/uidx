@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { focusEdit } from './focus-edit'
 import { computed, ref } from 'vue'
 import type { UidxNode, UidxNodeSpec } from '@uidx/format'
 import type { DrawingTool } from './graphics-tools'
@@ -75,7 +76,14 @@ function chosen(event: Event): void {
           stroke-linecap="round"
         />
       </svg>
-      <input v-model="query" type="search" placeholder="Search" aria-label="Search" />
+      <!-- The caret is here when the panel opens: "Person" then a click, not a hunt. -->
+      <input
+        v-model="query"
+        type="search"
+        placeholder="Search"
+        aria-label="Search"
+        @vue:mounted="focusEdit"
+      />
     </div>
 
     <section v-if="!query">

@@ -1,0 +1,31 @@
+---
+id: "personcard"
+---
+
+Describe what PersonCard is for, and when to reach for something else.
+
+## Visual Contract
+
+<Page>
+  <Component name="PersonCard" status="draft"
+    layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="MIN" counterAxisAlignItems="MIN"
+    paddingLeft={16} paddingRight={16} paddingTop={16} paddingBottom={16} cornerRadius={6}
+    fills={[{ type: 'SOLID', color: '{color#surface-raised}' }]}
+    itemSpacing="{space#xs}">
+    <Text name="name" characters="{item.name}" fontSize="{type#lg}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text}' }]} />
+    <Text
+      name="role"
+      characters="{item.role}"
+      textAutoResize="WIDTH_AND_HEIGHT"
+      fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#accent}' }]}
+      fontSize="{type#sm}"
+    />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="item" type="Person">Describe the prop "item".</Prop>
+</Props>

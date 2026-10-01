@@ -232,12 +232,14 @@ export function repeatListType(
 export function specBindings(
   spec: DocumentSpec | undefined,
   sampleIndex = 0,
+  /** Models across every page: an item component names a model another page declares. */
+  models?: ModelIndex,
 ): Map<string, JsonValue> {
   const out = new Map<string, JsonValue>()
   if (!spec?.contract) return out
   const bindModel = (prefix: string, model: ModelSpec, depth: number): void => {
     for (const field of model.fields) {
-      const nested = modelByRef(spec, field.type)
+      const nested = modelByRef(spec, field.type, models)
       if (nested && depth < 2) {
         bindModel(`${prefix}.${field.name}`, nested, depth + 1)
         continue
@@ -247,7 +249,7 @@ export function specBindings(
     }
   }
   for (const prop of spec.contract.props) {
-    const found = modelOfType(prop.type, spec)
+    const found = modelOfType(prop.type, spec, models)
     // A list prop binds nothing of its own: its elements reach the row
     // component one at a time, through that component's own model prop.
     if (found && !found.list) bindModel(prop.name, found.model, 0)

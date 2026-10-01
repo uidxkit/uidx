@@ -78,7 +78,7 @@ export function generate(input: GenerateInput): GenerateOutput {
   if (targets.has('html')) {
     if (tokens) files.set('html/tokens.css', tokens)
     for (const model of rendered) {
-      files.set(`html/${model.stem}.css`, emitCss(model))
+      files.set(`html/${model.stem}.css`, emitCss(model, { components: byName }))
       files.set(`html/${model.stem}.html`, emitHtml(model, { components: byName }))
     }
   }
@@ -94,7 +94,7 @@ export function generate(input: GenerateInput): GenerateOutput {
         continue
       }
       files.set(`react/${model.identifier}.tsx`, emitReact(model, { components: byName }))
-      files.set(`react/${model.stem}.css`, emitCss(model))
+      files.set(`react/${model.stem}.css`, emitCss(model, { components: byName }))
       if (model.tag) tags.add(model.tag)
       for (const part of model.parts) if (part.kind === 'element') tags.add(part.tag)
     }

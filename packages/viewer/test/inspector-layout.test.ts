@@ -128,3 +128,39 @@ id: sized
     expect(dimensions('said')).toMatchObject({ primaryAxisSizing: 'AUTO' })
   })
 })
+
+describe('content a page puts into an instance’s slot', () => {
+  const list = parseOrThrow(`---
+id: list
+---
+## Visual Contract
+<Page>
+  <Component name="List" status="draft" layoutMode="VERTICAL">
+    <Slot name="item" layoutMode="VERTICAL">
+      <Frame name="row" />
+    </Slot>
+  </Component>
+</Page>`)
+  const team = parseOrThrow(`---
+id: team
+---
+## Visual Contract
+<Page>
+  <Instance name="cards" component="List">
+    <Slot name="item">
+      <Frame name="card" width={40} height={20} />
+    </Slot>
+  </Instance>
+</Page>`)
+  it('is laid out by the definition’s slot, so it offers Align self, not Constraints', () => {
+    const pane = mount(PropertiesPane, {
+      props: {
+        doc: team,
+        selection: ['cards#item/card'],
+        writable: true,
+        components: new Map([['List', list.tree.children[0]!]]),
+      },
+    })
+    expect(pane.find('select[aria-label="Align self"]').exists()).toBe(true)
+  })
+})

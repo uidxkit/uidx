@@ -1,0 +1,36 @@
+{
+  "id": "list",
+  "components": [
+    {
+      "name": "List",
+      "implements": null,
+      "status": "draft",
+      "boundParts": [],
+      "treeSlots": [
+        "item"
+      ],
+      "axes": {}
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "items",
+        "type": "Person[]",
+        "controllable": false,
+        "visual": false,
+        "description": "Describe the prop \"items\"."
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [
+      {
+        "name": "item",
+        "description": "Describe the slot \"item\"."
+      }
+    ],
+    "composes": []
+  }
+}

@@ -367,9 +367,33 @@ function changeRootSize(event: Event): void {
     },
   ])
 }
-const parent = computed(() =>
-  active.value && props.doc ? parentOf(props.doc.tree, active.value.address) : null,
-)
+/**
+ * The node whose layout places the selection. Content a page puts into an
+ * instance's slot sits, in the file, under a `<Slot>` fill that carries a name
+ * and nothing else (ADR 0007 §2) — but it is laid out by the definition's slot
+ * of that name. Asking the fill offered an injected item component Left/Right
+ * and Constraints instead of Align self, in a column that places it.
+ */
+const parent = computed(() => {
+  if (!active.value || !props.doc) return null
+  const found = parentOf(props.doc.tree, active.value.address)
+  if (found?.element !== 'Slot') return found
+  const instance = parentOf(props.doc.tree, found.address)
+  if (instance?.element !== 'Instance') return found
+  const name = instance.attrs.component?.value
+  const definition = typeof name === 'string' ? props.components?.get(name) : undefined
+  const slot = definition ? findSlot(definition, found.name) : null
+  return slot ?? found
+})
+
+function findSlot(root: UidxNode, name: string): UidxNode | null {
+  for (const child of root.children) {
+    if (child.element === 'Slot' && child.name === name) return child
+    const deeper = child.element === 'Instance' ? null : findSlot(child, name)
+    if (deeper) return deeper
+  }
+  return null
+}
 /** The pin the selected node states, or undefined when it states none. */
 const pin = computed(() =>
   active.value
@@ -753,7 +777,24 @@ function resolved(field: EditableProp): number | null {
 function candidatesFor(field: EditableProp) {
   const address = active.value?.address
   if (!props.doc || !address) return null
-  return bindCandidates(props.doc, address, field.name)
+  return withModelFields(field.name, bindCandidates(props.doc, address, field.name))
+}
+
+/**
+ * A text's words follow a model's field as readily as a prop: `item.name` in
+ * an item component, `person.role` inside a repeat. Added to what the link
+ * pills offer — wherever a designer reaches for one — not only to the
+ * Content field's own picker.
+ */
+function withModelFields<
+  T extends { name: string; declaration: { type: string; default: JsonValue } },
+>(prop: string, candidates: T[] | null): T[] | null {
+  if (prop !== 'characters' || !candidates) return candidates
+  for (const { alias } of textBindings.value) {
+    if (!candidates.some((c) => c.name === alias))
+      candidates.push({ name: alias, declaration: { type: 'TEXT', default: '' } } as T)
+  }
+  return candidates
 }
 
 /**
@@ -915,6 +956,7 @@ function sectionLink(group: PropGroup) {
       candidates.push({ name: alias, declaration: { type: 'BOOLEAN', default: false } })
     }
   }
+  withModelFields(prop, candidates)
   const held = node.attrs[prop]?.value
   const target = held !== undefined ? aliasTarget(held) : null
   // Either binding moves the action from the header to the bound value.
@@ -1006,7 +1048,8 @@ function onLink(prop: string, name: string): void {
   }
   // Not a declared prop: an item field offered by `sectionLink`, written as
   // the alias it is, the way the body's pickers write theirs.
-  if (itemFieldBindings(node, 'boolean').some((b) => b.alias === name)) {
+  const fields = prop === 'characters' ? textBindings.value : itemFieldBindings(node, 'boolean')
+  if (fields.some((b) => b.alias === name)) {
     const op = node.attrs[prop] === undefined ? 'add' : 'set'
     emit('patches', [{ op, address: node.address, prop, value: toAlias(name) }])
   }

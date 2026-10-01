@@ -966,3 +966,109 @@ describe('what a frame drawn on the canvas becomes in CSS', () => {
     expect(css['border-width']).toBe('2px 2px 2px 2px')
   })
 })
+
+describe('a list whose items are injected (ADR 0017 §2)', () => {
+  const docs = [
+    parseOrThrow(`---
+id: row
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Row" status="draft" layoutMode="HORIZONTAL">
+    <Text name="name" characters="{item.name}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="item" type="Person">One person.</Prop>
+</Props>
+
+## Models
+
+<Model name="Person">
+  One person.
+  <Field name="id" type="string" key sample={['a', 'b']}>Id.</Field>
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>Name.</Field>
+</Model>
+`),
+    parseOrThrow(`---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft" layoutMode="VERTICAL" counterAxisAlignItems="CENTER">
+    <Slot name="item" repeat="{items}" layoutMode="VERTICAL" layoutAlign="STRETCH">
+      <Instance name="row" component="Row" layoutAlign="STRETCH" />
+    </Slot>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Person[]">People.</Prop>
+</Props>
+<Slots>
+  <Slot name="item">One per person.</Slot>
+</Slots>
+`),
+  ]
+  const files = generate({
+    pages: docs.map((doc, i) => ({ file: `${['row', 'list'][i]}.uidx`, doc })),
+    tokens: [],
+    targets: ['html', 'react'],
+  }).files
+
+  it('places rows as the canvas does, though a repeated slot has no element of its own', () => {
+    const css = files.get('html/list.css')!
+    // The slot stretches, so each row — injected or not — sits at its start…
+    expect(css).toContain('.list > * {\n  align-self: flex-start;\n}')
+    // …and the default row stretches across, as its instance says.
+    expect(css).toContain('.list > .row {\n  align-self: stretch;\n}')
+    expect(css).not.toContain('[data-slot="item"]')
+  })
+
+  it('exposes the slot as a typed render prop with the row component as its default', () => {
+    const react = files.get('react/List.tsx')!
+    expect(react).toContain('renderItem?: (item: Person, index: number) => ReactNode')
+    expect(react).toContain('{renderItem ? renderItem(item, index) : (')
+    expect(react).toContain('<Row item={item} />')
+  })
+})
+
+describe('an ellipse', () => {
+  it('renders round, as the canvas draws it', () => {
+    const dot = parseOrThrow(`---
+id: dot
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Dot" status="draft" layoutMode="HORIZONTAL">
+    <Ellipse name="avatar" width={32} height={32} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="size" type="number">Unused.</Prop>
+</Props>
+`)
+    const css = generate({
+      pages: [{ file: 'dot.uidx', doc: dot }],
+      tokens: [],
+      targets: ['html'],
+    }).files.get('html/dot.css')!
+    expect(css).toContain(
+      '.dot [data-node="avatar"] {\n  width: 32px;\n  height: 32px;\n  border-radius: 50%;',
+    )
+  })
+})

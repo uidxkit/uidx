@@ -276,7 +276,14 @@ function remove(kind: ContractKind, name: string): void {
 }
 
 /** The type a new prop gets; a boolean is a state the moment it is visual, so it comes with a default. */
-const addType = ref<'string' | 'number' | 'boolean' | 'choice'>('string')
+/**
+ * What the add row declares: a primitive, a choice, or a model — one of it
+ * (`Person`, what an item component shows) or a list of it (`Person[]`, what
+ * a list repeats over). A model is offered by name rather than typed, since
+ * `Person[]` is syntax a designer should not have to know.
+ */
+const addType = ref<string>('string')
+const modelNames = computed(() => [...(props.models?.keys() ?? [])].sort())
 /** A choice prop's values as typed, comma-separated: `primary, secondary`. */
 const addOptions = ref('')
 
@@ -455,9 +462,8 @@ function add(): void {
       // A choice is an axis of the variant set: visual, its first value the default.
       attrs = { type, default: enumValues(type)![0]!, visual: true }
       addOptions.value = ''
-    } else
-      attrs =
-        addType.value === 'boolean' ? { type: 'boolean', default: false } : { type: addType.value }
+    } else if (addType.value === 'boolean') attrs = { type: 'boolean', default: false }
+    else attrs = { type: addType.value }
   }
   send(declare(kind, name, { attrs, description: `${PLACEHOLDER}the ${kind} "${name}".` }))
   addName.value = ''
@@ -649,6 +655,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               class="text"
               :value="prop.type"
               aria-label="Type"
+              list="contract-types"
               :disabled="!writable"
               @change="
                 redeclare('prop', prop.name, {
@@ -974,6 +981,15 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           placeholder="name"
           @keydown.enter="add"
         />
+        <datalist id="contract-types">
+          <option value="string" />
+          <option value="number" />
+          <option value="boolean" />
+          <template v-for="model in modelNames" :key="model">
+            <option :value="model" />
+            <option :value="`${model}[]`" />
+          </template>
+        </datalist>
         <select
           v-if="addKind === 'prop'"
           v-model="addType"
@@ -986,6 +1002,12 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           <option value="number">number</option>
           <option value="boolean">boolean</option>
           <option value="choice">choice</option>
+          <optgroup v-if="modelNames.length" label="Models">
+            <template v-for="model in modelNames" :key="model">
+              <option :value="model">{{ model }}</option>
+              <option :value="`${model}[]`">list of {{ model }}</option>
+            </template>
+          </optgroup>
         </select>
         <input
           v-if="addKind === 'prop' && addType === 'choice'"
@@ -1488,8 +1510,17 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         >.
       </p>
       <p v-else class="stale" role="status">
-        The contract does not declare a slot called “{{ view.node.name }}”. Add it under
-        <code>&lt;Slots&gt;</code>, or rename this one.
+        The contract does not declare a slot called “{{ view.node.name }}” yet, so consumers cannot
+        fill it.
+        <button
+          type="button"
+          class="stale-name"
+          :disabled="!writable"
+          title="Declare it in the contract, so instances can fill it and code exposes it"
+          @click="declareSlot(view.node.name)"
+        >
+          Declare slot
+        </button>
       </p>
     </template>
 

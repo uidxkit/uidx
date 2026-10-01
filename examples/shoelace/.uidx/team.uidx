@@ -1,0 +1,46 @@
+---
+id: "team"
+---
+
+## Core Intent
+
+Describe what this page is for.
+
+## Visual Contract
+
+<Page>
+  <Instance
+    name="list-1"
+    component="List"
+    x={160}
+    y={152}
+  />
+  <Instance
+    name="list-2"
+    component="List"
+    x={540}
+    y={152}
+  >
+    <Slot name="item">
+      <Instance
+        name="personcard"
+        component="PersonCard"
+        layoutAlign="STRETCH"
+      />
+    </Slot>
+  </Instance>
+  <Instance
+    name="list-3"
+    component="List"
+    x={900}
+    y={-2}
+  >
+    <Slot name="item">
+      <Instance
+        name="personchip"
+        component="PersonChip"
+      />
+    </Slot>
+  </Instance>
+
+</Page>

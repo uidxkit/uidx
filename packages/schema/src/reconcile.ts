@@ -4,6 +4,7 @@ import { SceneGraph, type NodeType, type SceneNode } from '@open-pencil/scene-gr
 import {
   addressDepth,
   addressOf,
+  aliasTarget,
   ENTITY_SEP,
   isWithin,
   type SceneElement,
@@ -270,6 +271,12 @@ export function diffDocuments(
       continue
     }
 
+    // A binding to the component's contract — `{label}`, `{item.name}` — is
+    // resolved by the full build against the component's defaults and its
+    // models' samples, a scope this path does not hold: here both sides would
+    // read as unbound and the change would vanish (a text rebound from
+    // `{item.role}` to `{item.id}` kept drawing the role). Rebuild instead.
+    if (rebindsContract(previous.node, entry.node)) return null
     const props = diffProps(
       previous.node,
       entry.node,
@@ -507,6 +514,22 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
 }
 
 /** Same element, same attribute names, same source text for each — offsets aside. */
+/** Whether an attribute moved to or from a contract binding (an alias with no `#`). */
+function rebindsContract(a: UidxNode, b: UidxNode): boolean {
+  const contractAlias = (value: unknown): boolean => {
+    if (typeof value !== 'string') return false
+    const target = aliasTarget(value)
+    return target !== null && !target.includes('#')
+  }
+  for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
+    const before = a.attrs[k]
+    const after = b.attrs[k]
+    if (before?.raw === after?.raw) continue
+    if (contractAlias(before?.value) || contractAlias(after?.value)) return true
+  }
+  return false
+}
+
 function sameAuthoredAttrs(a: UidxNode, b: UidxNode): boolean {
   if (a.element !== b.element) return false
   const ka = Object.keys(a.attrs)

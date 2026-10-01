@@ -1,0 +1,43 @@
+---
+id: "list"
+---
+
+Describe what List is for, and when to reach for something else.
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft"
+    layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="FIXED"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={6}
+    fills={[{ type: 'SOLID', color: '{color#surface}' }]}
+    width={320}
+    itemSpacing="{space#xs}">
+    <Slot
+      name="item"
+      layoutMode="VERTICAL"
+      primaryAxisSizingMode="AUTO"
+      counterAxisSizingMode="AUTO"
+      repeat="{items}"
+      layoutAlign="STRETCH"
+    >
+      <Instance
+        name="row"
+        component="PersonRow"
+        layoutAlign="STRETCH"
+      />
+    </Slot>
+  
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Person[]">Describe the prop "items".</Prop>
+</Props>
+
+<Slots>
+  <Slot name="item">Describe the slot "item".</Slot>
+</Slots>
