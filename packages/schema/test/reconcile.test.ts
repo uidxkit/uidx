@@ -91,6 +91,18 @@ describe('diffDocuments', () => {
     ).toEqual([{ kind: 'update', address: 'List#footer', props: { text: 'fin' } }])
   })
 
+  it('rebuilds when a node keeps its address but becomes another element', () => {
+    const before = doc(`<Page>
+  <Component name="Chip" status="draft" width={10} height={10} />
+  <Instance name="a" component="Chip" />
+</Page>`)
+    const after = doc(`<Page>
+  <Component name="Chip" status="draft" width={10} height={10} />
+  <Frame name="a" width={10} height={10} />
+</Page>`)
+    expect(diffDocuments(before, after)).toBeNull()
+  })
+
   it('sees nothing when the document is unchanged', () => {
     expect(diffDocuments(doc(BASE), doc(BASE))).toEqual([])
   })

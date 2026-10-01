@@ -92,6 +92,7 @@ import { addCollectionPatch, addTokenPatch, editCellPatch } from './token-edits'
 import HomePane from './HomePane.vue'
 import NewPageDialog from './NewPageDialog.vue'
 import { duplicateLayer, mainComponentOf } from './layer-actions'
+import { detachInstance } from './detach'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
 import { createUidxSocket, type ConnectionState } from './socket'
@@ -522,6 +523,19 @@ const mainComponent = computed(() => {
   const node = address !== null && sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
   return mainComponentOf(pages.value, node)
 })
+const detach = computed(() => {
+  const address = soleSelection.value
+  return address !== null && sceneDoc.value
+    ? detachInstance(pages.value, sceneDoc.value, address)
+    : null
+})
+function detachSelection(): void {
+  const plan = detach.value
+  if (!plan) return
+  commitPatches(plan.patches)
+  selection.value = [plan.address]
+}
+
 async function goToMainComponent(): Promise<void> {
   const target = mainComponent.value
   if (!target) return
@@ -546,6 +560,12 @@ const menuItems = (): MenuItem[] => [
     label: 'Go to main component',
     disabled: mainComponent.value === null,
     run: () => void goToMainComponent(),
+  },
+  {
+    label: 'Detach instance',
+    shortcut: '⌥⌘B',
+    disabled: detach.value === null,
+    run: detachSelection,
   },
   { kind: 'separator' },
   {
@@ -1876,6 +1896,21 @@ function addSlot(): void {
 function removeSelection(): void {
   const address = deletable.value
   if (address === null) return
+  // A component its instances still name cannot go — the file would no
+  // longer check — so say where it is used instead of letting it bounce.
+  const node = sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  if (node?.element === 'Component') {
+    const uses = (dependents.value.ofComponent.get(node.name) ?? []).filter(
+      (dependent) => dependent.kind === 'instance',
+    )
+    if (uses.length) {
+      const files = [...new Set(uses.map((use) => use.file))]
+      onRefused(
+        `${node.name} is used ${uses.length} ${uses.length === 1 ? 'time' : 'times'} (${files.slice(0, 3).join(', ')}${files.length > 3 ? ', …' : ''}). Remove or detach those instances first, or mark it deprecated to stop new uses.`,
+      )
+      return
+    }
+  }
   commitPatches([{ op: 'remove-node', address }])
   selection.value = []
 }
@@ -1905,6 +1940,12 @@ function onKeyDown(event: KeyboardEvent): void {
   // a modifier on it. It guards itself: `componentSource` is null when the
   // selection cannot become a component, and opening the dialog on null is a
   // no-op, so the key never does something the button would have refused.
+  if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyB') {
+    if (isTypingTarget(event)) return
+    event.preventDefault()
+    detachSelection()
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && !event.altKey && event.code === 'KeyD') {
     if (isTypingTarget(event)) return
     // Always taken, so the browser's bookmark dialog never opens over the canvas.

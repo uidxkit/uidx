@@ -184,6 +184,10 @@ export function diffDocuments(
     if (previous && !deepEqual(previous.node.attrs.modes?.value, entry.node.attrs.modes?.value)) {
       return null
     }
+    // A node that kept its address but became another element — an instance
+    // detached into a frame, a frame retagged — is a different scene node
+    // (another type, and an instance's generated subtree to drop): rebuild.
+    if (previous && previous.node.element !== entry.node.element) return null
   }
 
   // ADR 0017 §2: a repeat's echoes (`row-2`, `row-3`) are generated at ids
