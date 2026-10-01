@@ -60,3 +60,19 @@ id: bind
     expect(bindVariable(DOC, 'Card#nope', 'cornerRadius', 'radius#md')).toBeNull()
   })
 })
+
+describe('the token picker’s order', () => {
+  it('puts the collections that fit the property first', () => {
+    const tokens = new Map<string, number>([
+      ['space#md', 12],
+      ['radius#md', 6],
+      ['type#md', 14],
+    ])
+    const names = (prop: string) =>
+      variableCandidates(tokens, undefined, 'FLOAT', prop).map((c) => c.address)
+    expect(names('fontSize')).toEqual(['type#md', 'space#md', 'radius#md'])
+    expect(names('cornerRadius')).toEqual(['radius#md', 'space#md', 'type#md'])
+    expect(names('itemSpacing')).toEqual(['space#md', 'radius#md', 'type#md'])
+    expect(names('rotation')).toEqual(['space#md', 'radius#md', 'type#md'])
+  })
+})

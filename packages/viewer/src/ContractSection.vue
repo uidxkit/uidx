@@ -13,12 +13,15 @@ import {
 } from '@uidx/format'
 import {
   bindPart,
+  bindPartsByName,
   contractView,
   declare,
   isPlaceholder,
   PLACEHOLDER,
-  scaffoldFromLibrary,
+  libraryOffers,
+  scaffoldOffers,
   setImplements,
+  type LibraryOffer,
   setPart,
   moveRepeatOnto,
   setReceives,
@@ -78,6 +81,14 @@ const emit = defineEmits<{
   openModel: [name: string]
   /** Render the code targets into `codegen.out` on the server. */
   generateCode: []
+  /**
+   * Library spellings for members just declared under the identity's names
+   * (`helpText` → `help-text`), for the shell to merge into uidx.json.
+   */
+  bindNames: [
+    component: string,
+    names: { attributes: Record<string, string>; events: Record<string, string> },
+  ]
   /** An edit that lands in several files: a prop rename and every instance it carries. */
   remap: [byFile: ReadonlyMap<string, UidxPatch[]>]
   refused: [reason: string]
@@ -116,6 +127,13 @@ const boundCount = computed(() =>
 
 const contract = computed(() =>
   view.value.kind === 'component' ? (view.value.component.spec?.contract ?? null) : null,
+)
+
+/** The bindings Bind by name would make: unbound parts whose names a layer carries. */
+const byName = computed(() =>
+  view.value.kind === 'component' && props.doc
+    ? bindPartsByName(props.doc, view.value.component, view.value.parts)
+    : [],
 )
 
 function send(patches: UidxPatch[]): void {
@@ -446,10 +464,51 @@ function add(): void {
   open.value = `${kind}:${name}`
 }
 
-/** Declares what the element exposes and the contract lacks (ADR 0013 §5). */
+/**
+ * What the element offers, open as a checklist (ADR 0013 §5). Null while
+ * closed. Each offer's tick is held by key so the list can be re-read while
+ * open without losing what the designer chose.
+ */
+const offering = ref<LibraryOffer[] | null>(null)
+const ticked = ref<Set<string>>(new Set())
+const offerKey = (offer: LibraryOffer) => `${offer.kind}:${offer.name}`
+const OFFER_GROUPS: { kind: LibraryOffer['kind']; label: string }[] = [
+  { kind: 'prop', label: 'Properties' },
+  { kind: 'event', label: 'Events' },
+  { kind: 'slot', label: 'Slots' },
+  { kind: 'part', label: 'Parts' },
+]
+
 function fill(): void {
   if (view.value.kind !== 'component' || !view.value.element) return
-  send(scaffoldFromLibrary(view.value.component, view.value.element))
+  if (offering.value) {
+    offering.value = null
+    return
+  }
+  const offers = libraryOffers(view.value.component, view.value.element)
+  offering.value = offers
+  ticked.value = new Set(offers.filter((offer) => offer.suggested).map(offerKey))
+}
+
+function tick(offer: LibraryOffer, on: boolean): void {
+  const next = new Set(ticked.value)
+  if (on) next.add(offerKey(offer))
+  else next.delete(offerKey(offer))
+  ticked.value = next
+}
+
+/** Declare the ticked members, and hand the library spellings they need to the shell. */
+function addOffers(): void {
+  if (view.value.kind !== 'component' || !offering.value) return
+  const chosen = offering.value.filter((offer) => ticked.value.has(offerKey(offer)))
+  const made = scaffoldOffers(chosen)
+  send(made.patches)
+  if (Object.keys(made.attributes).length || Object.keys(made.events).length)
+    emit('bindNames', view.value.component.name, {
+      attributes: made.attributes,
+      events: made.events,
+    })
+  offering.value = null
 }
 
 /** A visual boolean is drawn as a state of the set (ADR 0016 §1); the list says so. */
@@ -477,11 +536,50 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           class="stale-name fill"
           :disabled="!writable"
           title="Declare what the element exposes and the contract lacks: attributes as props, events, slots, parts"
+          :aria-expanded="offering !== null"
           @click="fill"
         >
           Fill from library
         </button>
       </header>
+      <section v-if="offering" class="offers" aria-label="What the library offers">
+        <p v-if="!offering.length" class="empty">
+          The contract already declares everything the element offers.
+        </p>
+        <template v-for="group in OFFER_GROUPS" :key="group.kind">
+          <template v-if="offering.some((offer) => offer.kind === group.kind)">
+            <p class="offers-heading">{{ group.label }}</p>
+            <label
+              v-for="offer in offering.filter((entry) => entry.kind === group.kind)"
+              :key="offerKey(offer)"
+              class="offer"
+              :title="offer.description"
+            >
+              <input
+                type="checkbox"
+                :checked="ticked.has(offerKey(offer))"
+                @change="tick(offer, ($event.target as HTMLInputElement).checked)"
+              />
+              <span class="offer-name">{{ offer.name }}</span>
+              <span v-if="offer.library !== offer.name && offer.library" class="offer-library">
+                {{ offer.library }}
+              </span>
+              <span v-if="offer.type" class="offer-type">{{ offer.type }}</span>
+            </label>
+          </template>
+        </template>
+        <div class="offers-actions">
+          <button type="button" @click="offering = null">Cancel</button>
+          <button
+            type="button"
+            class="primary"
+            :disabled="!writable || ticked.size === 0"
+            @click="addOffers"
+          >
+            Add {{ ticked.size }}
+          </button>
+        </div>
+      </section>
       <p v-if="!contract" class="empty">
         Nothing declared yet. A property is what an instance can change without reaching inside; a
         slot is where it can put its own content. Add one below.
@@ -1219,6 +1317,16 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           <span v-if="view.parts.length" class="of"
             >{{ boundCount }} of {{ view.parts.length }} bound</span
           >
+          <button
+            v-if="byName.length"
+            type="button"
+            class="stale-name fill bind-by-name"
+            :disabled="!writable"
+            title="Bind each unbound part to the layer that has its name"
+            @click="send(byName)"
+          >
+            Bind by name
+          </button>
         </header>
         <p v-if="!view.parts.length" class="empty">
           <template v-if="view.implementsValue === null">
@@ -1984,5 +2092,50 @@ code {
 }
 .text.options {
   grid-column: 1 / -2;
+}
+.offers {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 4px 0 10px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+}
+.offers-heading {
+  margin: 6px 0 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.offer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+  cursor: pointer;
+}
+.offer-name {
+  font-family: var(--mono, ui-monospace, monospace);
+}
+.offer-library,
+.offer-type {
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.offer-library::before {
+  content: '← ';
+}
+.offer-type {
+  margin-left: auto;
+}
+.offers-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 8px;
 }
 </style>

@@ -965,12 +965,19 @@ describe('editing the contract from the tab (ADR 0013 §2)', () => {
     const section = mount(ContractSection, {
       props: { doc, node: resolve(doc.tree, 'Checkbox'), library: LIBRARY, writable: true },
     })
+    // A checklist first: nothing is declared until the designer says which.
     await section.find('.fill').trigger('click')
-    const sent = section.emitted('patches')![0]![0] as { kind: string; name: string }[]
-    expect(sent.map((p) => `${p.kind}:${p.name}`)).toEqual([
-      'part:checked-indicator',
-      'part:indeterminate-indicator',
+    expect(section.emitted('patches')).toBeUndefined()
+    const offers = section.findAll('.offer')
+    expect(offers.map((o) => o.find('.offer-name').text())).toEqual([
+      'checked-indicator',
+      'indeterminate-indicator',
     ])
+    await offers[1]!.find('input').setValue(false)
+    await section.find('.offers-actions .primary').trigger('click')
+    const sent = section.emitted('patches')![0]![0] as { kind: string; name: string }[]
+    expect(sent.map((p) => `${p.kind}:${p.name}`)).toEqual(['part:checked-indicator'])
+    expect(section.find('.offers').exists()).toBe(false)
   })
 })
 

@@ -78,7 +78,14 @@ import {
 } from './headless'
 import { routeDerivedPatches } from './derived-edits'
 import ContextMenu, { type MenuItem } from './ContextMenu.vue'
-import { canInsert, canRemove, componentFrom, parentOf, remapAddress } from './layer-moves'
+import {
+  canInsert,
+  canRemove,
+  componentFrom,
+  frameSelectionFor,
+  parentOf,
+  remapAddress,
+} from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
 import { enclosingComponent } from './component-prop-edits'
 import { newSlotFor, slotTargetFor } from './slot-edits'
@@ -101,7 +108,7 @@ import { tokenAliasCandidates } from './token-alias-candidates'
 import { addCollectionPatch, addTokenPatch, editCellPatch } from './token-edits'
 import HomePane from './HomePane.vue'
 import NewPageDialog from './NewPageDialog.vue'
-import { duplicateLayer, mainComponentOf } from './layer-actions'
+import { childSelection, duplicateLayer, mainComponentOf, parentSelection } from './layer-actions'
 import { detachInstance } from './detach'
 import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
@@ -587,6 +594,12 @@ const menuItems = (): MenuItem[] => [
     run: detachSelection,
   },
   { kind: 'separator' },
+  {
+    label: 'Frame selection',
+    shortcut: '⌘⌥G',
+    disabled: framing.value === null,
+    run: frameSelection,
+  },
   {
     label: 'Make component',
     shortcut: '⌘⌥K',
@@ -1968,6 +1981,33 @@ function addRepeat(): void {
   selection.value = [made.address]
 }
 
+/**
+ * A row chosen in the rail. A modified click adds it to the selection or takes
+ * it out, as in Figma's layers panel — which is how siblings are gathered for
+ * Frame selection without drawing a marquee around them.
+ */
+function selectFromRail(address: string, additive = false): void {
+  if (!additive) selection.value = [address]
+  else if (selection.value.includes(address))
+    selection.value = selection.value.filter((entry) => entry !== address)
+  else selection.value = [...selection.value, address]
+}
+
+/** What Frame selection would make, or null when the selection cannot be wrapped. */
+const framing = computed(() =>
+  sceneDoc.value && selection.value.length
+    ? frameSelectionFor(sceneDoc.value, selection.value)
+    : null,
+)
+
+/** Wrap the selected siblings in a new auto-layout frame, and select it (⌘⌥G). */
+function frameSelection(): void {
+  const made = framing.value
+  if (!made) return
+  commitPatches(made.patches)
+  selection.value = [made.address]
+}
+
 function addSlot(): void {
   const doc_ = sceneDoc.value
   if (!doc_) return
@@ -2041,6 +2081,12 @@ function onKeyDown(event: KeyboardEvent): void {
     duplicateSelection()
     return
   }
+  if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyG') {
+    if (isTypingTarget(event)) return
+    event.preventDefault()
+    frameSelection()
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyK') {
     if (isTypingTarget(event)) return
     event.preventDefault()
@@ -2048,6 +2094,27 @@ function onKeyDown(event: KeyboardEvent): void {
     return
   }
   if (event.defaultPrevented) return
+  // Figma's selection keys: Shift+Enter up to the holder, Enter down into what
+  // the layer holds — the way to reach a layer the canvas hides under another.
+  if (
+    event.key === 'Enter' &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    selection.value.length === 1 &&
+    !isTypingTarget(event) &&
+    !(event.target instanceof HTMLElement && event.target.closest('[role="treeitem"], button'))
+  ) {
+    const at = selection.value[0]!
+    const next = event.shiftKey
+      ? parentSelection(sceneDoc.value, at)
+      : childSelection(sceneDoc.value, at)
+    if (next !== null) {
+      event.preventDefault()
+      selection.value = Array.isArray(next) ? next : [next]
+    }
+    return
+  }
   if (connection.value !== 'open') return
   const next = toolFor(event)
   if (next !== undefined) {
@@ -2267,7 +2334,7 @@ onUnmounted(() => socket.close())
             :vector-editing="vertexEditing"
             :writable="connection === 'open'"
             @edit-vector="editVector"
-            @select="selection = [$event]"
+            @select="selectFromRail"
             @patches="commitPatches"
             @moved="onMoved"
           />
@@ -2420,6 +2487,7 @@ onUnmounted(() => socket.close())
                 :tool="tool"
                 :can-delete="deletable !== null"
                 :can-make-component="componentSource !== null"
+                :can-frame-selection="framing !== null"
                 :placing="placing"
                 :can-place-instance="components.size > 0"
                 :can-add-slot="slotTarget !== null"
@@ -2429,6 +2497,7 @@ onUnmounted(() => socket.close())
                 @tool="armTool"
                 @remove="removeSelection"
                 @make-component="startMakeComponent"
+                @frame-selection="frameSelection"
                 @place-instance="picking = true"
                 @add-slot="addSlot"
                 @add-repeat="addRepeat"

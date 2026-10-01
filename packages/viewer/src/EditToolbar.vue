@@ -53,6 +53,8 @@ const props = defineProps<{
    * the tool simply does not show it enabled.
    */
   canAddRepeat?: boolean
+  /** Whether the selection is siblings a new frame could wrap (⌘⌥G). Optional like the repeat's. */
+  canFrameSelection?: boolean
   /** False while the socket is down: nothing here can reach the file. */
   writable: boolean
   /** Whether the floating Insert panel is open above the bar. */
@@ -63,6 +65,7 @@ const emit = defineEmits<{
   tool: [tool: DrawingTool | null]
   remove: []
   makeComponent: []
+  frameSelection: []
   placeInstance: []
   addSlot: []
   addRepeat: []
@@ -281,6 +284,19 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
       makes a definition, the rail's `Instance` for the one that places a use.
       Figma draws the same distinction the same way round.
     -->
+    <button
+      type="button"
+      class="tool"
+      :disabled="!writable || !canFrameSelection"
+      title="Frame selection — ⌘/ctrl+alt+G"
+      aria-label="Frame selection"
+      @click="emit('frameSelection')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <rect x="1" y="1" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" />
+        <rect x="3.5" y="3.5" width="5" height="5" fill="currentColor" opacity="0.6" />
+      </svg>
+    </button>
     <button
       type="button"
       class="tool"

@@ -97,3 +97,34 @@ describe('inspector presentation preserves capabilities', () => {
     ])
   })
 })
+
+describe('the Hug/Fixed state the panel shows', () => {
+  const sized = parseOrThrow(`---
+id: sized
+---
+## Visual Contract
+<Page>
+  <Component name="Toggle" status="draft" layoutMode="HORIZONTAL">
+    <Slot name="drawn" width={60} height={40} layoutMode="HORIZONTAL" />
+    <Slot name="bare" layoutMode="VERTICAL" />
+  </Component>
+  <Frame name="said" width={60} layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" />
+</Page>`)
+  const dimensions = (address: string) =>
+    mount(PropertiesPane, { props: { doc: sized, selection: [address], writable: true } })
+      .findComponent({ name: 'DimensionsField' })
+      .props() as { primaryAxisSizing: string; counterAxisSizing: string }
+
+  // The slot that showed Hug while the canvas drew it 60 wide, so choosing Hug wrote nothing.
+  it('follows the canvas: a written size is fixed, no size hugs, a written mode wins', () => {
+    expect(dimensions('Toggle#drawn')).toMatchObject({
+      primaryAxisSizing: 'FIXED',
+      counterAxisSizing: 'FIXED',
+    })
+    expect(dimensions('Toggle#bare')).toMatchObject({
+      primaryAxisSizing: 'AUTO',
+      counterAxisSizing: 'AUTO',
+    })
+    expect(dimensions('said')).toMatchObject({ primaryAxisSizing: 'AUTO' })
+  })
+})

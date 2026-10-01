@@ -7,6 +7,7 @@ import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
 import {
   canContainChildren,
   moveFor,
+  positionsDroppedBy,
   remapAddress,
   renameFor,
   type DropInstruction,
@@ -37,7 +38,8 @@ const props = defineProps<{
  * event for the drag would mean two handlers that must never disagree.
  */
 const emit = defineEmits<{
-  select: [address: string]
+  /** `additive` for a shift-, ctrl- or ⌘-click: add the row to the selection, or take it out. */
+  select: [address: string, additive?: boolean]
   editVector: [address: string]
   patches: [patches: UidxPatch[]]
   moved: [oldAddress: string, newAddress: string]
@@ -521,7 +523,7 @@ function onDrop(row: LayerRow): void {
       remapCollapsed(dragged, newAddress)
       emit('moved', dragged, newAddress)
     }
-    emit('patches', [patch])
+    emit('patches', [patch, ...positionsDroppedBy(props.doc, patch)])
   }
   reset()
 }
@@ -607,7 +609,12 @@ function reset(): void {
           <span
             v-else
             class="label"
-            @click="row.generated || emit('select', row.address)"
+            @click="
+              row.generated ||
+              ($event.shiftKey || $event.metaKey || $event.ctrlKey
+                ? emit('select', row.address, true)
+                : emit('select', row.address))
+            "
             @dblclick="startRename(row)"
           >
             {{ row.name }}

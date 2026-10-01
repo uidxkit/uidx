@@ -84,3 +84,33 @@ describe('assign popup', () => {
     expect(wrapper.find('.popup-create').exists()).toBe(false)
   })
 })
+
+describe('the popup from the keyboard', () => {
+  it('picks the first match on Enter, and walks the rows with the arrows', async () => {
+    const wrapper = mount(AssignPopup, {
+      attachTo: document.body,
+      props: {
+        candidates: null,
+        componentName: null,
+        variables: VARIABLES,
+        boundTo: null,
+        icon: 'variable' as const,
+      },
+    })
+    const search = wrapper.get('input')
+    await search.setValue('lg')
+    ;(search.element as HTMLInputElement).focus()
+    await search.trigger('keydown', { key: 'Enter' })
+    expect(wrapper.emitted('variable')).toEqual([['radius#lg']])
+
+    await search.setValue('')
+    await search.trigger('keydown', { key: 'ArrowDown' })
+    expect(document.activeElement?.getAttribute('data-variable')).toBe('radius#md')
+    await wrapper.get('[data-variable="radius#md"]').trigger('keydown', { key: 'ArrowDown' })
+    expect(document.activeElement?.getAttribute('data-variable')).toBe('radius#lg')
+    await wrapper.get('[data-variable="radius#lg"]').trigger('keydown', { key: 'ArrowUp' })
+    await wrapper.get('[data-variable="radius#md"]').trigger('keydown', { key: 'ArrowUp' })
+    expect(document.activeElement).toBe(search.element)
+    wrapper.unmount()
+  })
+})

@@ -1,5 +1,7 @@
+import { derivedTarget } from '@uidx/schema'
 import {
   addressOf,
+  resolve,
   toNodeSpec,
   type JsonValue,
   type UidxDocument,
@@ -90,4 +92,38 @@ export function mainComponentOf(
     if (found) return { file, address: found.address }
   }
   return null
+}
+
+/**
+ * Figma's Shift+Enter: the layer that holds this one, or null at the top. A
+ * layer of a state's variant (ADR 0016 §4) is not in the file, so its parent
+ * is read off its address — `Switch#state=focus/root/thumb` sits in
+ * `…/root`, which is the variant's root, held by the variant, held by the
+ * component.
+ */
+export function parentSelection(doc: UidxDocument, address: string): string | null {
+  if (address === '') return null
+  if (!derivedTarget(doc, address)) {
+    const parent = parentOf(doc.tree, address)
+    return parent && parent.address !== '' ? parent.address : null
+  }
+  const cut = address.indexOf('#')
+  const slash = address.lastIndexOf('/')
+  if (slash > cut) return address.slice(0, slash)
+  return address.slice(0, cut)
+}
+
+/**
+ * Figma's Enter: the layers this one holds, or null when it holds none. On a
+ * state's variant the children are the base layer's, addressed under it.
+ */
+export function childSelection(doc: UidxDocument, address: string): string[] | null {
+  const derived = derivedTarget(doc, address)
+  if (!derived) {
+    const node = resolve(doc.tree, address)
+    return node?.children.length ? node.children.map((child) => child.address) : null
+  }
+  if (!derived.base.children.length) return null
+  const at = address.includes('/') ? address : `${address}/root`
+  return derived.base.children.map((child) => `${at}/${child.name}`)
 }

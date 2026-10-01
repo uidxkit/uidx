@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow } from '@uidx/format'
 import PropertiesPane from '../src/PropertiesPane.vue'
-import { routeDerivedPatches } from '../src/derived-edits'
+import { drawnNode, routeDerivedPatches } from '../src/derived-edits'
 import { bindVariable, detachVariable } from '../src/variable-binding'
 
 /**
@@ -74,6 +74,8 @@ describe('routing an edit on a derived variant', () => {
     ).toEqual({
       patches: [
         { op: 'style', keys: { state: 'hover' }, target: 'root', prop: 'opacity' },
+        // Its last cell gone, the row is written back empty: hover stays a state.
+        { op: 'style', keys: { state: 'hover' }, target: '', prop: '', value: {} },
         { op: 'set', address: 'Checkbox', prop: 'width', value: 24 },
         { op: 'set', address: 'Checkbox#check', prop: 'width', value: 14 },
       ],
@@ -114,6 +116,62 @@ describe('routing an edit on a derived variant', () => {
     expect(applyPatches(SOURCE, routed.patches).source).toContain(
       '<Style state="hover" root:opacity={0.5} />',
     )
+  })
+})
+
+describe('letting go of a look on a state', () => {
+  const outlined = parseOrThrow(
+    SOURCE.replace(
+      '<Style state="hover" root:opacity={0.9} />',
+      `<Style state="hover" root:opacity={0.9} />
+  <Style state="focus" ring:strokes={[{ type: 'SOLID', color: { r: 0, g: 0, b: 0, a: 1 } }]} ring:strokeWeight={2} />`,
+    ),
+  )
+
+  it('clears the cells a removed stroke leaves, keeping the state', () => {
+    // What the panel sends when the stroke a state added is removed.
+    const routed = routeDerivedPatches(outlined, [
+      { op: 'set', address: 'Checkbox#state=focus/root/ring', prop: 'strokes', value: [] },
+      { op: 'set', address: 'Checkbox#state=focus/root/ring', prop: 'strokeWeight', value: 0 },
+    ])
+    expect(routed).toEqual({
+      patches: [
+        { op: 'style', keys: { state: 'focus' }, target: 'ring', prop: 'strokes' },
+        { op: 'style', keys: { state: 'focus' }, target: 'ring', prop: 'strokeWeight' },
+        { op: 'style', keys: { state: 'focus' }, target: '', prop: '', value: {} },
+      ],
+    })
+    const next = parseOrThrow(
+      applyPatches(outlined.source, (routed as { patches: never[] }).patches).source,
+    )
+    expect(next.spec!.styles!.find((row) => row.keys.state === 'focus')!.values).toEqual({})
+  })
+
+  it('takes the weights with the stroke even when only the stroke is removed', () => {
+    const routed = routeDerivedPatches(outlined, [
+      { op: 'set', address: 'Checkbox#state=focus/root/ring', prop: 'strokes', value: [] },
+    ]) as { patches: { prop: string; value?: unknown }[] }
+    expect(routed.patches.map((p) => [p.prop, p.value])).toEqual([
+      ['strokes', undefined],
+      ['strokeWeight', undefined],
+      ['', {}],
+    ])
+  })
+
+  it("reads a state's twin as its base with the state's cells laid over", () => {
+    const node = drawnNode(outlined, 'Checkbox#state=focus/root/ring')!
+    expect(node.address).toBe('Checkbox#state=focus/root/ring')
+    expect(node.attrs.strokeWeight?.value).toBe(2)
+    expect(node.attrs.width?.value).toBe(20)
+    expect(drawnNode(outlined, 'Checkbox#ring')).toBeNull()
+  })
+
+  it('writes nothing for a value the base already has and no cell holds', () => {
+    expect(
+      routeDerivedPatches(doc, [
+        { op: 'set', address: 'Checkbox#state=hover/root/ring', prop: 'width', value: 20 },
+      ]),
+    ).toEqual({ patches: [] })
   })
 })
 

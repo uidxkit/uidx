@@ -62,6 +62,16 @@ describe('the Connect tab', () => {
     expect(tab.find('.status-card').text()).toContain('1/2 parts bound')
   })
 
+  it('counts the parts the library offers before the contract names them, as Contract does', () => {
+    const shadow = parseHeadless('custom-elements.json', {
+      modules: [{ declarations: [{ tagName: 'x-button', cssParts: [{ name: 'base' }] }] }],
+    })
+    const tab = mount(ConnectSection, {
+      props: { doc, component, library: shadow, config: CONFIG, writable: true },
+    })
+    expect(tab.find('.status-card').text()).toContain('1/3 parts bound')
+  })
+
   it('writes the element into the component file', async () => {
     const tab = mounted()
     await tab.find('[aria-label="Implements"]').setValue('x-link')

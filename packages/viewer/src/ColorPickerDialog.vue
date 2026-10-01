@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { focusEdit } from './focus-edit'
+import { onListKeys } from './list-keys'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   colorToHex,
@@ -41,6 +43,13 @@ const emit = defineEmits<{
 
 const tab = ref<'custom' | 'libraries'>(props.currentToken ? 'libraries' : 'custom')
 const libraryQuery = ref('')
+/*
+ * The search takes the caret when the tab opens — the letters typed next are
+ * a token's name, and went to the canvas as tool keys when it did not ("t"
+ * armed the Text tool) — and the rows answer the list keys.
+ */
+const librarySearch = ref<HTMLInputElement | null>(null)
+const libraryList = ref<HTMLElement | null>(null)
 const libraryCollections = computed(() => {
   const groups = new Map<string, VariableCandidate[]>()
   for (const candidate of props.libraries ?? []) {
@@ -316,9 +325,20 @@ function onSwatch(color: Rgba): void {
     <template v-else>
       <div class="library-search">
         <FieldIcon name="search" />
-        <input v-model="libraryQuery" placeholder="Search" aria-label="search color variables" />
+        <input
+          ref="librarySearch"
+          v-model="libraryQuery"
+          placeholder="Search"
+          aria-label="search color variables"
+          @vue:mounted="focusEdit"
+          @keydown="onListKeys($event, libraryList, librarySearch)"
+        />
       </div>
-      <div class="library-list">
+      <div
+        ref="libraryList"
+        class="library-list"
+        @keydown="onListKeys($event, libraryList, librarySearch)"
+      >
         <template v-for="[collection, rows] in libraryCollections" :key="collection">
           <p class="library-collection">{{ collection }}</p>
           <VariableRow

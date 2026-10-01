@@ -3,7 +3,7 @@ import { computed, ref } from 'vue'
 import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import type { ComponentNames, ConfigChange, ConnectionConfig, ReactMapping } from './headless'
-import { setImplements } from './contract-edits'
+import { declaredParts, setImplements } from './contract-edits'
 
 /**
  * The Connect tab: how a component's identity reaches code, managed in one
@@ -38,7 +38,11 @@ const contract = computed(() => props.component?.spec?.contract)
 const propsList = computed(() => contract.value?.props ?? [])
 const events = computed(() => contract.value?.events ?? [])
 const slots = computed(() => contract.value?.slots ?? [])
-const partsDeclared = computed(() => contract.value?.parts ?? [])
+// The Contract tab's list: what the library's element offers and what the
+// contract declares, so the two tabs never count different parts.
+const partsDeclared = computed(() =>
+  props.component ? declaredParts(props.component, element.value ?? null) : [],
+)
 
 const plural = (n: number, word: string): string => `${n} ${word}${n === 1 ? '' : 's'}`
 const counts = computed(() =>

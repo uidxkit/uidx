@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onListKeys } from './list-keys'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { JsonValue } from '@uidx/format'
 import { FieldIcon, type IconName } from './field-icons'
@@ -103,6 +104,9 @@ function onKey(event: KeyboardEvent): void {
   if (query.value) query.value = ''
   else emit('close')
 }
+
+/** The list keys (list-keys.ts): arrows walk the rows, Enter in the search picks the first. */
+const onListKey = (event: KeyboardEvent): void => onListKeys(event, root.value, search.value)
 /**
  * Outside pointerdown closes the popup — except this instance's own trigger,
  * which owns the open/close toggle and must not close-then-reopen in one
@@ -151,7 +155,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="assign-popup" :style="placement">
+  <div ref="root" class="assign-popup" :style="placement" @keydown="onListKey">
     <div class="popup-search">
       <FieldIcon name="search" />
       <input ref="search" v-model="query" placeholder="Search" aria-label="search bindings" />

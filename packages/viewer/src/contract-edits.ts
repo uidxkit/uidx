@@ -754,3 +754,160 @@ export function scaffoldFromLibrary(component: UidxNode, element: HeadlessElemen
   }
   return out
 }
+
+/** One thing the library's element offers that the contract could declare. */
+export interface LibraryOffer {
+  kind: Exclude<ContractKind, 'state'>
+  /** The identity's name for it: camelCase for a prop, unprefixed for an event, `default` for the unnamed slot. */
+  name: string
+  /** The library's name, when it is spelled differently — recorded as a binding. */
+  library: string
+  type?: string
+  description?: string
+  /** Ticked when the list opens: what a design system usually wraps. */
+  suggested: boolean
+}
+
+/** Booleans that are form or focus plumbing rather than a look, so not suggested. */
+const PLUMBING = new Set(['required', 'readonly', 'autofocus', 'spellcheck', 'novalidate'])
+
+/** Events a design system usually exposes, by their unprefixed name. */
+const USUAL_EVENTS = new Set(['change', 'select', 'toggle', 'close', 'open'])
+
+const camelCase = (name: string): string =>
+  name.replace(/-([a-z0-9])/g, (_, c: string) => c.toUpperCase())
+
+/**
+ * What the element offers and the contract lacks (ADR 0013 §5), each under
+ * the identity's own name — a `help-text` attribute is the `helpText` prop, an
+ * `sl-change` event the `change` event — with the library's spelling kept for
+ * the binding. Ticked by default is the shape a design system's contract
+ * usually takes: on/off and choice attributes, the change event, the default
+ * slot and every part. Everything else is offered unticked, rather than
+ * declared wholesale: a general library's element carries form plumbing and
+ * focus events a component's contract does not want to promise.
+ */
+export function libraryOffers(component: UidxNode, element: HeadlessElement): LibraryOffer[] {
+  const contract = component.spec?.contract
+  const declared = (kind: LibraryOffer['kind'], ...names: string[]): boolean => {
+    const list =
+      kind === 'prop'
+        ? contract?.props
+        : kind === 'event'
+          ? contract?.events
+          : kind === 'slot'
+            ? contract?.slots
+            : contract?.parts
+    return list?.some((entry) => names.includes(entry.name)) ?? false
+  }
+  const prefix = element.tag.includes('-') ? element.tag.slice(0, element.tag.indexOf('-') + 1) : ''
+  const out: LibraryOffer[] = []
+  for (const attribute of element.members.attributes) {
+    if (!attribute.name) continue
+    const name = camelCase(attribute.name)
+    if (declared('prop', name, attribute.name)) continue
+    const type = contractType(attribute.type)
+    out.push({
+      kind: 'prop',
+      name,
+      library: attribute.name,
+      type,
+      ...(attribute.description ? { description: attribute.description } : {}),
+      suggested: (type === 'boolean' && !PLUMBING.has(name)) || type.startsWith("'"),
+    })
+  }
+  for (const event of element.members.events) {
+    if (!event.name) continue
+    const bare =
+      prefix && event.name.startsWith(prefix) ? event.name.slice(prefix.length) : event.name
+    const name = camelCase(bare)
+    if (declared('event', name, event.name)) continue
+    out.push({
+      kind: 'event',
+      name,
+      library: event.name,
+      ...(event.description ? { description: event.description } : {}),
+      suggested: USUAL_EVENTS.has(name),
+    })
+  }
+  for (const slot of element.members.slots) {
+    const name = slot.name || 'default'
+    if (declared('slot', name)) continue
+    out.push({
+      kind: 'slot',
+      name,
+      library: slot.name,
+      ...(slot.description ? { description: slot.description } : {}),
+      suggested: name === 'default',
+    })
+  }
+  for (const part of element.parts) {
+    if (declared('part', part.name)) continue
+    out.push({ kind: 'part', name: part.name, library: part.name, suggested: true })
+  }
+  return out
+}
+
+/**
+ * The chosen offers as declarations, and the library names they need: a prop
+ * or event the identity spells differently is bound to the library's
+ * spelling in `uidx.json` (ADR 0013 §3), so generated code still sets the
+ * attribute and listens for the event the element actually has.
+ */
+export function scaffoldOffers(chosen: readonly LibraryOffer[]): {
+  patches: UidxPatch[]
+  attributes: Record<string, string>
+  events: Record<string, string>
+} {
+  const patches: UidxPatch[] = []
+  const attributes: Record<string, string> = {}
+  const events: Record<string, string> = {}
+  for (const offer of chosen) {
+    const description = offer.description ?? `${PLACEHOLDER}the ${offer.kind} "${offer.name}".`
+    const attrs: Record<string, JsonValue> =
+      offer.kind === 'prop'
+        ? {
+            type: offer.type ?? 'string',
+            ...(offer.type === 'boolean' ? { default: false, visual: true } : {}),
+          }
+        : {}
+    patches.push(...declare(offer.kind, offer.name, { attrs, description }))
+    if (offer.kind === 'prop' && offer.library !== offer.name)
+      attributes[offer.name] = offer.library
+    if (offer.kind === 'event' && offer.library !== offer.name) events[offer.name] = offer.library
+  }
+  return { patches, attributes, events }
+}
+
+/**
+ * Every unbound part matched to the one layer of the component named after it
+ * — the `thumb` frame to the `thumb` part — when that layer binds no part yet.
+ * A designer names layers after the anatomy they draw; making them bind each
+ * row by hand afterwards is clicking for nothing. A part two layers could
+ * claim is left alone rather than guessed.
+ */
+export function bindPartsByName(
+  doc: UidxDocument,
+  component: UidxNode,
+  parts: readonly PartRow[],
+): UidxPatch[] {
+  const layers: UidxNode[] = []
+  const walk = (node: UidxNode): void => {
+    for (const child of node.children) {
+      layers.push(child)
+      // An instance's insides are another component's (ADR 0013 §3).
+      if (child.element !== 'Instance') walk(child)
+    }
+  }
+  walk(component)
+  const bound = partBindings(component)
+  const out: UidxPatch[] = []
+  for (const part of parts) {
+    if (part.boundTo || bound.has(part.name)) continue
+    const named = layers.filter(
+      (layer) => layer.name === part.name && layer.attrs.part === undefined,
+    )
+    if (named.length === 1) out.push(...bindPart(doc, component, part.name, named[0]!.address))
+  }
+  return out
+}

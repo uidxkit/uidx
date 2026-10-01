@@ -62,7 +62,34 @@ export function variableCandidates(
       preview: type === 'COLOR' ? colorToHex(value as unknown as Rgba) : String(value),
     })
   }
-  return out
+  return prop === null ? out : rankedFor(out, prop)
+}
+
+/** Words a collection named for a kind of property tends to carry. */
+const COLLECTION_HINTS: [RegExp, string[]][] = [
+  [
+    /^(fontSize|lineHeight|letterSpacing|fontWeight|paragraphSpacing)$/,
+    ['type', 'font', 'text', 'typo'],
+  ],
+  [/^(itemSpacing|counterAxisSpacing|padding)/, ['space', 'spacing', 'gap']],
+  [/Radius$/, ['radius', 'corner', 'round']],
+  [/^stroke.*Weight$/, ['border', 'stroke']],
+  [/^opacity$/, ['opacity']],
+  [/^(width|height|min|max)/, ['size', 'dimension']],
+]
+
+/**
+ * Collections whose name fits the property first — `type` for a font size,
+ * `space` for a gap — the rest after, each in file order. Unscoped tokens are
+ * offered everywhere (Figma's rule), and with `space` before `type` a font
+ * size typed "md" was given 12, the spacing step, instead of 14.
+ */
+function rankedFor(candidates: VariableCandidate[], prop: string): VariableCandidate[] {
+  const hints = COLLECTION_HINTS.find(([pattern]) => pattern.test(prop))?.[1]
+  if (!hints) return candidates
+  const fits = (candidate: VariableCandidate) =>
+    hints.some((hint) => candidate.collection.toLowerCase().includes(hint))
+  return [...candidates.filter(fits), ...candidates.filter((c) => !fits(c))]
 }
 
 /** The one variable type a control kind can read, or null when none can. */

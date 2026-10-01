@@ -34,6 +34,7 @@ describe('the creation toolbar', () => {
       'Insert',
       ...CREATABLE_ELEMENTS.map((e) => (e === 'Vector' ? 'Pen' : e)),
       'Graphics tools',
+      'Frame selection',
       'Make component',
       'New slot',
       'Repeat',

@@ -17,6 +17,7 @@ import { addressOf, autoName, resolve } from '@uidx/format'
 import {
   containerChainAt,
   dropTargetFor,
+  authoredContainer,
   insertTargetFor,
   reparentTo,
   type DropPlacement,
@@ -68,6 +69,7 @@ import { pageIdFor, rasterFormatFor, type ExportBounds, type ExportFormat } from
 import { seedFonts } from './fonts'
 import { coverageForFont, fontGeneration, fontLibraryError, projectFonts } from './font-library'
 import { collapseBurst, novelPatches } from './patch-burst'
+import { drawnNode } from './derived-edits'
 import { useCanvasControls } from './useCanvasControls'
 import { hoverTargetFor } from './hover-map'
 import { theme } from './theme'
@@ -319,7 +321,8 @@ const emit = defineEmits<{
  */
 function dropParentAt(draggedId: string, point: { x: number; y: number }): string | null {
   const built = scene.value
-  const dragged = built?.addresses.addressOf(draggedId)
+  const drawn = built?.addresses.addressOf(draggedId)
+  const dragged = drawn === undefined || !current ? undefined : authoredContainer(current, drawn)
   if (!built || !current || dragged === undefined) return null
   const sceneChain = containerChainAt(built.graph, built.rootId, point, draggedId)
 
@@ -337,11 +340,20 @@ function dropParentAt(draggedId: string, point: { x: number; y: number }): strin
     return firstFillFor(current, dragged, [id], holes) ? id : null
   }
 
+  // Default-state twins stand for their base layers (ADR 0016 §4), as in a draw.
+  const sceneOf = new Map<string, string>()
   const chain = sceneChain
-    .map((id) => built.addresses.addressOf(id))
+    .map((id) => {
+      const address = built.addresses.addressOf(id)
+      const authored = address === undefined ? undefined : authoredContainer(current!, address)
+      if (authored !== undefined && !sceneOf.has(authored)) sceneOf.set(authored, id)
+      return authored
+    })
     .filter((address): address is string => address !== undefined)
   const target = dropTargetFor(current, dragged, chain)
-  return target ? (built.addresses.sceneIdOf(target.parent) ?? null) : null
+  return target
+    ? (sceneOf.get(target.parent) ?? built.addresses.sceneIdOf(target.parent) ?? null)
+    : null
 }
 
 /**
@@ -407,7 +419,8 @@ const controls = useCanvasControls(canvasEl, editorWithPlacement, {
    */
   onReparent: (draggedId, parentSceneId) => {
     const built = scene.value
-    const dragged = built?.addresses.addressOf(draggedId)
+    const drawn = built?.addresses.addressOf(draggedId)
+    const dragged = drawn === undefined || !current ? undefined : authoredContainer(current, drawn)
     if (!built || !current || dragged === undefined) return
 
     // The first fill: two ops rather than one, because the wrapper the node
@@ -419,7 +432,8 @@ const controls = useCanvasControls(canvasEl, editorWithPlacement, {
       return
     }
 
-    const parent = built.addresses.addressOf(parentSceneId)
+    const drawnParent = built.addresses.addressOf(parentSceneId)
+    const parent = drawnParent === undefined ? undefined : authoredContainer(current, drawnParent)
     if (parent === undefined) return
     // The container the highlight named, asked of the document once more — the
     // patch is the document's arithmetic, never the pointer's.
@@ -555,8 +569,18 @@ function createNode(
   if (!built || !current) return
   if (placing === null && !isCreatable(element)) return
 
+  // A component with states is drawn as its variants (ADR 0016 §4): the frame
+  // under the pointer is a default-state twin, which stands for the base layer
+  // the new node goes into, while its scene node still says where it sits. A
+  // twin of any other state cannot take a child, so it is passed over.
+  const sceneOf = new Map<string, string>()
   const chain = containerChainAt(built.graph, built.rootId, at, '')
-    .map((id) => built.addresses.addressOf(id))
+    .map((id) => {
+      const address = built.addresses.addressOf(id)
+      const authored = address === undefined ? undefined : authoredContainer(current!, address)
+      if (authored !== undefined && !sceneOf.has(authored)) sceneOf.set(authored, id)
+      return authored
+    })
     .filter((address): address is string => address !== undefined)
   // Placing an instance with a slot selected fills the slot (ADR 0007): the
   // hole is the target the author named, wherever the click landed.
@@ -571,10 +595,15 @@ function createNode(
   if (parent === null) return
 
   const parentNode = resolve(current.tree, parent)
-  const parentSceneId = built.addresses.sceneIdOf(parent)
+  const parentSceneId = sceneOf.get(parent) ?? built.addresses.sceneIdOf(parent)
   if (!parentNode || parentSceneId === undefined) return
 
-  const where = localTo(parentSceneId, at)
+  // Inside an auto layout the layout places the node, so a position would be
+  // noise in the file that nothing reads.
+  const flows =
+    parentNode.attrs.layoutMode?.value === 'HORIZONTAL' ||
+    parentNode.attrs.layoutMode?.value === 'VERTICAL'
+  const where = flows ? null : localTo(parentSceneId, at)
   // An instance is named after what it is an instance of, not after its
   // element: two `Icon/Check`s read as `check-1` and `check-2` rather than as
   // `instance-1` and `instance-2`, which say nothing. The component's own name
@@ -1977,7 +2006,9 @@ function applyProp(
     return
   }
   if (!graph.getNode(address)) return
-  const saved = current ? resolve(current.tree, address) : null
+  // A state's twin has no node in the file; its base, with the state's own
+  // cells laid over, is what the edit helpers read (derived-edits.ts).
+  const saved = current ? (resolve(current.tree, address) ?? drawnNode(current, address)) : null
   const stroke = saved
     ? strokeEdit(saved, prop, value, resolveAlias, rootFontSizeOf(current))
     : null
@@ -2289,6 +2320,14 @@ watch(
 watch(fontGeneration, () => {
   void renderWithAssets(props.doc, true)
 })
+
+/*
+ * The bundled faces load in the background, and a page drawn before they land
+ * measured its text without them: every label zero wide, a component's
+ * variants collapsed onto one another and their words clipped, until a zoom
+ * happened to lay the page out again. Once they are in, lay it out again.
+ */
+void seedFonts().then(() => renderWithAssets(props.doc, true))
 
 const unrenderable = computed<{ address: string; characters: string[] }[]>(() => {
   void fontGeneration.value

@@ -785,6 +785,27 @@ const tokenSource = computed<TokenBindingSource>(() => {
   return { tokens: props.tokens, tokenIndex: props.tokenIndex, bindings }
 })
 
+/**
+ * Library spellings for members the Contract tab just declared under the
+ * identity's names, merged into this component's bindings in uidx.json —
+ * the same file the Connect tab edits.
+ */
+function bindNames(
+  component: string,
+  names: { attributes: Record<string, string>; events: Record<string, string> },
+): void {
+  const current = connection.value.headless?.bindings[component] ?? {}
+  void saveConnection({
+    key: 'binding',
+    component,
+    value: {
+      ...current,
+      attributes: { ...current.attributes, ...names.attributes },
+      events: { ...current.events, ...names.events },
+    },
+  })
+}
+
 function onBindVariables(names: string[], token: string): void {
   if (!props.doc || !active.value || props.writable === false) return
   preview.value = null
@@ -1126,6 +1147,22 @@ function onMultiPreview(writes: Array<{ prop: string; value: JsonValue }>): void
 }
 
 /** The value a prop currently has, falling back to the SDK's own default. */
+/**
+ * How an axis is sized, as the canvas draws it. A sizing mode the file does
+ * not state follows the size it does: a width written beside no mode is a
+ * fixed width (the slot that showed Hug while drawn 60 wide, and ignored a
+ * Hug chosen over it), and no width either is a hug — the same reading the
+ * code target makes.
+ */
+function sizingOf(axis: 'primary' | 'counter'): string {
+  const field = fields.value.find((f) => f.name === `${axis}AxisSizingMode`)
+  if (field?.authored && typeof field.value === 'string') return field.value
+  const along = (layoutMode.value === 'VERTICAL') === (axis === 'counter') ? 'width' : 'height'
+  const size = fields.value.find((f) => f.name === along)
+  if (size?.authored) return 'FIXED'
+  return typeof field?.value === 'string' ? field.value : 'FIXED'
+}
+
 function valueOf(prop: string, fallback: string): string {
   const field = fields.value.find((f) => f.name === prop)
   return typeof field?.value === 'string' ? field.value : fallback
@@ -1623,6 +1660,7 @@ function onDetach(prop: string, value: JsonValue): void {
           @open-model="emit('openModel', $event)"
           @choose-library="emit('chooseLibrary', $event)"
           @generate-code="emit('generateCode')"
+          @bind-names="bindNames"
         />
       </section>
     </template>
@@ -1983,8 +2021,8 @@ function onDetach(prop: string, value: JsonValue): void {
               v-if="sizeGroup && section.group === sizeGroup && active"
               :element="active.element"
               :layout-mode="layoutMode"
-              :primary-axis-sizing="valueOf('primaryAxisSizingMode', 'FIXED')"
-              :counter-axis-sizing="valueOf('counterAxisSizingMode', 'FIXED')"
+              :primary-axis-sizing="sizingOf('primary')"
+              :counter-axis-sizing="sizingOf('counter')"
               :text-resize="textResize"
               :width="authoredNumber('width')"
               :height="authoredNumber('height')"
