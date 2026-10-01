@@ -648,7 +648,8 @@ const socket = createUidxSocket({
           message.patchId !== undefined &&
           (inFlight.has(message.patchId) ||
             historyPatchIds.has(message.patchId) ||
-            pendingInverse.has(message.patchId))
+            pendingInverse.has(message.patchId) ||
+            recordedPatchIds.has(message.patchId))
         // Our own edit landing on the document we already predicted, and the
         // hash agrees: adopting that exact object leaves `shown` unchanged, so
         // the canvas, the rail and the inspector do no second pass. It only
@@ -676,6 +677,7 @@ const socket = createUidxSocket({
           inFlight.settle(message.patchId)
           if (own) saveSettled()
           historyPatchIds.delete(message.patchId)
+          recordedPatchIds.delete(message.patchId)
           const pending = pendingInverse.get(message.patchId)
           if (pending) {
             pendingInverse.delete(message.patchId)
@@ -684,6 +686,7 @@ const socket = createUidxSocket({
               pending.forward,
               diffToPatches(incoming, pending.before),
               labelFor(pending.forward),
+              pending.group,
             )
           }
         }
@@ -1093,11 +1096,15 @@ function onTokenDelete(): void {
   // extra literals in other files, never a reference to a variable already
   // gone. `commitAcrossPages` orders for the open page, which is a different
   // concern, so the ordering is spelled out here.
+  const group = newGroup()
   for (const [file, patches] of plan.byFile) {
     if (file === plan.declaringFile) continue
-    commitAcrossPages(new Map([[file, patches]]))
+    commitAcrossPages(new Map([[file, patches]]), group)
   }
-  commitAcrossPages(new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]))
+  commitAcrossPages(
+    new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]),
+    group,
+  )
   selection.value = []
 }
 
@@ -1252,10 +1259,14 @@ function confirmCollectionRemoval(): void {
   if (!plan) return
   // Preserve outside references before removing their declarations, matching
   // individual token removal. The preview re-evaluates if the document changes.
+  const group = newGroup()
   for (const [file, patches] of plan.byFile) {
-    if (file !== plan.declaringFile) commitAcrossPages(new Map([[file, patches]]))
+    if (file !== plan.declaringFile) commitAcrossPages(new Map([[file, patches]]), group)
   }
-  commitAcrossPages(new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]))
+  commitAcrossPages(
+    new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]),
+    group,
+  )
   selection.value = selection.value.filter((address) => !plan.tokens.includes(address))
   removingCollection.value = null
   // The removed header cannot receive focus when its dialog closes.
@@ -1416,10 +1427,17 @@ function commitPatches(incoming: UidxPatch[]): void {
 const undoStack = createUndoStack()
 /** Patch ids dispatched *by* undo or redo: their confirmations must not push entries. */
 const historyPatchIds = new Set<string>()
+/**
+ * Author batches already on the undo stack, until the server confirms them.
+ * Without it a write to a page other than the open one (which `inFlight`
+ * does not track) came back looking like somebody else's revision and was
+ * recorded a second time, as an external change.
+ */
+const recordedPatchIds = new Set<string>()
 /** Author batches whose inverse waits for the confirmed document (structural ops). */
 const pendingInverse = new Map<
   string,
-  { file: string; forward: UidxPatch[]; before: UidxDocument }
+  { file: string; forward: UidxPatch[]; before: UidxDocument; group?: string }
 >()
 
 function labelFor(patches: readonly UidxPatch[]): string {
@@ -1431,6 +1449,9 @@ function labelFor(patches: readonly UidxPatch[]): string {
   if (first.op === 'contract') return `${first.kind} ${first.name}`
   if (first.op === 'model') return `model ${first.name}`
   if (first.op === 'field') return `${first.model}.${first.name}`
+  if (first.op === 'region') return first.name === 'Behavior' ? 'behaviour rules' : 'examples'
+  if (first.op === 'intent') return 'description'
+  if (first.op === 'contract-element') return first.element.toLowerCase()
   if (first.op === 'style') {
     const at = Object.entries(first.keys)
       .map(([axis, value]) => `${axis}=${value}`)
@@ -1450,7 +1471,12 @@ function labelFor(patches: readonly UidxPatch[]): string {
  * — so two quick edits to one property each record the value that was on
  * screen, not the confirmed value both started from.
  */
-function dispatch(file: string, patches: readonly UidxPatch[], record: boolean): string | null {
+function dispatch(
+  file: string,
+  patches: readonly UidxPatch[],
+  record: boolean,
+  group?: string,
+): string | null {
   const at = revisions.value.get(file)
   const base = pages.value.get(file)
   if (at === undefined || !base) return null
@@ -1468,8 +1494,16 @@ function dispatch(file: string, patches: readonly UidxPatch[], record: boolean):
   saveStarted()
   if (file === entry.value) inFlight.push(patchId, patches)
   if (!record) historyPatchIds.add(patchId)
-  else if (inverse) undoStack.pushAuthor(file, [...patches], inverse, labelFor(patches))
-  else pendingInverse.set(patchId, { file, forward: [...patches], before: base })
+  else if (inverse) {
+    undoStack.pushAuthor(file, [...patches], inverse, labelFor(patches), group)
+    recordedPatchIds.add(patchId)
+  } else
+    pendingInverse.set(patchId, {
+      file,
+      forward: [...patches],
+      before: base,
+      ...(group ? { group } : {}),
+    })
   return patchId
 }
 
@@ -1525,15 +1559,28 @@ function onRefused(reason: string): void {
   patchNotice.value = { kind: 'rejected', message: reason }
 }
 
-function commitAcrossPages(byFile: ReadonlyMap<string, readonly UidxPatch[]>): void {
+/**
+ * Sends one action's batches, one per page. Several files share an undo
+ * group, so the action is undone in one step; `group` lets a caller that
+ * sends in several calls (a delete, declaring file last) keep them together.
+ */
+function commitAcrossPages(
+  byFile: ReadonlyMap<string, readonly UidxPatch[]>,
+  group?: string,
+): void {
   const open = entry.value
   const files = [...byFile.keys()].sort((a, b) => Number(a === open) - Number(b === open))
+  const shared =
+    group ?? (files.filter((file) => byFile.get(file)?.length).length > 1 ? newGroup() : undefined)
   for (const file of files) {
     const patches = byFile.get(file)
     if (!patches?.length) continue
-    dispatch(file, patches, true)
+    dispatch(file, patches, true, shared)
   }
 }
+
+let groups = 0
+const newGroup = (): string => `group-${Date.now()}-${(groups += 1)}`
 
 function onPreview(address: string, prop: string, value: JsonValue): void {
   canvasPane.value?.applyProp(address, prop, value, 'preview')

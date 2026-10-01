@@ -39,6 +39,20 @@ export function inversePatches(doc: UidxDocument, patches: readonly UidxPatch[])
   return out
 }
 
+/**
+ * Where the node a patch touched lives once the patch has landed: a rename
+ * moves the node's address (its name is its last segment), so the inverse
+ * must name the new address, not the one that no longer resolves.
+ */
+function renamedAddress(doc: UidxDocument, patch: Extract<UidxPatch, { op: 'set' }>): string {
+  if (patch.prop !== 'name' || typeof patch.value !== 'string') return patch.address
+  const node = mustResolve(doc, patch.address)
+  // A page's root has no name of its own in its address.
+  if (node === doc.tree) return patch.address
+  const parent = resolveParent(doc.tree, patch.address)
+  return parent ? addressOf(parent.address, patch.value) : patch.address
+}
+
 function mustResolve(doc: UidxDocument, address: string): UidxNode {
   const node = resolve(doc.tree, address)
   if (!node) throw new PatchError(`no node at address ${JSON.stringify(address)}`)
@@ -52,7 +66,9 @@ function invertOne(doc: UidxDocument, patch: UidxPatch): UidxPatch[] {
       if (!attr) {
         throw new PatchError(`${patch.address} has no attribute "${patch.prop}" to restore`)
       }
-      return [{ op: 'set', address: patch.address, prop: patch.prop, value: attr.value }]
+      return [
+        { op: 'set', address: renamedAddress(doc, patch), prop: patch.prop, value: attr.value },
+      ]
     }
     case 'add':
       return [{ op: 'remove', address: patch.address, prop: patch.prop }]
