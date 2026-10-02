@@ -43,6 +43,36 @@ const mounted = (over: Partial<Record<string, unknown>> = {}) =>
   })
 
 describe('TokenDetailPane', () => {
+  it('edits the description, clearing it to no attribute', async () => {
+    const pane = mounted()
+    const text = pane.find('textarea[aria-label="Token description"]')
+    expect((text.element as HTMLTextAreaElement).value).toBe('Brand ground.')
+    await text.setValue('The brand colour, for primary actions.')
+    await text.setValue('  ')
+    expect(pane.emitted('attr')).toEqual([
+      ['description', 'The brand colour, for primary actions.'],
+      ['description', null],
+    ])
+  })
+
+  it("offers its type's scopes, and unticking the last goes back to everywhere", async () => {
+    const pane = mounted()
+    const labels = pane.findAll('.scope').map((s) => s.text())
+    expect(labels).toContain('Text fill')
+    expect(labels).not.toContain('Corner radius')
+    expect((pane.find('[data-scope="ALL_FILLS"] input').element as HTMLInputElement).checked).toBe(
+      true,
+    )
+    await pane.find('[data-scope="STROKE_COLOR"] input').setValue(true)
+    await pane.find('[data-scope="ALL_FILLS"] input').setValue(false)
+    expect(pane.emitted('attr')).toEqual([
+      ['scopes', ['ALL_FILLS', 'STROKE_COLOR']],
+      ['scopes', null],
+    ])
+    const toggle = mounted({ row: { ...ROW, type: 'BOOLEAN', scopes: ['ALL_SCOPES'] } })
+    expect(toggle.find('.scopes').exists()).toBe(false)
+  })
+
   it('shows the record and the dependents as jump links', async () => {
     const pane = mounted()
     expect(pane.text()).toContain('blue-500')

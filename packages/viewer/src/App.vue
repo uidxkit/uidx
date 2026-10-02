@@ -18,19 +18,35 @@ import {
   defaultTuple,
   deleteCollection,
   deleteToken,
+  IMPLICIT_MODE,
+  renameCollection,
   renameToken,
+  setCollectionModes,
   TokenResolver,
   tupleAt,
   type Dependent,
+  type ModeShape,
+  modelIndex,
+  derivedTarget,
 } from '@uidx/schema'
 import {
   applyPatchesIncremental,
   diffToPatches,
   inversePatches,
   predictDocument,
+  resolve,
+  addressOf,
+  autoName,
 } from '@uidx/format'
 import { applyDelta } from './apply-delta'
-import type { Diagnostic, JsonValue, UidxDocument, UidxPatch, VariableType } from '@uidx/format'
+import type {
+  Diagnostic,
+  JsonValue,
+  UidxDocument,
+  UidxNodeSpec,
+  UidxPatch,
+  VariableType,
+} from '@uidx/format'
 
 import CanvasPane from './CanvasPane.vue'
 import type { DrawingTool } from './graphics-tools'
@@ -46,13 +62,34 @@ import type { PinFrame } from './pin-writes'
 import { departedPages, pageEntries } from './page-list'
 import PropertiesPane from './PropertiesPane.vue'
 import EditToolbar from './EditToolbar.vue'
-import WorkspaceNav from './WorkspaceNav.vue'
+import AppBar from './AppBar.vue'
+import { theme } from './theme'
+import InsertPanel from './InsertPanel.vue'
 import FontsPane from './FontsPane.vue'
 import { fontGeneration, fontsInFileKey, openFontsKey } from './font-library'
-import WorkspaceStatus from './WorkspaceStatus.vue'
-import { canRemove, componentFrom, remapAddress } from './layer-moves'
+import {
+  chooseHeadless,
+  codegenState,
+  generateCode,
+  headlessCandidates,
+  headlessError,
+  headlessLibrary,
+  refreshHeadless,
+} from './headless'
+import { routeDerivedPatches } from './derived-edits'
+import ContextMenu, { type MenuItem } from './ContextMenu.vue'
+import {
+  canInsert,
+  canRemove,
+  componentFrom,
+  frameSelectionFor,
+  parentOf,
+  remapAddress,
+} from './layer-moves'
 import { componentRenamePlan, offerableComponents } from './component-rename'
+import { enclosingComponent } from './component-prop-edits'
 import { newSlotFor, slotTargetFor } from './slot-edits'
+import { newRepeatFor, repeatTargetFor } from './repeat-edits'
 import { isDeleteKey, isTypingTarget, toolFor } from './tool-keys'
 import { createInFlight } from './in-flight'
 import { createUndoStack, type StackEntry } from './undo-stack'
@@ -60,14 +97,28 @@ import { createPatchChannel, type PatchNotice } from './patch-channel'
 import { rebasePatches } from './patch-rebase'
 import { HOME, pageInUrl, upgradedView, urlWithView, viewToOpen, type View } from './page-url'
 import TokensPane, { type TokenEditIntent } from './TokensPane.vue'
+import ModelsPane from './ModelsPane.vue'
+import DocsPane from './DocsPane.vue'
+import { componentDocs, exampleDocument, type DocsExample } from './docs-model'
+import { modelsViewModel, pagesForModels, undeclaredModels } from './model-edits'
 import TokenDetailPane from './TokenDetailPane.vue'
 import RemoveCollectionDialog from './RemoveCollectionDialog.vue'
 import { tokensViewModel } from './tokens-view-model'
 import { tokenAliasCandidates } from './token-alias-candidates'
 import { addCollectionPatch, addTokenPatch, editCellPatch } from './token-edits'
 import HomePane from './HomePane.vue'
+import NewPageDialog from './NewPageDialog.vue'
+import { childSelection, duplicateLayer, mainComponentOf, parentSelection } from './layer-actions'
+import { detachInstance } from './detach'
+import { overrideCount, resetAllPatches } from './instance-box-edits'
+import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
+import { componentPreviewKey } from './component-preview'
+import TourCoach from './TourCoach.vue'
+import TutorialList from './TutorialList.vue'
+import { startTutorial, stopTutorial, tourRun } from './tour'
+import type { TourState } from './tutorials'
 import { createUidxSocket, type ConnectionState } from './socket'
 import { selectionReport } from './selection-report'
 import ChatPanel from './ChatPanel.vue'
@@ -204,6 +255,68 @@ const panelTokens = computed(() => {
  * this is what lets the canvas and the rail agree about what it holds.
  */
 const components = computed(() => componentIndex(pages.value.values()))
+/**
+ * Model name -> declaration across every page (ADR 0015 §2): a list's model
+ * is written once. Rebuilt only when some page's models change, not on every
+ * keystroke anywhere, since the canvas redraws every repeat when it does.
+ */
+const modelSignature = computed(() =>
+  [...pages.value]
+    .map(
+      ([file, doc]) =>
+        `${file}=${JSON.stringify(
+          (doc.spec?.models ?? []).map((model) => ({
+            ...model,
+            loc: undefined,
+            fields: model.fields.map((field) => ({ ...field, loc: undefined })),
+          })),
+        )}`,
+    )
+    .join('\u0000'),
+)
+const models = shallowRef(modelIndex(pages.value.values()))
+watch(modelSignature, () => {
+  models.value = modelIndex(pages.value.values())
+})
+
+// ---------------------------------------------------------------- models view
+
+const modelCards = computed(() =>
+  view.value.kind === 'models' ? modelsViewModel(pages.value, view.value.file) : [],
+)
+const modelPages = computed(() =>
+  view.value.kind === 'models' ? pagesForModels(pages.value, view.value.file) : [],
+)
+const undeclared = computed(() =>
+  view.value.kind === 'models' ? undeclaredModels(pages.value) : [],
+)
+/** The model a repeat's row sent the author to: marked and scrolled to on the face. */
+const focusedModel = ref<string | null>(null)
+
+/** A plan built in the viewer: sent as one undo step, or its refusal shown. */
+function commitRefusable(
+  plan: { byFile: ReadonlyMap<string, UidxPatch[]> } | { refused: string },
+): void {
+  if ('refused' in plan) onRefused(plan.refused)
+  else commitAcrossPages(plan.byFile)
+}
+
+function onModelEdit(file: string, patches: UidxPatch[]): void {
+  commitAcrossPages(new Map([[file, patches]]))
+}
+
+/** A model card names a page or a component: land there, as a token's dependent row does. */
+function onModelOpen(file: string, component?: string): void {
+  openView({ kind: 'page', file })
+  if (component) selection.value = [component]
+}
+
+/** From a repeat's row in the Contract tab to the model it draws. */
+function openModel(name: string): void {
+  focusedModel.value = name
+  const now = view.value
+  if (now.kind !== 'home' && now.kind !== 'models') openView({ kind: 'models', file: now.file })
+}
 
 /**
  * The document as a list of pages, for the rail (the page switcher).
@@ -297,10 +410,123 @@ const stamps = computed(() => {
   for (const card of home.value.cards) {
     const defs = card.instances > 0 ? definitions.value : 0
     const art = card.assets > 0 ? assetGeneration.value : 0
-    out.set(card.file, `${defs}:${art}:${fontGeneration.value}`)
+    out.set(card.file, `${defs}:${art}:${fontGeneration.value}:${theme.value}`)
   }
   return out
 })
+
+/** The Docs face's page: the open file's component, read from its identity. */
+const docsModel = computed(() => {
+  const now = view.value
+  if (now.kind !== 'docs') return null
+  const doc = pages.value.get(now.file)
+  return doc ? componentDocs(now.file, doc, dependents.value) : null
+})
+
+/** Moves when a token's value does, so an example redraws with it. */
+const tokenGeneration = ref(0)
+watch(tokens, () => (tokenGeneration.value += 1))
+
+/** Draws one example of the Docs face as a one-instance page. */
+function renderExample(example: DocsExample): Promise<string | null> {
+  const now = view.value
+  const docs = docsModel.value
+  if (now.kind !== 'docs' || !docs) return Promise.resolve(null)
+  const file = `${now.file}#example/${example.name}`
+  const doc = exampleDocument(docs.name, example)
+  if (!doc) return Promise.resolve(null)
+  return thumbnailer.request({
+    file,
+    doc,
+    tokens: sceneTokens.value,
+    literals: tokens.value,
+    components: components.value,
+    models: models.value,
+    revision: home.value.cards.find((card) => card.file === now.file)?.revision ?? null,
+    definitions: definitions.value,
+    assets: null,
+    fonts: fontGeneration.value,
+    width: 480,
+    height: 280,
+  })
+}
+
+function onDocsOpen(file: string, address?: string): void {
+  openView({ kind: 'page', file })
+  if (address) selection.value = [address]
+}
+
+/**
+ * One component drawn small, for the slot content picker: a one-instance
+ * page, as the Docs face draws an example, stamped by the definitions so a
+ * component edit redraws it.
+ */
+function renderComponent(name: string): Promise<string | null> {
+  const doc = exampleDocument(name, { name: 'preview', props: {}, notDrawn: [] })
+  if (!doc || !components.value.has(name)) return Promise.resolve(null)
+  return thumbnailer.request({
+    file: `#component/${name}`,
+    doc,
+    tokens: sceneTokens.value,
+    literals: tokens.value,
+    components: components.value,
+    models: models.value,
+    revision: null,
+    definitions: definitions.value,
+    assets: null,
+    fonts: fontGeneration.value,
+    width: 176,
+    height: 128,
+  })
+}
+provide(componentPreviewKey, renderComponent)
+
+/**
+ * Which sample row an item component previews with on the canvas (ADR 0015
+ * §2). Editor state, not the file's: stepping through people to see how a
+ * long name wraps is looking, not designing, so it writes nothing.
+ */
+const previewSample = ref(0)
+
+/**
+ * What a tutorial step reads about the editor (tutorials.ts). A function, so
+ * the coach reads it fresh on each check rather than through a computed that
+ * would have to track the DOM.
+ */
+function tourState(): TourState {
+  const now = view.value
+  return {
+    view: now.kind,
+    file: now.kind === 'page' ? now.file : null,
+    pages: pages.value,
+    selection: selection.value,
+    components: components.value,
+    models: models.value,
+    query: (selector) => document.querySelector(selector),
+  }
+}
+
+/** The tutorials menu from the top bar. */
+const learning = ref(false)
+function startTour(id: string): void {
+  learning.value = false
+  startTutorial(id, tourState())
+}
+
+/** Opens the page that declares `name` and selects the definition. */
+async function goToComponent(name: string): Promise<void> {
+  for (const [file, doc] of pages.value) {
+    if (doc.tree.element === 'Tokens') continue
+    const found = doc.tree.children.find(
+      (child) => child.element === 'Component' && child.name === name,
+    )
+    if (!found) continue
+    if (file !== entry.value) openPage(file)
+    await nextTick()
+    selection.value = [found.address]
+    return
+  }
+}
 
 function renderThumb(card: PageCard): Promise<string | null> {
   const doc = pages.value.get(card.file)
@@ -311,6 +537,7 @@ function renderThumb(card: PageCard): Promise<string | null> {
     tokens: sceneTokens.value,
     literals: tokens.value,
     components: components.value,
+    models: models.value,
     revision: card.revision,
     // A page with no instances cannot be changed by a definition, so it is not
     // stamped and a component edit does not cost it a redraw.
@@ -324,6 +551,7 @@ function renderThumb(card: PageCard): Promise<string | null> {
 
 /** The canvas, for applying an edit optimistically before the file answers. */
 const canvasPane = ref<InstanceType<typeof CanvasPane> | null>(null)
+const layersPane = ref<InstanceType<typeof LayersPane> | null>(null)
 const tokensPane = ref<InstanceType<typeof TokensPane> | null>(null)
 const pendingCollections = new Map<string, { file: string; name: string }>()
 /**
@@ -351,6 +579,150 @@ function dismissNotice(): void {
   editorNotice.value = null
 }
 
+/**
+ * What the status strip says about the file: edits in flight, or all of
+ * them landed. Every peer tool shows this — Webflow's check mark, Penpot's
+ * file status — because a designer who cannot see the file needs to know
+ * their last change reached it. Counted, not flagged: two quick edits are
+ * two confirmations.
+ */
+const savesInFlight = ref(0)
+const savedOnce = ref(false)
+function saveStarted(): void {
+  savesInFlight.value += 1
+}
+function saveSettled(): void {
+  savesInFlight.value = Math.max(0, savesInFlight.value - 1)
+  savedOnce.value = true
+}
+
+/**
+ * The right-click menu: the toolbar's actions, at the pointer, with their
+ * shortcuts beside them.
+ */
+const menu = ref<{ x: number; y: number } | null>(null)
+/** The one selected layer a menu verb acts on, when it is a real node in the file. */
+const soleSelection = computed(() =>
+  selection.value.length === 1 && vertexEditing.value === null ? selection.value[0]! : null,
+)
+const duplicate = computed(() => {
+  const address = soleSelection.value
+  return address !== null && sceneDoc.value
+    ? duplicateLayer(
+        sceneDoc.value,
+        address,
+        takenNames.value,
+        canvasPane.value?.exportBounds(address),
+      )
+    : null
+})
+function duplicateSelection(): void {
+  const plan = duplicate.value
+  if (!plan) return
+  commitPatches(plan.patches)
+  selection.value = [plan.address]
+}
+const mainComponent = computed(() => {
+  const address = soleSelection.value
+  const node = address !== null && sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  return mainComponentOf(pages.value, node)
+})
+const detach = computed(() => {
+  const address = soleSelection.value
+  return address !== null && sceneDoc.value
+    ? detachInstance(pages.value, sceneDoc.value, address)
+    : null
+})
+function detachSelection(): void {
+  const plan = detach.value
+  if (!plan) return
+  commitPatches(plan.patches)
+  selection.value = [plan.address]
+}
+/**
+ * The selected instance, when it overrides anything of its component: its
+ * outer box, the colour it hands its texts, or a size (ADR 0018 §7).
+ */
+const overridden = computed(() => {
+  const address = soleSelection.value
+  const node = address !== null && sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  return node?.element === 'Instance' && overrideCount(node) > 0 ? node : null
+})
+/** Every override at once, in one envelope: one undo brings them all back. */
+function resetOverrides(): void {
+  const node = overridden.value
+  if (node) commitPatches(resetAllPatches(node))
+}
+
+async function goToMainComponent(): Promise<void> {
+  const target = mainComponent.value
+  if (!target) return
+  if (target.file !== entry.value) openPage(target.file)
+  await nextTick()
+  selection.value = [target.address]
+}
+
+const menuItems = (): MenuItem[] => [
+  {
+    label: 'Duplicate',
+    shortcut: '⌘D',
+    disabled: duplicate.value === null,
+    run: duplicateSelection,
+  },
+  {
+    label: 'Rename',
+    disabled: soleSelection.value === null || soleSelection.value === '',
+    run: () => layersPane.value?.renameAddress(soleSelection.value!),
+  },
+  {
+    label: 'Go to main component',
+    disabled: mainComponent.value === null,
+    run: () => void goToMainComponent(),
+  },
+  {
+    label: 'Detach instance',
+    shortcut: '⌥⌘B',
+    disabled: detach.value === null,
+    run: detachSelection,
+  },
+  {
+    label: 'Reset all overrides',
+    disabled: overridden.value === null,
+    run: resetOverrides,
+  },
+  { kind: 'separator' },
+  {
+    label: 'Frame selection',
+    shortcut: '⌘⌥G',
+    disabled: framing.value === null,
+    run: frameSelection,
+  },
+  {
+    label: 'Make component',
+    shortcut: '⌘⌥K',
+    disabled: componentSource.value === null,
+    run: startMakeComponent,
+  },
+  {
+    label: 'Place instance…',
+    disabled: components.value.size === 0,
+    run: () => (picking.value = true),
+  },
+  { label: 'New slot', disabled: slotTarget.value === null, run: addSlot },
+  { label: 'Repeat over a list', disabled: repeatTarget.value === null, run: addRepeat },
+  { kind: 'separator' },
+  { label: 'Undo', shortcut: '⌘Z', disabled: !undoStack.canUndo, run: undo },
+  { label: 'Redo', shortcut: '⇧⌘Z', disabled: !undoStack.canRedo, run: redo },
+  { kind: 'separator' },
+  {
+    label: 'Delete',
+    shortcut: '⌫',
+    danger: true,
+    disabled: deletable.value === null,
+    run: removeSelection,
+  },
+]
+
 const socket = createUidxSocket({
   onState: (state) => {
     connection.value = state
@@ -374,6 +746,10 @@ const socket = createUidxSocket({
         // page and no answer at all for the dashboard.
         documentId.value = message.id
         forgetDeparted(message.pages)
+        // The headless library the Contract tab offers (ADR 0013 §3). On every
+        // announcement rather than once: a reconnect is also when a re-synced
+        // `custom-elements.json` should show its new elements.
+        void refreshHeadless()
         // The URL outranks the server's entry page: a reload, a bookmark and a
         // Back all arrive here, and every one of them means "the page I was on"
         // rather than "the page the command line named". `replaceState` rather
@@ -421,7 +797,8 @@ const socket = createUidxSocket({
           message.patchId !== undefined &&
           (inFlight.has(message.patchId) ||
             historyPatchIds.has(message.patchId) ||
-            pendingInverse.has(message.patchId))
+            pendingInverse.has(message.patchId) ||
+            recordedPatchIds.has(message.patchId))
         // Our own edit landing on the document we already predicted, and the
         // hash agrees: adopting that exact object leaves `shown` unchanged, so
         // the canvas, the rail and the inspector do no second pass. It only
@@ -447,7 +824,9 @@ const socket = createUidxSocket({
         if (message.patchId) {
           // Our own write landing: the prediction is now the document.
           inFlight.settle(message.patchId)
+          if (own) saveSettled()
           historyPatchIds.delete(message.patchId)
+          recordedPatchIds.delete(message.patchId)
           const pending = pendingInverse.get(message.patchId)
           if (pending) {
             pendingInverse.delete(message.patchId)
@@ -456,6 +835,7 @@ const socket = createUidxSocket({
               pending.forward,
               diffToPatches(incoming, pending.before),
               labelFor(pending.forward),
+              pending.group,
             )
           }
         }
@@ -582,9 +962,6 @@ function adoptPage(file: string): boolean {
  */
 const view = ref<View>(HOME)
 
-/** A project always has an overview, including before its second page exists. */
-const canGoHome = computed(() => documentId.value !== null)
-
 /** The history entry for a view. Home carries no page, the way its URL does not. */
 function stateFor(next: View): { page: string | null } {
   return { page: next.kind === 'home' ? null : next.file }
@@ -689,6 +1066,21 @@ const shown = computed<UidxDocument | null>(() => {
 const sceneDoc = computed(() => (renderable.value ? shown.value : null))
 
 /**
+ * What the rail highlights: a canvas selection in the default state of a
+ * derived component is the base layer it draws (ADR 0016 §4), and that is
+ * the row the rail has. Other states keep their own address; the rail shows
+ * nothing for them, since the file has no line for a derived node.
+ */
+const railSelection = computed(() => {
+  const doc_ = sceneDoc.value
+  if (!doc_) return selection.value
+  return selection.value.map((address) => {
+    const target = derivedTarget(doc_, address)
+    return target?.isDefault ? target.base.address : address
+  })
+})
+
+/**
  * A `<Tokens>` page's page view IS its tokens view (spec §1): the moment the
  * page's document is known — which may be a beat after navigation on a fresh
  * connect — the view upgrades in place. `replaceState`, not push: the author
@@ -708,8 +1100,74 @@ watch(
   { immediate: true },
 )
 
+/** The left panel's tab on a page: what is on it, or what can be added. */
+const railTab = ref<'layers' | 'insert'>('layers')
+/** The Insert panel floated above the bottom bar, Figma's quick-insert. */
+const floatingInsert = ref(false)
+
+/** A face chosen in the top bar; from the overview it opens on the page the canvas holds. */
+function faceFromBar(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
+  if (view.value.kind === 'home') {
+    if (entry.value) openView({ kind, file: entry.value })
+    return
+  }
+  toggleFace(kind)
+}
+
+/**
+ * An Insert-panel block: into the selected frame when it takes children, else
+ * beside the selection, else on the page — placed to the right of what is
+ * already there when the page arranges nothing itself — then selected.
+ */
+function insertBlock(spec: UidxNodeSpec): void {
+  const docNow = sceneDoc.value
+  if (!docNow) return
+  const selected = selection.value.length === 1 ? selection.value[0]! : null
+  const candidates = [
+    selected,
+    selected ? (parentOf(docNow, selected)?.address ?? null) : null,
+    '',
+  ].filter((address): address is string => address !== null)
+  const parent = candidates.find((address) => canInsert(docNow, address, spec.element))
+  if (parent === undefined) {
+    onRefused('Nothing here can hold a new block; select a frame first.')
+    return
+  }
+  const parentNode = parent === '' ? docNow.tree : resolve(docNow.tree, parent)
+  if (!parentNode) return
+  const wanted = String(spec.attrs.name ?? autoName(spec.element, parentNode.children))
+  const name = parentNode.children.some((child) => child.name === wanted)
+    ? autoName(spec.element, parentNode.children)
+    : wanted
+  const attrs: Record<string, JsonValue> = { ...spec.attrs, name }
+  const auto =
+    typeof parentNode.attrs.layoutMode?.value === 'string' &&
+    parentNode.attrs.layoutMode.value !== 'NONE'
+  if (parent === '' && !auto) {
+    let right = 0
+    let top: number | null = null
+    for (const child of parentNode.children) {
+      const box = canvasPane.value?.exportBounds(child.address)
+      if (!box) continue
+      right = Math.max(right, box.maxX)
+      top = top === null ? box.minY : Math.min(top, box.minY)
+    }
+    attrs.x = parentNode.children.length ? Math.round(right + 48) : 0
+    attrs.y = Math.round(top ?? 0)
+  }
+  commitPatches([
+    {
+      op: 'insert-node',
+      parent,
+      index: parentNode.children.length,
+      node: { ...spec, attrs },
+    },
+  ])
+  selection.value = [addressOf(parent, name)]
+}
+
 /** Workspace faces. Elements is disabled for a token-only page. */
-function toggleFace(kind: 'page' | 'tokens' | 'fonts'): void {
+function toggleFace(kind: 'page' | 'tokens' | 'fonts' | 'models' | 'docs'): void {
   const now = view.value
   if (now.kind === 'home' || now.kind === kind) return
   if (kind === 'page' && !renderable.value) return
@@ -775,13 +1233,13 @@ const TOKEN_SEED: Record<VariableType, JsonValue> = {
  * shape from there. (The design studies put the row straight into edit state;
  * that refinement rides on the rename flow rather than a dialog here.)
  */
-function onAddToken(collection: string): void {
+function onAddToken(collection: string, chosen?: VariableType): void {
   const group = tokenGroups.value.find((g) => g.name === collection)
   if (!group) return
   const declaring = pages.value.get(group.file)
   const node = declaring?.tree.children.find((c) => c.name === collection)
   if (!declaring || !node) return
-  const type = group.rows[0]?.type ?? 'FLOAT'
+  const type = chosen ?? group.rows[0]?.type ?? 'FLOAT'
   const name = freshName('new-token', (candidate) =>
     tokenIndex.value.entries.has(`${collection}#${candidate}`),
   )
@@ -850,12 +1308,141 @@ function onTokenDelete(): void {
   // extra literals in other files, never a reference to a variable already
   // gone. `commitAcrossPages` orders for the open page, which is a different
   // concern, so the ordering is spelled out here.
+  const group = newGroup()
   for (const [file, patches] of plan.byFile) {
     if (file === plan.declaringFile) continue
-    commitAcrossPages(new Map([[file, patches]]))
+    commitAcrossPages(new Map([[file, patches]]), group)
   }
-  commitAcrossPages(new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]))
+  commitAcrossPages(
+    new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]),
+    group,
+  )
   selection.value = []
+}
+
+/** Uses, in other files, of the components a page declares: what deleting it breaks. */
+function usesOutside(file: string): number {
+  const doc = pages.value.get(file)
+  if (!doc || doc.tree.element === 'Tokens') return 0
+  return doc.tree.children
+    .filter((node) => node.element === 'Component')
+    .flatMap((node) => dependents.value.ofComponent.get(node.name) ?? [])
+    .filter((dependent) => dependent.file !== file).length
+}
+
+/** Rename and delete go to the server, which owns the files; it re-announces the pages. */
+async function pageAction(body: object): Promise<string | null> {
+  try {
+    const response = await fetch('/__uidx/pages', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(15000),
+    })
+    const answer = (await response.json()) as { file?: string; error?: string }
+    if (!response.ok || !answer.file) throw new Error(answer.error ?? 'The server refused.')
+    return answer.file
+  } catch (error) {
+    onRefused(error instanceof Error ? error.message : String(error))
+    return null
+  }
+}
+
+async function onRenamePage(file: string, name: string): Promise<void> {
+  const renamed = await pageAction({ action: 'rename', file, name })
+  if (renamed && entry.value === file) openPage(renamed)
+}
+
+async function onDeletePage(file: string): Promise<void> {
+  const wasOpen = entry.value === file
+  if ((await pageAction({ action: 'delete', file })) && wasOpen) openHome()
+}
+
+const creatingTokensFile = ref(false)
+/** "New file…" from the top bar's file switcher. */
+const creatingFile = ref(false)
+function onTokensFileCreated(file: string): void {
+  creatingTokensFile.value = false
+  openPage(file)
+}
+
+/** A refactor plan sent file by file, or its refusal shown, never half-built. */
+function commitPlan(build: () => { byFile: ReadonlyMap<string, readonly UidxPatch[]> }): boolean {
+  try {
+    commitAcrossPages(build().byFile)
+    return true
+  } catch (error) {
+    onRefused(error instanceof Error ? error.message : String(error))
+    return false
+  }
+}
+
+function onRenameCollection(name: string, newName: string): void {
+  if (!commitPlan(() => renameCollection(pages.value, dependents.value, name, newName))) return
+  selection.value = selection.value.map((address) =>
+    address.startsWith(`${name}#`) ? `${newName}${address.slice(name.length)}` : address,
+  )
+}
+
+function onSetTier(name: string, tier: string | null): void {
+  const group = tokenGroups.value.find((candidate) => candidate.name === name)
+  const node = group && pages.value.get(group.file)?.tree.children.find((c) => c.name === name)
+  if (!group || !node) return
+  const has = node.attrs.tier !== undefined
+  if (tier === null && !has) return
+  dispatch(
+    group.file,
+    [
+      tier === null
+        ? { op: 'remove', address: node.address, prop: 'tier' }
+        : { op: has ? 'set' : 'add', address: node.address, prop: 'tier', value: tier },
+    ],
+    true,
+  )
+}
+
+/** The collection's modes as authored: the implicit one when it declares none. */
+function modeShapes(name: string): ModeShape[] {
+  const modes = tokenIndex.value.collections.get(name)?.modes ?? [IMPLICIT_MODE]
+  return modes.map((mode) => ({ name: mode, from: mode }))
+}
+
+function onAddMode(name: string, mode: string): void {
+  const current = modeShapes(name)
+  // A collection without modes gets two: its values become the first, named
+  // as the opposite of the new one when that is obvious.
+  const first =
+    current.length === 1
+      ? [
+          {
+            name: mode === 'dark' ? 'light' : mode === 'light' ? 'dark' : current[0]!.name,
+            from: current[0]!.from,
+          },
+        ]
+      : current
+  commitPlan(() =>
+    setCollectionModes(pages.value, name, [...first, { name: mode, from: first[0]!.from }]),
+  )
+}
+
+function onRenameMode(name: string, mode: string, newName: string): void {
+  commitPlan(() =>
+    setCollectionModes(
+      pages.value,
+      name,
+      modeShapes(name).map((shape) => (shape.name === mode ? { ...shape, name: newName } : shape)),
+    ),
+  )
+}
+
+function onRemoveMode(name: string, mode: string): void {
+  commitPlan(() =>
+    setCollectionModes(
+      pages.value,
+      name,
+      modeShapes(name).filter((shape) => shape.name !== mode),
+    ),
+  )
 }
 
 const removingCollection = ref<string | null>(null)
@@ -886,10 +1473,14 @@ function confirmCollectionRemoval(): void {
   if (!plan) return
   // Preserve outside references before removing their declarations, matching
   // individual token removal. The preview re-evaluates if the document changes.
+  const group = newGroup()
   for (const [file, patches] of plan.byFile) {
-    if (file !== plan.declaringFile) commitAcrossPages(new Map([[file, patches]]))
+    if (file !== plan.declaringFile) commitAcrossPages(new Map([[file, patches]]), group)
   }
-  commitAcrossPages(new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]))
+  commitAcrossPages(
+    new Map([[plan.declaringFile, plan.byFile.get(plan.declaringFile) ?? []]]),
+    group,
+  )
   selection.value = selection.value.filter((address) => !plan.tokens.includes(address))
   removingCollection.value = null
   // The removed header cannot receive focus when its dialog closes.
@@ -907,6 +1498,21 @@ function onTokenDeprecate(value: boolean): void {
       ? { op: 'set', address: row.address, prop: 'deprecated', value: true }
       : { op: 'add', address: row.address, prop: 'deprecated', value: true }
     : { op: 'remove', address: row.address, prop: 'deprecated' }
+  commitAcrossPages(new Map([[row.file, [patch]]]))
+}
+
+function onTokenAttr(prop: string, value: JsonValue | null): void {
+  const row = selectedTokenRow.value
+  if (!row) return
+  const declaring = pages.value.get(row.file)
+  const node = declaring ? findTokenNode(declaring, row.address) : null
+  if (!node) return
+  const has = node.attrs[prop] !== undefined
+  if (value === null && !has) return
+  const patch: UidxPatch =
+    value === null
+      ? { op: 'remove', address: row.address, prop }
+      : { op: has ? 'set' : 'add', address: row.address, prop, value }
   commitAcrossPages(new Map([[row.file, [patch]]]))
 }
 
@@ -964,7 +1570,10 @@ const channel = createPatchChannel({
     doc.value = null
     doc.value = authoritative
   },
-  onNotice: (next) => (patchNotice.value = next),
+  onNotice: (next) => {
+    patchNotice.value = next
+    if (next?.kind === 'rejected') saveSettled()
+  },
   /**
    * E4. The file is the source of truth, so it changing underneath an edit is
    * routine, not an error. The stale answer always arrives after the
@@ -1001,9 +1610,18 @@ const pendingRename = shallowRef<{
   plan: import('@uidx/schema').RefactorPlan
 } | null>(null)
 
-function commitPatches(patches: UidxPatch[]): void {
+function commitPatches(incoming: UidxPatch[]): void {
   const page = entry.value
   if (page === null || revision.value === null) return
+  // An edit to a derived state lands on its style row (ADR 0016 §4); one
+  // that cannot is refused with the reason, before anything is sent.
+  const routed = shown.value ? routeDerivedPatches(shown.value, incoming) : { patches: incoming }
+  if ('refused' in routed) {
+    onRefused(routed.refused)
+    return
+  }
+  const patches = routed.patches
+  if (patches.length === 0) return
   // A lone set-name on an instantiated component is not one page's edit: the
   // engine rewrites every instance, and the author sees the radius first.
   const plan = componentRenamePlan(pages.value, dependents.value, patches)
@@ -1023,10 +1641,17 @@ function commitPatches(patches: UidxPatch[]): void {
 const undoStack = createUndoStack()
 /** Patch ids dispatched *by* undo or redo: their confirmations must not push entries. */
 const historyPatchIds = new Set<string>()
+/**
+ * Author batches already on the undo stack, until the server confirms them.
+ * Without it a write to a page other than the open one (which `inFlight`
+ * does not track) came back looking like somebody else's revision and was
+ * recorded a second time, as an external change.
+ */
+const recordedPatchIds = new Set<string>()
 /** Author batches whose inverse waits for the confirmed document (structural ops). */
 const pendingInverse = new Map<
   string,
-  { file: string; forward: UidxPatch[]; before: UidxDocument }
+  { file: string; forward: UidxPatch[]; before: UidxDocument; group?: string }
 >()
 
 function labelFor(patches: readonly UidxPatch[]): string {
@@ -1034,6 +1659,18 @@ function labelFor(patches: readonly UidxPatch[]): string {
   if (!first) return 'Edit'
   if (first.op === 'set' || first.op === 'add' || first.op === 'remove') {
     return `${first.prop} on ${first.address || 'page'}`
+  }
+  if (first.op === 'contract') return `${first.kind} ${first.name}`
+  if (first.op === 'model') return `model ${first.name}`
+  if (first.op === 'field') return `${first.model}.${first.name}`
+  if (first.op === 'region') return first.name === 'Behavior' ? 'behaviour rules' : 'examples'
+  if (first.op === 'intent') return 'description'
+  if (first.op === 'contract-element') return first.element.toLowerCase()
+  if (first.op === 'style') {
+    const at = Object.entries(first.keys)
+      .map(([axis, value]) => `${axis}=${value}`)
+      .join(', ')
+    return `${first.target}:${first.prop} for ${at}`
   }
   return first.op
 }
@@ -1048,7 +1685,12 @@ function labelFor(patches: readonly UidxPatch[]): string {
  * — so two quick edits to one property each record the value that was on
  * screen, not the confirmed value both started from.
  */
-function dispatch(file: string, patches: readonly UidxPatch[], record: boolean): string | null {
+function dispatch(
+  file: string,
+  patches: readonly UidxPatch[],
+  record: boolean,
+  group?: string,
+): string | null {
   const at = revisions.value.get(file)
   const base = pages.value.get(file)
   if (at === undefined || !base) return null
@@ -1063,10 +1705,19 @@ function dispatch(file: string, patches: readonly UidxPatch[], record: boolean):
   }
   const patchId = channel.dispatch(file, at, patches, base)
   if (!patchId) return null
+  saveStarted()
   if (file === entry.value) inFlight.push(patchId, patches)
   if (!record) historyPatchIds.add(patchId)
-  else if (inverse) undoStack.pushAuthor(file, [...patches], inverse, labelFor(patches))
-  else pendingInverse.set(patchId, { file, forward: [...patches], before: base })
+  else if (inverse) {
+    undoStack.pushAuthor(file, [...patches], inverse, labelFor(patches), group)
+    recordedPatchIds.add(patchId)
+  } else
+    pendingInverse.set(patchId, {
+      file,
+      forward: [...patches],
+      before: base,
+      ...(group ? { group } : {}),
+    })
   return patchId
 }
 
@@ -1122,15 +1773,28 @@ function onRefused(reason: string): void {
   patchNotice.value = { kind: 'rejected', message: reason }
 }
 
-function commitAcrossPages(byFile: ReadonlyMap<string, readonly UidxPatch[]>): void {
+/**
+ * Sends one action's batches, one per page. Several files share an undo
+ * group, so the action is undone in one step; `group` lets a caller that
+ * sends in several calls (a delete, declaring file last) keep them together.
+ */
+function commitAcrossPages(
+  byFile: ReadonlyMap<string, readonly UidxPatch[]>,
+  group?: string,
+): void {
   const open = entry.value
   const files = [...byFile.keys()].sort((a, b) => Number(a === open) - Number(b === open))
+  const shared =
+    group ?? (files.filter((file) => byFile.get(file)?.length).length > 1 ? newGroup() : undefined)
   for (const file of files) {
     const patches = byFile.get(file)
     if (!patches?.length) continue
-    dispatch(file, patches, true)
+    dispatch(file, patches, true, shared)
   }
 }
+
+let groups = 0
+const newGroup = (): string => `group-${Date.now()}-${(groups += 1)}`
 
 function onPreview(address: string, prop: string, value: JsonValue): void {
   canvasPane.value?.applyProp(address, prop, value, 'preview')
@@ -1143,6 +1807,9 @@ function onPreview(address: string, prop: string, value: JsonValue): void {
  * through `fromSceneChange` and emits back here. Routing it that way rather than
  * building a patch here means panel edits and canvas gestures share one filter —
  * so D4's rule about computed geometry is enforced in one place rather than two.
+ * An instance's outer box comes this way too, though it writes nothing to the
+ * scene: the canvas holds its scrub, so it is the canvas that lets the scrub go
+ * and writes the patch (`restyleInstance`, ADR 0018 §7).
  */
 function onCommit(address: string, prop: string, value: JsonValue): void {
   canvasPane.value?.applyProp(address, prop, value, 'commit')
@@ -1271,6 +1938,13 @@ function onCanvasPatches(patches: UidxPatch[]): void {
  * other — because the canvas has one press to give.
  */
 const placing = ref<string | null>(null)
+/** The component the selection sits inside: not on offer, since it cannot hold itself. */
+const placingInto = computed(() => {
+  const doc_ = sceneDoc.value
+  const address = selection.value[0]
+  if (!doc_ || !address) return null
+  return enclosingComponent(doc_, address)?.name ?? null
+})
 /** Open while the author is choosing which component to place. */
 const picking = ref(false)
 
@@ -1344,6 +2018,10 @@ const componentSource = computed<string | null>(() => {
 
 /** Open while the author is naming the component (F10). Holds the address. */
 const naming = ref<string | null>(null)
+/** The first component on the open page: a second one would share its contract (ADR 0013). */
+const pageComponent = computed(
+  () => sceneDoc.value?.tree.children.find((child) => child.element === 'Component')?.name ?? null,
+)
 
 function startMakeComponent(): void {
   naming.value = componentSource.value
@@ -1388,6 +2066,48 @@ const slotTarget = computed(() =>
  * this is the gesture that makes one. The rail shows the row either way, but
  * the author should not have to go looking for what they just made.
  */
+/** Whether the selected layer can repeat over a list of its contract (ADR 0017 §2). */
+const repeatTarget = computed(() =>
+  sceneDoc.value ? repeatTargetFor(sceneDoc.value, selection.value, models.value) : null,
+)
+
+/** Repeat the selected layer over the first list its contract can place; it stays selected. */
+function addRepeat(): void {
+  const doc_ = sceneDoc.value
+  if (!doc_) return
+  const made = newRepeatFor(doc_, selection.value, models.value)
+  if (!made) return
+  commitPatches(made.patches)
+  selection.value = [made.address]
+}
+
+/**
+ * A row chosen in the rail. A modified click adds it to the selection or takes
+ * it out, as in Figma's layers panel — which is how siblings are gathered for
+ * Frame selection without drawing a marquee around them.
+ */
+function selectFromRail(address: string, additive = false): void {
+  if (!additive) selection.value = [address]
+  else if (selection.value.includes(address))
+    selection.value = selection.value.filter((entry) => entry !== address)
+  else selection.value = [...selection.value, address]
+}
+
+/** What Frame selection would make, or null when the selection cannot be wrapped. */
+const framing = computed(() =>
+  sceneDoc.value && selection.value.length
+    ? frameSelectionFor(sceneDoc.value, selection.value)
+    : null,
+)
+
+/** Wrap the selected siblings in a new auto-layout frame, and select it (⌘⌥G). */
+function frameSelection(): void {
+  const made = framing.value
+  if (!made) return
+  commitPatches(made.patches)
+  selection.value = [made.address]
+}
+
 function addSlot(): void {
   const doc_ = sceneDoc.value
   if (!doc_) return
@@ -1400,6 +2120,21 @@ function addSlot(): void {
 function removeSelection(): void {
   const address = deletable.value
   if (address === null) return
+  // A component its instances still name cannot go — the file would no
+  // longer check — so say where it is used instead of letting it bounce.
+  const node = sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  if (node?.element === 'Component') {
+    const uses = (dependents.value.ofComponent.get(node.name) ?? []).filter(
+      (dependent) => dependent.kind === 'instance',
+    )
+    if (uses.length) {
+      const files = [...new Set(uses.map((use) => use.file))]
+      onRefused(
+        `${node.name} is used ${uses.length} ${uses.length === 1 ? 'time' : 'times'} (${files.slice(0, 3).join(', ')}${files.length > 3 ? ', …' : ''}). Remove or detach those instances first, or mark it deprecated to stop new uses.`,
+      )
+      return
+    }
+  }
   commitPatches([{ op: 'remove-node', address }])
   selection.value = []
 }
@@ -1413,6 +2148,10 @@ function removeSelection(): void {
  * still edits the hex.
  */
 function onKeyDown(event: KeyboardEvent): void {
+  if (event.key === 'Escape' && floatingInsert.value) {
+    floatingInsert.value = false
+    return
+  }
   if (!doc.value || event.defaultPrevented) return
   // ⌘Z / ⇧⌘Z (spec §5). The canvas SDK's command registry binds the same keys
   // but the viewer never mounts it — only `provideEditor`, `useCanvas` and the
@@ -1429,6 +2168,25 @@ function onKeyDown(event: KeyboardEvent): void {
   // a modifier on it. It guards itself: `componentSource` is null when the
   // selection cannot become a component, and opening the dialog on null is a
   // no-op, so the key never does something the button would have refused.
+  if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyB') {
+    if (isTypingTarget(event)) return
+    event.preventDefault()
+    detachSelection()
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.code === 'KeyD') {
+    if (isTypingTarget(event)) return
+    // Always taken, so the browser's bookmark dialog never opens over the canvas.
+    event.preventDefault()
+    duplicateSelection()
+    return
+  }
+  if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyG') {
+    if (isTypingTarget(event)) return
+    event.preventDefault()
+    frameSelection()
+    return
+  }
   if ((event.metaKey || event.ctrlKey) && event.altKey && event.code === 'KeyK') {
     if (isTypingTarget(event)) return
     event.preventDefault()
@@ -1436,6 +2194,27 @@ function onKeyDown(event: KeyboardEvent): void {
     return
   }
   if (event.defaultPrevented) return
+  // Figma's selection keys: Shift+Enter up to the holder, Enter down into what
+  // the layer holds — the way to reach a layer the canvas hides under another.
+  if (
+    event.key === 'Enter' &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.altKey &&
+    selection.value.length === 1 &&
+    !isTypingTarget(event) &&
+    !(event.target instanceof HTMLElement && event.target.closest('[role="treeitem"], button'))
+  ) {
+    const at = selection.value[0]!
+    const next = event.shiftKey
+      ? parentSelection(sceneDoc.value, at)
+      : childSelection(sceneDoc.value, at)
+    if (next !== null) {
+      event.preventDefault()
+      selection.value = Array.isArray(next) ? next : [next]
+    }
+    return
+  }
   if (connection.value !== 'open') return
   const next = toolFor(event)
   if (next !== undefined) {
@@ -1464,18 +2243,33 @@ onUnmounted(() => socket.close())
 
 <template>
   <div class="shell">
-    <div v-if="view.kind === 'home'" class="home-bar">
-      <WorkspaceNav
-        :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
-        :page="String(doc?.frontmatter.id ?? entry ?? '')"
-        :view="view.kind"
-        :can-go-home="canGoHome"
-        :renderable="renderable"
-        @home="openHome"
-        @face="toggleFace"
-      />
-      <WorkspaceStatus :connection="connection" :revision="null" />
-    </div>
+    <AppBar
+      :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
+      :page="String(doc?.frontmatter.id ?? entry ?? '')"
+      :view="view.kind"
+      :renderable="renderable"
+      :connection="connection"
+      :saving="savesInFlight > 0"
+      :saved="savedOnce"
+      :can-undo="undoStack.canUndo"
+      :can-redo="undoStack.canRedo"
+      :code-out="codegenState.out"
+      :code-running="codegenState.running"
+      :code-notice="codegenState.notice"
+      :agent-online="agent.status.value.online"
+      :agent-open="agent.open.value"
+      :files="pageList"
+      :current="entry"
+      @home="openHome"
+      @open="openPage"
+      @new-file="creatingFile = true"
+      @face="faceFromBar"
+      @undo="undo"
+      @redo="redo"
+      @code="generateCode()"
+      @agent="agent.toggle()"
+      @learn="learning = !learning"
+    />
 
     <!--
       Mounted only while it is open, so the name it suggests is read from the
@@ -1483,7 +2277,7 @@ onUnmounted(() => socket.close())
     -->
     <PickComponentDialog
       v-if="picking"
-      :components="offerableComponents(components)"
+      :components="offerableComponents(components, placingInto)"
       @pick="placeInstance"
       @close="picking = false"
     />
@@ -1516,10 +2310,19 @@ onUnmounted(() => socket.close())
       </div>
     </div>
 
+    <NewPageDialog
+      v-if="creatingFile"
+      @created="(file) => ((creatingFile = false), openPage(file))"
+      @close="creatingFile = false"
+    />
+
+    <ContextMenu v-if="menu" :x="menu.x" :y="menu.y" :items="menuItems()" @close="menu = null" />
+
     <NameComponentDialog
       v-if="naming !== null"
       :suggested="naming.split(/[#/]/).at(-1) ?? 'Component'"
       :taken="takenNames"
+      :shares-with="pageComponent"
       @confirm="makeComponent"
       @close="naming = null"
     />
@@ -1568,36 +2371,75 @@ onUnmounted(() => socket.close())
       class="panes"
       :class="{
         solo: view.kind === 'home',
-        'without-inspector': view.kind === 'fonts' || (view.kind === 'tokens' && !selectedTokenRow),
+        'without-inspector':
+          view.kind === 'fonts' ||
+          view.kind === 'models' ||
+          view.kind === 'docs' ||
+          (view.kind === 'tokens' && !selectedTokenRow),
       }"
     >
       <aside v-if="view.kind !== 'home'" class="rail" aria-label="Document navigation">
-        <WorkspaceNav
-          :title="String(documentId ?? doc?.frontmatter.id ?? 'uidx')"
-          :page="String(doc?.frontmatter.id ?? entry ?? '')"
-          :view="view.kind"
-          :can-go-home="canGoHome"
-          :renderable="renderable"
-          @home="openHome"
-          @face="toggleFace"
-        />
+        <!--
+          Pages first and always: moving between files is the left panel's
+          first job, on every face. Below them, what is on the page or what
+          can be added to it.
+        -->
         <ErrorBoundary pane="Pages">
-          <PagesList :entries="pageList" :open="entry" @open="openPage" @home="openHome" />
+          <PagesList
+            :entries="pageList"
+            :open="entry"
+            :writable="connection === 'open'"
+            :uses-outside="usesOutside"
+            @open="openPage"
+            @home="openHome"
+            @rename="onRenamePage"
+            @delete="onDeletePage"
+          />
         </ErrorBoundary>
-        <ErrorBoundary v-if="view.kind === 'page'" pane="Layers">
+        <nav v-if="view.kind === 'page'" class="rail-tabs" aria-label="Left panel">
+          <button
+            type="button"
+            :aria-pressed="railTab === 'layers'"
+            data-rail-tab="layers"
+            @click="railTab = 'layers'"
+          >
+            Layers
+          </button>
+          <button
+            type="button"
+            :aria-pressed="railTab === 'insert'"
+            data-rail-tab="insert"
+            @click="railTab = 'insert'"
+          >
+            Assets
+          </button>
+        </nav>
+        <ErrorBoundary v-if="view.kind === 'page' && railTab === 'insert'" pane="Insert">
+          <InsertPanel
+            :components="components"
+            :writable="connection === 'open' && sceneDoc !== null"
+            :tool="tool"
+            :placing="placing"
+            @tool="armTool"
+            @insert="insertBlock"
+            @image="(file) => canvasPane?.placeImage(file)"
+            @place="placeInstance"
+          />
+        </ErrorBoundary>
+        <ErrorBoundary v-else-if="view.kind === 'page'" pane="Layers">
           <LayersPane
+            ref="layersPane"
             :doc="sceneDoc"
-            :selection="selection"
+            :selection="railSelection"
             :components="components"
             :vector-editing="vertexEditing"
             :writable="connection === 'open'"
             @edit-vector="editVector"
-            @select="selection = [$event]"
+            @select="selectFromRail"
             @patches="commitPatches"
             @moved="onMoved"
           />
         </ErrorBoundary>
-        <WorkspaceStatus :connection="connection" :revision="revision" />
       </aside>
 
       <!--
@@ -1617,6 +2459,7 @@ onUnmounted(() => socket.close())
           :connected="connection === 'open' && documentId !== null"
           @open="openPage"
           @tokens="openTokens"
+          @tutorial="startTour"
         />
       </ErrorBoundary>
 
@@ -1628,6 +2471,30 @@ onUnmounted(() => socket.close())
         as this view.
       -->
       <ErrorBoundary v-else-if="view.kind === 'fonts'" pane="Fonts"><FontsPane /></ErrorBoundary>
+      <ErrorBoundary v-else-if="view.kind === 'docs'" pane="Docs">
+        <DocsPane
+          :docs="docsModel"
+          :render="renderExample"
+          :stamp="`${definitions}:${fontGeneration}:${tokenGeneration}:${theme}`"
+          :doc="view.kind === 'docs' ? (pages.get(view.file) ?? null) : null"
+          :writable="connection === 'open'"
+          @open="onDocsOpen"
+          @patches="(file, patches) => commitAcrossPages(new Map([[file, patches]]))"
+        />
+      </ErrorBoundary>
+      <ErrorBoundary v-else-if="view.kind === 'models'" pane="Models">
+        <ModelsPane
+          :cards="modelCards"
+          :undeclared="undeclared"
+          :pages="modelPages"
+          :focus="focusedModel"
+          :writable="connection === 'open'"
+          @edit="onModelEdit"
+          @open="onModelOpen"
+          @rename-model="(from, to) => commitRefusable(renameModel(pages, from, to))"
+          @rename-field="(model, from, to) => commitRefusable(renameField(pages, model, from, to))"
+        />
+      </ErrorBoundary>
       <template v-else-if="view.kind === 'tokens'">
         <ErrorBoundary pane="Tokens">
           <TokensPane
@@ -1643,6 +2510,18 @@ onUnmounted(() => socket.close())
             @add-token="onAddToken"
             @add-collection="onAddCollection"
             @remove-collection="onRemoveCollection"
+            @rename-collection="onRenameCollection"
+            @set-tier="onSetTier"
+            @add-mode="onAddMode"
+            @rename-mode="onRenameMode"
+            @remove-mode="onRemoveMode"
+            @new-tokens-file="creatingTokensFile = true"
+          />
+          <NewPageDialog
+            v-if="creatingTokensFile"
+            kind="tokens"
+            @created="onTokensFileCreated"
+            @close="creatingTokensFile = false"
           />
         </ErrorBoundary>
         <ErrorBoundary v-if="selectedTokenRow" pane="Token">
@@ -1657,6 +2536,7 @@ onUnmounted(() => socket.close())
             @rename="onTokenRename"
             @delete="onTokenDelete"
             @deprecate="onTokenDeprecate"
+            @attr="onTokenAttr"
           />
         </ErrorBoundary>
       </template>
@@ -1675,28 +2555,55 @@ onUnmounted(() => socket.close())
             :placing="placing"
             :writable="connection === 'open'"
             :components="components"
+            :models="models"
+            :preview-sample="previewSample"
             @selection="selection = $event"
             @patches="onCanvasPatches"
             @moved="onMoved"
             @notice="editorNotice = $event || null"
+            @context-menu="menu = $event"
             @vertex-edit="vertexEditing = $event"
             @vector-info="vectorInfo = $event"
             @drawing-done="armTool(null)"
           >
             <template #tools>
+              <div v-if="floatingInsert" class="floating-insert" aria-label="Insert panel">
+                <header>
+                  <span>Insert</span>
+                  <button type="button" aria-label="Close" @click="floatingInsert = false">
+                    ×
+                  </button>
+                </header>
+                <InsertPanel
+                  :components="components"
+                  :writable="connection === 'open' && sceneDoc !== null"
+                  :tool="tool"
+                  :placing="placing"
+                  @tool="(next) => (armTool(next), (floatingInsert = false))"
+                  @insert="(spec) => (insertBlock(spec), (floatingInsert = false))"
+                  @image="(file) => (canvasPane?.placeImage(file), (floatingInsert = false))"
+                  @place="(name) => (placeInstance(name), (floatingInsert = false))"
+                />
+              </div>
               <EditToolbar
+                :insert-open="floatingInsert"
                 :tool="tool"
                 :can-delete="deletable !== null"
                 :can-make-component="componentSource !== null"
+                :can-frame-selection="framing !== null"
                 :placing="placing"
                 :can-place-instance="components.size > 0"
                 :can-add-slot="slotTarget !== null"
+                :can-add-repeat="repeatTarget !== null"
                 :writable="connection === 'open' && sceneDoc !== null"
+                @insert="floatingInsert = !floatingInsert"
                 @tool="armTool"
                 @remove="removeSelection"
                 @make-component="startMakeComponent"
+                @frame-selection="frameSelection"
                 @place-instance="picking = true"
                 @add-slot="addSlot"
+                @add-repeat="addRepeat"
               />
             </template>
           </CanvasPane>
@@ -1708,13 +2615,22 @@ onUnmounted(() => socket.close())
             :tokens="panelTokens"
             :token-index="tokenIndex"
             :components="components"
+            :models="models"
             :pages="pages"
             :file="entry ?? undefined"
+            :preview-index="previewSample"
             :writable="connection === 'open'"
             :export-bounds="exportBounds"
             :pin-frame="pinFrame"
             :vector-info="vectorInfo"
             :can-make-component="componentSource !== null"
+            :headless="headlessLibrary"
+            :headless-error="headlessError"
+            :headless-candidates="headlessCandidates"
+            :codegen="codegenState"
+            @select="selection = [$event]"
+            @choose-library="chooseHeadless($event)"
+            @generate-code="generateCode()"
             @edit-vector="editVector"
             @finish-vector="canvasPane?.finishDrawing()"
             @vector-action="canvasPane?.vectorAction($event)"
@@ -1726,32 +2642,81 @@ onUnmounted(() => socket.close())
             @refused="onRefused"
             @patches="commitPatches"
             @hover="onHover"
+            @open-model="openModel"
+            @open-component="goToComponent"
+            @preview-sample="previewSample = $event"
           />
         </ErrorBoundary>
       </template>
     </div>
+    <!-- The tutorials, from the top bar's Learn button. -->
+    <div v-if="learning" class="learn-panel" role="dialog" aria-label="Tutorials">
+      <header>
+        <span>Learn by building</span>
+        <button type="button" aria-label="Close" @click="learning = false">×</button>
+      </header>
+      <TutorialList compact @start="startTour" />
+      <button
+        v-if="tourRun"
+        type="button"
+        class="stop-tour"
+        @click="(stopTutorial(), (learning = false))"
+      >
+        Stop “{{ tourRun.tutorial.title }}”
+      </button>
+    </div>
+    <TourCoach v-if="tourRun" :state="tourState" />
   </div>
 </template>
 
 <style scoped>
+.learn-panel {
+  position: fixed;
+  top: calc(var(--bar-h) + 8px);
+  right: 12px;
+  z-index: 50;
+  width: 340px;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: var(--shadow-float);
+}
+.learn-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 6px 8px;
+  color: var(--text);
+  font-weight: 600;
+}
+.learn-panel header button {
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  font: inherit;
+  font-size: 16px;
+  cursor: pointer;
+}
+.stop-tour {
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  color: var(--danger);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .shell {
   display: flex;
   flex-direction: column;
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
-}
-.home-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex: none;
-  background: var(--panel);
-  border-bottom: 1px solid var(--line);
-}
-.home-bar :deep(.workspace-status) {
-  border: 0;
-  padding-right: 20px;
 }
 .banner {
   flex: none;
@@ -1805,8 +2770,73 @@ onUnmounted(() => socket.close())
   background: var(--panel);
   border-right: 1px solid var(--line);
 }
-.rail > :deep(.workspace-status) {
-  margin-top: auto;
+.rail-tabs {
+  display: flex;
+  flex: none;
+  gap: 16px;
+  height: 40px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line);
+}
+.rail-tabs button {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rail-tabs button:hover {
+  color: var(--text);
+}
+.rail-tabs button[aria-pressed='true'] {
+  color: var(--text);
+}
+.rail-tabs button[aria-pressed='true']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.rail > :deep(.insert) {
+  flex: 1;
+}
+.floating-insert {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  max-height: min(560px, 70vh);
+  transform: translateX(-50%);
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: var(--shadow-float);
+}
+.floating-insert > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+.floating-insert > header button {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  cursor: pointer;
 }
 .rail :deep(.layers),
 .rail :deep(.pages) {

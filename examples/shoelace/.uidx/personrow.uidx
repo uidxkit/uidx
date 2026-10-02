@@ -1,0 +1,53 @@
+---
+id: "personrow"
+---
+
+A compact row for one person: avatar, name and role. The list draws it by default.
+
+## Visual Contract
+
+<Page>
+  <Component name="PersonRow" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="MIN" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={6}
+    fills={[{ type: 'SOLID', color: '{color#surface-raised}' }]}
+    itemSpacing="{space#md}">
+    <Ellipse
+      name="avatar"
+      width={32}
+      height={32}
+      fills={[{ type: 'SOLID', color: '{color#accent}' }]}
+    />
+    <Frame
+      name="who"
+      layoutMode="VERTICAL"
+      primaryAxisSizingMode="AUTO"
+      counterAxisSizingMode="AUTO"
+    >
+      <Text name="name" characters="{person.name}" fontSize="{type#md}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text}' }]} />
+      <Text
+        name="role"
+        characters="{person.role}"
+        textAutoResize="WIDTH_AND_HEIGHT"
+        fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text-muted}' }]}
+        fontSize="{type#sm}"
+      />
+    </Frame>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="person" type="Person">The person this row shows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Person">
+  One member of the team: who they are and what they do.
+  <Field name="id" type="string" key sample={['ada', 'grace', 'linus', 'margaret']}>Stable identity.</Field>
+  <Field name="name" type="string" sample={['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds', 'Margaret Hamilton']}>Full display name.</Field>
+  <Field name="role" type="string" sample={['Mathematician', 'Rear admiral', 'Kernel maintainer', 'Flight software lead']}>What they do.</Field>
+</Model>

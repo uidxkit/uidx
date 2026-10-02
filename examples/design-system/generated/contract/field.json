@@ -1,0 +1,190 @@
+{
+  "id": "field",
+  "components": [
+    {
+      "name": "Field",
+      "implements": "hwc-field",
+      "status": "stable",
+      "boundParts": [
+        "label",
+        "description",
+        "error"
+      ],
+      "treeSlots": [
+        "control"
+      ],
+      "axes": {
+        "state": [
+          "default",
+          "error"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "root"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The control's name, shown beside it.",
+        "sample": "Email"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Secondary text: hints and consequences.",
+        "sample": "We never share it."
+      },
+      {
+        "name": "errorMessage",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Validation text, shown only while in error.",
+        "sample": "Enter a valid address."
+      },
+      {
+        "name": "error",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Whether the field is in its error state.",
+        "default": false
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [
+      {
+        "name": "control",
+        "description": "The wrapped control: a checkbox, a radio, a text input."
+      }
+    ],
+    "composes": [
+      "Checkbox",
+      "RadioGroup",
+      "TextInput"
+    ],
+    "accessibility": {
+      "labels": "aria-labelledby → label",
+      "describes": "aria-describedby → description, plus error while shown"
+    }
+  },
+  "behavior": [
+    {
+      "id": "activation",
+      "text": "clicking the label focuses the control and forwards the click, as a native label does; inert while the control is disabled."
+    },
+    {
+      "id": "naming",
+      "text": "the control is named by the label and described by the description, plus the error message while shown."
+    },
+    {
+      "id": "error",
+      "text": "`error` mounts the error message and asks the control to expose `aria-invalid`; announcing it is the application's policy."
+    },
+    {
+      "id": "claim",
+      "text": "the first field-aware control inside the field is the one it labels; a nested field scopes to its own subtree."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "error"
+      },
+      "values": {
+        "error": {
+          "visible": true
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

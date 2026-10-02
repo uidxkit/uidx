@@ -19,6 +19,21 @@ describe('createUndoStack (spec §5)', () => {
     expect(stack.undo()).toBeNull()
   })
 
+  it('joins the batches of one action across files into one undo step', () => {
+    const stack = createUndoStack()
+    stack.pushAuthor('a.uidx', [set(false)], [set(true)], 'Rename', 'g1')
+    stack.pushAuthor('b.uidx', [set(false)], [set(true)], 'Rename', 'g1')
+    stack.pushAuthor('a.uidx', [set(true)], [set(false)], 'Rename', 'g1')
+    stack.pushAuthor('c.uidx', [set(false)], [set(true)], 'Other', 'g2')
+    expect(stack.entries).toHaveLength(2)
+    stack.undo()
+    const rename = stack.undo()!
+    expect([...rename.files.keys()]).toEqual(['a.uidx', 'b.uidx'])
+    // Within one file the later batch is undone first.
+    expect(rename.files.get('a.uidx')!.inverse).toEqual([set(false), set(true)])
+    expect(stack.canUndo).toBe(false)
+  })
+
   it('a new entry clears redo', () => {
     const stack = createUndoStack()
     stack.pushAuthor('p.uidx', [set(false)], [set(true)], 'one')

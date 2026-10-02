@@ -640,7 +640,6 @@ input::placeholder {
   color: var(--text-faint);
 }
 select {
-  color-scheme: dark;
 }
 .library-toolbar select {
   min-width: 140px;

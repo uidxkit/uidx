@@ -110,6 +110,14 @@ describe('the open page, in the URL', () => {
     })
   })
 
+  it('round-trips a models view through the URL', () => {
+    const url = urlWithView(AT, { kind: 'models', file: 'contact-list.uidx' })
+    expect(viewToOpen(url, ['contact-list.uidx', 'home.uidx'], 'home.uidx')).toEqual({
+      kind: 'models',
+      file: 'contact-list.uidx',
+    })
+  })
+
   it('switching views rewrites, never accumulates, the view parameter', () => {
     const there = urlWithView(AT, { kind: 'tokens', file: 'core-tokens.uidx' })
     const back = urlWithView(there, { kind: 'page', file: 'core-tokens.uidx' })

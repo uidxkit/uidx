@@ -1,0 +1,258 @@
+{
+  "id": "contact-option",
+  "components": [
+    {
+      "name": "ContactOption",
+      "implements": "hwc-radio",
+      "status": "stable",
+      "boundParts": [
+        "checked-indicator"
+      ],
+      "treeSlots": [],
+      "axes": {
+        "state": [
+          "default",
+          "checked",
+          "disabled",
+          "hover",
+          "focus"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "root"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "item",
+        "type": "Contact",
+        "controllable": false,
+        "visual": false,
+        "description": "The person this option stands for. Display-ready; nothing is derived here."
+      },
+      {
+        "name": "checked",
+        "type": "boolean",
+        "controllable": true,
+        "visual": true,
+        "description": "Whether this option is the chosen one.",
+        "default": false
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "default": false
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Submitted when chosen; normally the contact's id."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Form field name, shared with the group."
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires when this option becomes the chosen one.",
+        "detail": "{ checked: boolean }"
+      }
+    ],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": [
+      "ContactList"
+    ]
+  },
+  "models": [
+    {
+      "name": "Contact",
+      "description": "One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.",
+      "fields": [
+        {
+          "name": "id",
+          "type": "string",
+          "key": true,
+          "optional": false,
+          "description": "Stable identity, used for keys and as the submitted value.",
+          "sample": [
+            "ada",
+            "grace",
+            "linus"
+          ]
+        },
+        {
+          "name": "name",
+          "type": "string",
+          "key": false,
+          "optional": false,
+          "description": "Full display name.",
+          "sample": [
+            "Ada Lovelace",
+            "Grace Hopper",
+            "Linus Torvalds"
+          ]
+        },
+        {
+          "name": "email",
+          "type": "string",
+          "key": false,
+          "optional": true,
+          "description": "Omitted when unknown; the row hides the line.",
+          "sample": [
+            "ada@example.com",
+            null,
+            "linus@example.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "behavior": [
+    {
+      "id": "choose",
+      "text": "click, or arrow keys within the group, makes this the chosen option and unchooses the others."
+    },
+    {
+      "id": "form",
+      "text": "the group submits the chosen option's `value` under the shared `name`."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "checked"
+      },
+      "values": {
+        "ring": {
+          "strokes": "{surface#accent}"
+        },
+        "checked-indicator": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "ring": {
+          "strokes": "{border#focus}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

@@ -9,10 +9,18 @@ export interface StackEntry {
   files: Map<string, { forward: UidxPatch[]; inverse: UidxPatch[] }>
   /** Source hashes of the revisions this entry covers, for turn attribution. */
   hashes: string[]
+  /** One action across several files: its batches join one entry, one undo step. */
+  group?: string
 }
 
 export interface UndoStack {
-  pushAuthor(file: string, forward: UidxPatch[], inverse: UidxPatch[], label: string): void
+  pushAuthor(
+    file: string,
+    forward: UidxPatch[],
+    inverse: UidxPatch[],
+    label: string,
+    group?: string,
+  ): void
   pushExternal(file: string, forward: UidxPatch[], inverse: UidxPatch[], sourceHash: string): void
   /** Merges the run of external entries whose hashes a turn wrote into one turn entry. */
   attributeTurn(turn: string, written: readonly string[]): void
@@ -51,8 +59,25 @@ export function createUndoStack(): UndoStack {
   }
 
   return {
-    pushAuthor(file, forward, inverse, label) {
-      push({ label, origin: 'author', files: new Map([[file, { forward, inverse }]]), hashes: [] })
+    pushAuthor(file, forward, inverse, label, group) {
+      // A batch of an action already on top of the stack joins it: a rename
+      // that rewrote four files is undone as one step, not file by file.
+      const top = past.at(-1)
+      if (group && top?.group === group && top.origin === 'author') {
+        const slot = top.files.get(file) ?? { forward: [], inverse: [] }
+        slot.forward.push(...forward)
+        slot.inverse.unshift(...inverse)
+        top.files.set(file, slot)
+        bump()
+        return
+      }
+      push({
+        label,
+        origin: 'author',
+        files: new Map([[file, { forward, inverse }]]),
+        hashes: [],
+        ...(group ? { group } : {}),
+      })
     },
     pushExternal(file, forward, inverse, sourceHash) {
       const label = forward.length

@@ -61,3 +61,15 @@ addresses and current document state. `check` and `fmt` also work offline.
 For node grammar, read [uidx-authoring](../uidx-authoring/SKILL.md). For JavaScript
 batch edits, read [uidx-eval-api](../uidx-eval-api/SKILL.md). When asked to document
 a component, read [uidx-component-docs](../uidx-component-docs/SKILL.md).
+
+## Building product UI with the design system
+
+Before writing UI code, ask what the design system offers: `uidx_components`,
+`uidx_component` and `uidx_tokens` over MCP, or `npx uidx components`,
+`npx uidx component <Name>` and `npx uidx tokens list`. Use the generated
+components with the props their contracts declare, and the tokens' CSS
+variables, never literals a token names. Change a component in its `.uidx`
+file and regenerate with `npx uidx codegen`; never edit generated files.
+
+After writing UI, `npx uidx lint src` reports colour literals a token names
+and raw elements a component stands for; fix what it names.

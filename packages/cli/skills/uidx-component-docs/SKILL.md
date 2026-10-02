@@ -5,8 +5,11 @@ description: Build a component documentation page in .uidx with live examples of
 
 # Component documentation
 
-Describe the component's purpose, public properties, variant axes, slots,
-anatomy, and usage constraints in Markdown above `## Visual Contract`.
+Describe the component's purpose and usage constraints in Markdown above
+`## Visual Contract`. Its public surface is not prose: props, events, slots,
+parts and accessibility belong in `## Contract`, behaviours in `## Behavior`
+bullets, and sample scenes in `## Examples` (see uidx-design-system). The
+documentation page shows them; it does not restate them in other words.
 Follow the project's documentation style and the user's requested scope.
 
 On the canvas, use instances of the component to demonstrate designed states

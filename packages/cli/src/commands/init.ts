@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { basename, resolve } from 'node:path'
 import { parseArgs } from 'node:util'
 import { glob } from 'tinyglobby'
@@ -7,6 +7,7 @@ import { readManifest } from '@uidx/server/document'
 import { configureMcp, installSkills, readMcpConfig } from '../setup.js'
 import type { Io } from '../cli.js'
 import { exists, findProjectRoot, PROJECT_DIR, readPackage } from '../project.js'
+import { CI_WORKFLOW, STARTER_BUTTON, STARTER_TOKENS } from '../starter.js'
 
 const STARTER = `---
 id: welcome
@@ -32,7 +33,7 @@ Edits in the viewer are saved back to these files.
 export async function initProject(
   cwd: string,
   script = 'uidx',
-  options: { port?: number } = {},
+  options: { port?: number; designSystem?: boolean; ci?: boolean } = {},
 ): Promise<string> {
   const root = await findProjectRoot(cwd)
   if (!root) throw new Error('No package.json found. Run uidx init inside an npm project.')
@@ -79,7 +80,17 @@ export async function initProject(
       `${JSON.stringify({ id, files: ['**/*.uidx'], assets: ['assets/**'] }, null, 2)}\n`,
       { flag: 'wx' },
     )
-    if (!hasPages) await writeFile(resolve(content, 'welcome.uidx'), STARTER, { flag: 'wx' })
+    if (!hasPages && !options.designSystem)
+      await writeFile(resolve(content, 'welcome.uidx'), STARTER, { flag: 'wx' })
+  }
+  if (options.designSystem) {
+    // A starter system is written beside whatever exists; nothing is replaced.
+    for (const [file, text] of [
+      ['tokens.uidx', STARTER_TOKENS],
+      ['button.uidx', STARTER_BUTTON],
+    ] as const) {
+      if (!(await exists(resolve(content, file)))) await writeFile(resolve(content, file), text)
+    }
   }
   const ignore = resolve(content, '.gitignore')
   if (!(await exists(ignore))) {
@@ -93,6 +104,14 @@ export async function initProject(
     await writeFile(resolve(content, 'config.json'), `${JSON.stringify(config, null, 2)}\n`)
   }
   await installSkills(root)
+  await writeAgentGuide(root, script)
+  if (options.ci) {
+    const workflow = resolve(root, '.github/workflows/uidx.yml')
+    if (!(await exists(workflow))) {
+      await mkdir(resolve(root, '.github/workflows'), { recursive: true })
+      await writeFile(workflow, CI_WORKFLOW)
+    }
+  }
   await configureMcp(mcp, script)
   if (Object.entries(additions).some(([name, command]) => scripts[name] !== command)) {
     data.scripts = { ...scripts, ...additions }
@@ -110,11 +129,18 @@ export async function runInit(argv: string[], io: Io): Promise<number> {
   try {
     const parsed = parseArgs({
       args: argv,
-      options: { script: { type: 'string', default: 'uidx' }, port: { type: 'string' } },
+      options: {
+        script: { type: 'string', default: 'uidx' },
+        port: { type: 'string' },
+        'design-system': { type: 'boolean', default: false },
+        ci: { type: 'boolean', default: false },
+      },
     })
     const script = parsed.values.script!
     const root = await initProject(io.cwd ?? process.cwd(), script, {
       port: parsed.values.port === undefined ? undefined : Number(parsed.values.port),
+      designSystem: parsed.values['design-system'] === true,
+      ci: parsed.values.ci === true,
     })
     io.out(
       `uidx ready in ${resolve(root, PROJECT_DIR)}\nRun npm run ${script} to open your design workspace.\nMCP: npm run --silent ${script}:mcp (.mcp.json).\nSkills: .agents/skills, .claude/skills, and .uidx/.uidx-agent/skills.\n`,
@@ -123,5 +149,53 @@ export async function runInit(argv: string[], io: Io): Promise<number> {
   } catch (error) {
     io.err(`${(error as Error).message}\n`)
     return 1
+  }
+}
+
+const GUIDE_START = '<!-- uidx:start -->'
+const GUIDE_END = '<!-- uidx:end -->'
+
+/** What a coding agent in this repository should know about its design system. */
+export function agentGuide(script: string): string {
+  return `${GUIDE_START}
+## Design system (uidx)
+
+This project's designs and design system live in \`.uidx/\` as text files, one
+component per page, and are versioned with the code.
+
+When you build or change UI:
+
+- **Use the design system's components and tokens.** Ask first: \`uidx_components\`
+  and \`uidx_component\` (MCP) or \`npx uidx components\` and \`npx uidx component <Name>\`
+  give each component's props, states, slots, behaviour rules, import line and a
+  usage line. Never invent a prop, and never hard-code a colour, space or radius
+  a token names — \`uidx_tokens\` / \`npx uidx tokens list\` gives each token's CSS variable.
+- **Change a component in its \`.uidx\` file, not in generated code.** Generated
+  files say so in their first line; regenerate with \`npx uidx codegen\`.
+- **Check your work.** \`npx uidx check\` and \`npx uidx lint src\` must pass; \`npx uidx render <page> -o out.png\`
+  shows a page as the canvas draws it. Designers review in the viewer: \`npm run ${script}\`.
+- Editing designs: load the \`uidx-design-system\` and \`uidx-authoring\` skills first.
+${GUIDE_END}
+`
+}
+
+/**
+ * Writes the guide into AGENTS.md (and CLAUDE.md when the project has one),
+ * replacing a previous uidx block and leaving everything else as it was.
+ */
+async function writeAgentGuide(root: string, script: string): Promise<void> {
+  const guide = agentGuide(script)
+  const targets = ['AGENTS.md']
+  if (await exists(resolve(root, 'CLAUDE.md'))) targets.push('CLAUDE.md')
+  for (const name of targets) {
+    const path = resolve(root, name)
+    const current = (await exists(path)) ? await readFile(path, 'utf8') : ''
+    const start = current.indexOf(GUIDE_START)
+    const end = current.indexOf(GUIDE_END)
+    const next =
+      start !== -1 && end > start
+        ? current.slice(0, start) + guide.trimEnd() + current.slice(end + GUIDE_END.length)
+        : `${current}${current && !current.endsWith('\n\n') ? (current.endsWith('\n') ? '\n' : '\n\n') : ''}${guide}`
+    if (next !== current) await writeFile(path, next)
   }
 }

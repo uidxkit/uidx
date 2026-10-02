@@ -26,9 +26,15 @@ export interface Dependent {
   address: string
   /** The attribute holding the reference. */
   prop: string
-  kind: 'variable' | 'mode' | 'scene' | 'instance' | 'instance-swap'
+  kind: 'variable' | 'mode' | 'scene' | 'instance' | 'instance-swap' | 'style'
   /** Only for kind 'mode'. */
   mode?: string
+  /**
+   * Only for kind 'style': the `<Styles>` cell holding the reference (ADR
+   * 0016 §2). `address` is then the component the table belongs to, and
+   * `prop` reads `target:prop` so a blast-radius list can print it as is.
+   */
+  style?: { keys: Record<string, string>; target: string; prop: string }
 }
 
 export interface DependentsIndex {
@@ -109,6 +115,31 @@ export function buildDependentsIndex(pages: ReadonlyMap<string, UidxDocument>): 
         }
       }
     })
+
+    // The styles table sits beside the tree, not in it, and its cells hold
+    // token aliases like any scene attribute does. A walk that stopped at the
+    // tree let a rename strand every state's look (the hover of a button).
+    const rows = doc.spec?.styles ?? []
+    if (rows.length === 0) continue
+    const owner = doc.tree.children.find((node) => node.element === 'Component')
+    const address = owner?.address ?? ''
+    for (const row of rows) {
+      for (const [target, props] of Object.entries(row.values)) {
+        for (const [prop, value] of Object.entries(props)) {
+          visitStrings(value, (text) => {
+            const token = aliasTargetOf(text)
+            if (token === null || !token.includes('#')) return
+            push(ofToken, token, {
+              file,
+              address,
+              prop: `${target}:${prop}`,
+              kind: 'style',
+              style: { keys: { ...row.keys }, target, prop },
+            })
+          })
+        }
+      }
+    }
   }
 
   return { ofToken, ofComponent }

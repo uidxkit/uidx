@@ -192,10 +192,45 @@ describe('TokensPane', () => {
     expect(pane.emitted('edit')).toBeUndefined()
   })
 
-  it('emits add-token with its collection', async () => {
+  it("asks for the new token's type, offering the collection's own first", async () => {
     const pane = mounted()
-    await pane.find('.collection button.add').trigger('click')
-    expect(pane.emitted('add-token')![0]).toEqual(['palette'])
+    await pane.find('[aria-label="Add token to palette"]').trigger('click')
+    const menu = pane.find('[data-collection="palette"] .type-menu')
+    expect(menu.findAll('button').map((b) => b.text())).toEqual([
+      'Color',
+      'Number',
+      'Text',
+      'Toggle',
+    ])
+    await menu.find('[data-type="FLOAT"]').trigger('click')
+    expect(pane.emitted('add-token')![0]).toEqual(['palette', 'FLOAT'])
+    expect(pane.find('.type-menu').exists()).toBe(false)
+  })
+
+  it('renames a collection and its modes inline, refusing a bad or taken name', async () => {
+    const pane = mounted([], true)
+    const section = () => pane.find('[data-collection="palette"]')
+    await section().find('[aria-label="Rename collection palette"]').trigger('click')
+    const field = section().find('.inline-name')
+    await field.setValue('radius')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(section().find('[role="alert"]').text()).toContain('already a collection named radius')
+    await field.setValue('2bad')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(section().find('[role="alert"]').text()).toContain('starting with a letter')
+    await field.setValue('base')
+    await field.trigger('keydown', { key: 'Enter' })
+    expect(pane.emitted('rename-collection')).toEqual([['palette', 'base']])
+
+    await section().find('[aria-label="Add mode to palette"]').trigger('click')
+    const mode = section().find('[aria-label="New mode name"]')
+    await mode.setValue('dark')
+    await mode.trigger('keydown', { key: 'Enter' })
+    expect(pane.emitted('add-mode')).toEqual([['palette', 'dark']])
+
+    await section().find('.tier-pick').setValue('primitive')
+    expect(pane.emitted('set-tier')).toEqual([['palette', 'primitive']])
+    pane.unmount()
   })
 
   it('offers explicit collection removal without selecting a token', async () => {
@@ -249,8 +284,11 @@ describe('token library navigation', () => {
     const section = pane.find('[data-collection="elevation"]')
     expect(section.classes()).toContain('just-created')
     expect(section.find('[role="status"]').text()).toBe('Collection created')
-    expect(section.find('button').text()).toBe('+ Add first token')
-    expect(document.activeElement).toBe(section.find('button').element)
+    expect(section.find('[aria-label="Add token to elevation"]').text()).toBe('+ Add first token')
+    // Its name is offered for renaming straight away.
+    const name = section.find('.inline-name')
+    expect((name.element as HTMLInputElement).value).toBe('elevation')
+    expect(document.activeElement).toBe(name.element)
     expect(scroll).toHaveBeenCalledOnce()
     expect(pane.findAll('.collection')).toHaveLength(4)
     expect((pane.find('input[type="search"]').element as HTMLInputElement).value).toBe('')
@@ -291,9 +329,11 @@ describe('token library navigation', () => {
     const pane = mounted()
     await pane.find('select[aria-label="Filter by tier"]').setValue('unassigned')
     expect(pane.findAll('tr[data-row]')).toHaveLength(4)
-    expect(pane.findAll('.tier-badge').every((badge) => badge.text() === 'No tier assigned')).toBe(
-      true,
-    )
+    expect(
+      pane
+        .findAll<HTMLSelectElement>('.tier-pick')
+        .every((pick) => pick.element.value === '' && pick.text().includes('No tier')),
+    ).toBe(true)
   })
 
   it('changes a binding through the picker in the selected mode', async () => {
@@ -315,8 +355,9 @@ describe('token library navigation', () => {
       ],
     })
     expect(pane.text()).toContain('This collection is ready for its first token.')
-    await pane.find('.collection button.add').trigger('click')
-    expect(pane.emitted('add-token')![0]).toEqual(['empty'])
+    await pane.find('[aria-label="Add token to empty"]').trigger('click')
+    await pane.find('.type-menu [data-type="COLOR"]').trigger('click')
+    expect(pane.emitted('add-token')![0]).toEqual(['empty', 'COLOR'])
   })
 })
 

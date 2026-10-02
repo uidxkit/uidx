@@ -2,6 +2,7 @@ import {
   aliasTarget,
   isAlias,
   toAlias,
+  toNodeSpec,
   type JsonValue,
   type UidxDocument,
   type UidxNode,
@@ -126,8 +127,204 @@ export function deleteCollection(
   throw new Error(`no collection named ${JSON.stringify(name)} in this document`)
 }
 
+/**
+ * Renames a collection: every reference to any of its tokens is repointed to
+ * the new `{collection#token}`, every node's `modes={{ old: … }}` override
+ * re-keyed, then the collection itself renamed — references first, as for a
+ * token.
+ */
+export function renameCollection(
+  pages: ReadonlyMap<string, UidxDocument>,
+  deps: DependentsIndex,
+  name: string,
+  newName: string,
+): RefactorPlan {
+  const found = declaringCollection(pages, name)
+  if (!found) throw new Error(`no collection named ${JSON.stringify(name)} in this document`)
+  const { file: declaringFile, node: collection } = found
+  const byFile = new Map<string, UidxPatch[]>()
+  const batchFor = (file: string): UidxPatch[] => {
+    const existing = byFile.get(file)
+    if (existing) return existing
+    const fresh: UidxPatch[] = []
+    byFile.set(file, fresh)
+    return fresh
+  }
+  // Several tokens of the collection may share one attribute (a fills array,
+  // a style cell); each rewrite builds on the one before it.
+  const rewrites = new Map<string, { dependent: Dependent; patch: UidxPatch }>()
+  for (const variable of collection.children) {
+    if (variable.element !== 'Variable') continue
+    const replacement = toAlias(`${newName}#${variable.name}`)
+    for (const dependent of deps.ofToken.get(variable.address) ?? []) {
+      const key = dependentKey(dependent)
+      const previous = rewrites.get(key)?.patch
+      const patch =
+        previous?.op === 'set' || (previous?.op === 'style' && previous.value !== undefined)
+          ? { ...previous, value: rewriteAliases(previous.value!, variable.address, replacement) }
+          : rewritePatch(pages, dependent, variable.address, replacement)
+      rewrites.set(key, { dependent, patch })
+    }
+  }
+  for (const { dependent, patch } of rewrites.values()) batchFor(dependent.file).push(patch)
+  for (const [file, patch] of modeOverridePatches(pages, name, (modes) => {
+    const { [name]: mode, ...rest } = modes
+    return { ...rest, [newName]: mode! }
+  }))
+    batchFor(file).push(patch)
+  batchFor(declaringFile).push({
+    op: 'set',
+    address: collection.address,
+    prop: 'name',
+    value: newName,
+  })
+  return { byFile, dependents: [...rewrites.values()].map((entry) => entry.dependent) }
+}
+
+/** One mode of a reshaped collection: its name, and the mode its values start from. */
+export interface ModeShape {
+  name: string
+  /** An existing mode of the collection (`IMPLICIT_MODE` for a modeless one). */
+  from: string
+}
+
+/**
+ * Gives a collection a new list of modes — adding one (`from` an existing
+ * mode, so every token starts complete, UIDX127), renaming one, removing one
+ * or reordering them. Each variable is rewritten with one `<Mode>` child per
+ * mode, or a plain `value` when one mode is left; node overrides naming a
+ * renamed mode follow it, and ones naming a removed mode are dropped.
+ */
+export function setCollectionModes(
+  pages: ReadonlyMap<string, UidxDocument>,
+  name: string,
+  modes: readonly ModeShape[],
+): RefactorPlan {
+  const found = declaringCollection(pages, name)
+  if (!found) throw new Error(`no collection named ${JSON.stringify(name)} in this document`)
+  if (modes.length === 0) throw new Error('a collection keeps at least one mode')
+  const names = modes.map((mode) => mode.name)
+  if (new Set(names).size !== names.length) throw new Error('two modes cannot share a name')
+  const { file: declaringFile, node: collection } = found
+  const moded = modes.length > 1
+  // Every step of a batch must leave a valid document, and a moded collection
+  // with a plain-valued variable is not one; so the collection is written
+  // again whole, in one remove and one insert at the same place.
+  const { modes: _modes, ...collectionAttrs } = toNodeSpec(collection).attrs
+  void _modes
+  const variables = collection.children.map((variable) => {
+    const spec = toNodeSpec(variable)
+    if (variable.element !== 'Variable') return spec
+    const valueIn = (mode: string): JsonValue =>
+      variable.attrs.value?.value ??
+      variable.children.find(
+        (child) => child.element === 'Mode' && child.attrs.name?.value === mode,
+      )?.attrs.value?.value ??
+      variable.children.find((child) => child.element === 'Mode')?.attrs.value?.value ??
+      null
+    const { value: _value, ...attrs } = spec.attrs
+    void _value
+    return moded
+      ? {
+          element: 'Variable' as const,
+          attrs,
+          children: modes.map((mode) => ({
+            element: 'Mode' as const,
+            attrs: { name: mode.name, value: valueIn(mode.from) },
+          })),
+        }
+      : { element: 'Variable' as const, attrs: { ...attrs, value: valueIn(modes[0]!.from) } }
+  })
+  const parent = pages.get(declaringFile)!.tree
+  const batch: UidxPatch[] = [
+    { op: 'remove-node', address: collection.address },
+    {
+      op: 'insert-node',
+      parent: parent.address,
+      index: parent.children.indexOf(collection),
+      node: {
+        element: 'Collection',
+        attrs: moded ? { ...collectionAttrs, modes: names } : collectionAttrs,
+        children: variables,
+      },
+    },
+  ]
+  const renamed = new Map(modes.map((mode) => [mode.from, mode.name]))
+  const byFile = new Map<string, UidxPatch[]>()
+  for (const [file, patch] of modeOverridePatches(pages, name, (overrides) => {
+    const next = renamed.get(String(overrides[name]))
+    const { [name]: _gone, ...rest } = overrides
+    void _gone
+    return next !== undefined && moded ? { ...rest, [name]: next } : rest
+  })) {
+    const list = byFile.get(file) ?? []
+    list.push(patch)
+    byFile.set(file, list)
+  }
+  byFile.set(declaringFile, [...(byFile.get(declaringFile) ?? []), ...batch])
+  return { byFile, dependents: [] }
+}
+
+function declaringCollection(
+  pages: ReadonlyMap<string, UidxDocument>,
+  name: string,
+): { file: string; node: UidxNode } | null {
+  for (const [file, doc] of pages) {
+    if (doc.tree.element !== 'Tokens') continue
+    const node = doc.tree.children.find(
+      (child) => child.element === 'Collection' && child.name === name,
+    )
+    if (node) return { file, node }
+  }
+  return null
+}
+
+/** `[file, patch]` for every node whose `modes` override names `collection`, rewritten by `change`. */
+function modeOverridePatches(
+  pages: ReadonlyMap<string, UidxDocument>,
+  collection: string,
+  change: (modes: Record<string, JsonValue>) => Record<string, JsonValue>,
+): [string, UidxPatch][] {
+  const out: [string, UidxPatch][] = []
+  for (const [file, doc] of pages) {
+    if (doc.tree.element === 'Tokens') continue
+    const walk = (node: UidxNode): void => {
+      const modes = node.attrs.modes?.value
+      if (
+        modes &&
+        typeof modes === 'object' &&
+        !Array.isArray(modes) &&
+        Object.hasOwn(modes, collection)
+      ) {
+        const next = change(modes)
+        if (JSON.stringify(next) !== JSON.stringify(modes))
+          out.push([
+            file,
+            Object.keys(next).length
+              ? { op: 'set', address: node.address, prop: 'modes', value: next }
+              : { op: 'remove', address: node.address, prop: 'modes' },
+          ])
+      }
+      node.children.forEach(walk)
+    }
+    walk(doc.tree)
+  }
+  return out
+}
+
 function dependentKey(dependent: Dependent): string {
-  return JSON.stringify([dependent.file, dependent.address, dependent.prop, dependent.mode])
+  return JSON.stringify([
+    dependent.file,
+    dependent.address,
+    dependent.prop,
+    dependent.mode,
+    dependent.style ? Object.entries(dependent.style.keys).sort() : null,
+  ])
+}
+
+function sameKeys(a: Record<string, string>, b: Record<string, string>): boolean {
+  const left = Object.entries(a)
+  return left.length === Object.keys(b).length && left.every(([key, value]) => b[key] === value)
 }
 
 function deleteDeclarations(
@@ -189,8 +386,8 @@ function deleteDeclarations(
       // Several tokens may share a fills/props array. Accumulate replacements
       // into that one attribute rather than overwriting an earlier replacement.
       const patch =
-        previous?.op === 'set'
-          ? { ...previous, value: rewriteAliases(previous.value, address, literal) }
+        previous?.op === 'set' || (previous?.op === 'style' && previous.value !== undefined)
+          ? { ...previous, value: rewriteAliases(previous.value!, address, literal) }
           : rewritePatch(pages, dependent, address, literal)
       rewrites.set(key, { dependent, patch })
       dependents.set(key, dependent)
@@ -336,6 +533,19 @@ function rewritePatch(
   from: string,
   replacement: JsonValue,
 ): UidxPatch {
+  if (dependent.kind === 'style' && dependent.style) {
+    const { keys, target, prop } = dependent.style
+    const row = pages
+      .get(dependent.file)
+      ?.spec?.styles?.find((candidate) => sameKeys(candidate.keys, keys))
+    const current = row?.values[target]?.[prop]
+    if (current === undefined) {
+      throw new Error(
+        `dependent style cell ${target}:${prop} in ${dependent.file} no longer exists`,
+      )
+    }
+    return { op: 'style', keys, target, prop, value: rewriteAliases(current, from, replacement) }
+  }
   if (dependent.kind === 'mode') {
     return {
       op: 'set-mode',

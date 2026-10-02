@@ -48,6 +48,12 @@ jobs:
       - name: Canvas canary
         run: pnpm test:canvas
 
+      # A designer's and an agent's first hour, walked in the same browser:
+      # overview, canvas, contract, docs, models, and an agent edit through
+      # the CLI that the viewer then shows.
+      - name: Journeys
+        run: pnpm test:journeys
+
       # Uploaded whether the canary passed or failed, so a human can look at
       # what it actually saw instead of trusting a byte-count heuristic blind.
       - name: Upload canvas screenshot

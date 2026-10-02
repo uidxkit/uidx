@@ -1,0 +1,33 @@
+{
+  "name": "@uidx/example-design-system",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A design system whose components are renders of .uidx identities: HTML/CSS and React generated over @hwc/components.",
+  "scripts": {
+    "generate": "node scripts/generate.mjs",
+    "check": "node scripts/generate.mjs --check",
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run --maxWorkers=2 --testTimeout=20000"
+  },
+  "dependencies": {
+    "@lit/context": "^1.1.0",
+    "lit": "^3.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@uidx/codegen": "workspace:*",
+    "@uidx/format": "workspace:*",
+    "@uidx/schema": "workspace:*",
+    "@uidxkit/uidx": "workspace:*",
+    "typescript": "^5.7.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.0"
+  }
+}

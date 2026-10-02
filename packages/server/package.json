@@ -35,11 +35,12 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@uidx/codegen": "workspace:*",
     "@uidx/format": "workspace:*",
     "chokidar": "^4.0.3",
     "picomatch": "^4.0.2",
-    "ws": "^8.18.0",
-    "tinyglobby": "^0.2.10"
+    "tinyglobby": "^0.2.10",
+    "ws": "^8.18.0"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

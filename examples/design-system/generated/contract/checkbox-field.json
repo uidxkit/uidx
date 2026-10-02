@@ -1,0 +1,148 @@
+{
+  "id": "checkbox-field",
+  "components": [
+    {
+      "name": "CheckboxField",
+      "implements": null,
+      "status": "stable",
+      "boundParts": [],
+      "treeSlots": [
+        "control"
+      ],
+      "axes": {},
+      "box": {
+        "target": "instance",
+        "node": "field",
+        "component": "Field"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The option's name.",
+        "sample": "Remember me"
+      },
+      {
+        "name": "description",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Helper text under the label.",
+        "sample": "Stay signed in on this device."
+      },
+      {
+        "name": "errorMessage",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Validation text, shown while in error.",
+        "sample": "Choose one option."
+      },
+      {
+        "name": "error",
+        "type": "boolean",
+        "controllable": false,
+        "visual": false,
+        "description": "Whether the field is in its error state.",
+        "default": false
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": [
+      "Field",
+      "Checkbox"
+    ]
+  },
+  "behavior": [
+    {
+      "id": "delegation",
+      "text": "everything the label does, Field does; everything the box does, Checkbox does. This component adds layout only."
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

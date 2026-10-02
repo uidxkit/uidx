@@ -349,3 +349,11 @@ with no default renders nothing and cannot be clicked. So the insert gesture
 must leave the new slot selected, and the layers rail must show a `<Slot>`
 row whether or not it draws anything — which it can, because the rail reads
 `doc.tree` rather than the scene graph (D3).
+
+> **Amended 2026-10-01.** The indicator is in, as editor chrome rather than
+> scene content: the canvas outlines an empty slot on its HTML overlay
+> (dashed, labelled with the slot's name, once per repeat), and clicking it
+> selects the fill, whose inspector offers the content picker. The scene still
+> draws nothing there, so layout, thumbnails and export are unchanged — which
+> was the cost that made the indicator wait. The scene marks a slot's frame
+> (`slotOfSceneNode`) so the overlay can tell it from any other empty frame.

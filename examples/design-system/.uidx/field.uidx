@@ -1,0 +1,48 @@
+---
+id: field
+---
+
+Pairs one control with its label, description and error message. The label
+behaves like a native label: clicking it activates the control, and it names
+the control for assistive technology. The field owns how the text looks and
+where it sits; the consumer supplies the words.
+
+## Visual Contract
+
+<Page>
+  <Component name="Field" status="stable" implements="hwc-field"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    itemSpacing="{space#sm}" counterAxisAlignItems="MIN">
+    <Slot name="control" />
+    <Frame name="text" layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO" itemSpacing="{space#xs}">
+      <Text name="label" part="label" characters="{label}" fontSize={14} fills="{text#default}" />
+      <Text name="description" part="description" characters="{description}" fontSize={12} fills="{text#muted}" />
+      <Text name="error" part="error" characters="{errorMessage}" visible={false} fontSize={12} fills="{text#danger}" />
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="error" error:visible={true} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email">The control's name, shown beside it.</Prop>
+  <Prop name="description" type="string" sample="We never share it.">Secondary text: hints and consequences.</Prop>
+  <Prop name="errorMessage" type="string" sample="Enter a valid address.">Validation text, shown only while in error.</Prop>
+  <Prop name="error" type="boolean" default={false} visual>Whether the field is in its error state.</Prop>
+</Props>
+<Slots>
+  <Slot name="control">The wrapped control: a checkbox, a radio, a text input.</Slot>
+</Slots>
+<Accessibility labels="aria-labelledby → label" describes="aria-describedby → description, plus error while shown" />
+<Composes with="Checkbox, RadioGroup, TextInput" />
+
+## Behavior
+
+- activation: clicking the label focuses the control and forwards the click, as a native label does; inert while the control is disabled.
+- naming: the control is named by the label and described by the description, plus the error message while shown.
+- error: `error` mounts the error message and asks the control to expose `aria-invalid`; announcing it is the application's policy.
+- claim: the first field-aware control inside the field is the one it labels; a nested field scopes to its own subtree.

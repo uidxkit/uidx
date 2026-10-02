@@ -1,4 +1,4 @@
-import type { SceneElement } from '@uidx/format'
+import { ELEMENTS, TOKEN_ELEMENTS, type SceneElement } from '@uidx/format'
 import { STROKE_ENDPOINT_CAPS } from './stroke-endpoints.js'
 
 /**
@@ -11,7 +11,15 @@ import { STROKE_ENDPOINT_CAPS } from './stroke-endpoints.js'
  * drift would be silent.
  */
 export type PropGroup =
-  'text' | 'position' | 'layout' | 'appearance' | 'typography' | 'fill' | 'stroke' | 'effects'
+  | 'text'
+  | 'position'
+  | 'layout'
+  | 'appearance'
+  | 'typography'
+  | 'fill'
+  | 'textColor'
+  | 'stroke'
+  | 'effects'
 
 export interface PropUi {
   group: PropGroup
@@ -55,6 +63,9 @@ export const SECTION_ORDER: readonly PropGroup[] = [
   'typography',
   'appearance',
   'fill',
+  // An instance's own: the colour it hands down to every text inside (ADR
+  // 0018 §4). Beside Fill because it is a fill too, only someone else's.
+  'textColor',
   'stroke',
   'effects',
 ]
@@ -64,6 +75,7 @@ export const SECTION_LABEL: Record<PropGroup, string> = {
   layout: 'Layout',
   appearance: 'Appearance',
   fill: 'Fill',
+  textColor: 'Text color',
   stroke: 'Stroke',
   text: 'Text',
   typography: 'Typography',
@@ -96,6 +108,17 @@ export const PROP_UI_OPT_OUT: ReadonlySet<string> = new Set(['name'])
  */
 const FRAME_OR_COMPONENT: readonly SceneElement[] = ['Frame', 'Component', 'Slot']
 const TEXT_ONLY: readonly SceneElement[] = ['Text']
+
+/**
+ * An instance is a black box with a styleable outer box (ADR 0018 §1). What
+ * it may state is the role table's call (`instance-box.ts`), and
+ * `prop-ui.test.ts` holds this table to it. This is for the few props every
+ * other element keeps but that belong to a component's inside, so a row on an
+ * instance would write an attribute every target ignores.
+ */
+const ALL_BUT_INSTANCE: readonly SceneElement[] = ELEMENTS.filter(
+  (element): element is SceneElement => !TOKEN_ELEMENTS.has(element) && element !== 'Instance',
+)
 
 export const PROP_UI: Record<string, PropUi> = {
   // --- position ------------------------------------------------------------
@@ -232,33 +255,36 @@ export const PROP_UI: Record<string, PropUi> = {
     control: 'boolean',
     appliesTo: FRAME_OR_COMPONENT,
   },
+  // Padding is the one exception an instance shares: it is part of the outer
+  // box a use may style, as in CSS, and pads the frame that lays out (ADR
+  // 0018 §2). The rest of this section stays the component's.
   paddingLeft: {
     group: 'layout',
     label: 'Left',
     control: 'number',
     step: 1,
-    appliesTo: FRAME_OR_COMPONENT,
+    appliesTo: [...FRAME_OR_COMPONENT, 'Instance'],
   },
   paddingRight: {
     group: 'layout',
     label: 'Right',
     control: 'number',
     step: 1,
-    appliesTo: FRAME_OR_COMPONENT,
+    appliesTo: [...FRAME_OR_COMPONENT, 'Instance'],
   },
   paddingTop: {
     group: 'layout',
     label: 'Top',
     control: 'number',
     step: 1,
-    appliesTo: FRAME_OR_COMPONENT,
+    appliesTo: [...FRAME_OR_COMPONENT, 'Instance'],
   },
   paddingBottom: {
     group: 'layout',
     label: 'Bottom',
     control: 'number',
     step: 1,
-    appliesTo: FRAME_OR_COMPONENT,
+    appliesTo: [...FRAME_OR_COMPONENT, 'Instance'],
   },
   clipsContent: {
     group: 'layout',
@@ -346,6 +372,17 @@ export const PROP_UI: Record<string, PropUi> = {
   // --- fill --------------------------------------------------------------
   fills: { group: 'fill', label: 'Fill', control: 'paint' },
 
+  // --- text color (Instance only) -------------------------------------------
+  // Replaces the fills of every text the instance's component draws, the way
+  // CSS `color` inherits (ADR 0018 §4). A paint control because its value is
+  // exactly a `fills` value; the panel writes one solid paint or one token.
+  textFills: {
+    group: 'textColor',
+    label: 'Text color',
+    control: 'paint',
+    appliesTo: ['Instance'],
+  },
+
   // --- stroke --------------------------------------------------------------
   strokes: { group: 'stroke', label: 'Stroke', control: 'paint' },
   strokeWeight: {
@@ -368,6 +405,7 @@ export const PROP_UI: Record<string, PropUi> = {
     label: 'Cap',
     control: 'enum',
     options: ['NONE', 'ROUND', 'SQUARE', 'ARROW_LINES', 'ARROW_EQUILATERAL'],
+    appliesTo: ALL_BUT_INSTANCE,
   },
   strokeStartCap: {
     group: 'stroke',
@@ -390,13 +428,21 @@ export const PROP_UI: Record<string, PropUi> = {
     label: 'Join',
     control: 'enum',
     options: ['MITER', 'BEVEL', 'ROUND'],
+    appliesTo: ALL_BUT_INSTANCE,
   },
-  strokeMiterLimit: { group: 'stroke', label: 'Miter limit', control: 'number', step: 0.01 },
+  strokeMiterLimit: {
+    group: 'stroke',
+    label: 'Miter limit',
+    control: 'number',
+    step: 0.01,
+    appliesTo: ALL_BUT_INSTANCE,
+  },
   dashPattern: { group: 'stroke', label: 'Dashes', control: 'dashes' },
   strokesIncludedInLayout: {
     group: 'layout',
     label: 'Include stroke in layout',
     control: 'boolean',
+    appliesTo: ALL_BUT_INSTANCE,
   },
   // Independent per-side weights; overlap `strokeWeight` last-writer-wins
   // (prop-table.ts). Not named in the doc's Stroke bullet, grouped with it.

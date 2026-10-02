@@ -132,7 +132,22 @@ export const PROP_TABLE: readonly PropMapping[] = [
   // --- renames -----------------------------------------------------------
   rename('primaryAxisAlignItems', 'primaryAxisAlign'),
   rename('counterAxisAlignItems', 'counterAxisAlign'),
-  rename('characters', 'text'),
+  {
+    // A text's words. A binding may resolve to a number or a boolean —
+    // `{item.count}`, `{item.expanded}` — and the text layout takes only a
+    // string, so anything else is spelled out rather than crashing the page.
+    uidx: 'characters',
+    sceneFields: ['text'],
+    toScene: (value) => ({
+      text:
+        typeof value === 'string'
+          ? value
+          : value === null || value === undefined
+            ? ''
+            : String(value),
+    }),
+    fromScene: (node) => node.text as JsonValue | undefined,
+  },
   // Figma calls this layoutAlign on the child; SceneNode spells it out.
   rename('layoutAlign', 'layoutAlignSelf'),
   // Figma exposes per-side stroke weights as strokeTopWeight and friends;

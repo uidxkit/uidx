@@ -1,0 +1,264 @@
+{
+  "id": "checkbox",
+  "components": [
+    {
+      "name": "Checkbox",
+      "implements": "hwc-checkbox",
+      "status": "stable",
+      "boundParts": [
+        "checked-indicator",
+        "indeterminate-indicator"
+      ],
+      "treeSlots": [],
+      "axes": {
+        "state": [
+          "default",
+          "checked",
+          "indeterminate",
+          "disabled",
+          "hover",
+          "focus"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "root"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "checked",
+        "type": "boolean",
+        "controllable": true,
+        "visual": true,
+        "description": "Whether the option is selected.",
+        "default": false
+      },
+      {
+        "name": "indeterminate",
+        "type": "boolean",
+        "controllable": true,
+        "visual": true,
+        "description": "Mixed state for a parent summarising children.",
+        "default": false
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "default": false
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Form field name."
+      },
+      {
+        "name": "value",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Submitted while checked.",
+        "default": "on"
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires once per user toggle, never when set from code.",
+        "detail": "{ checked: boolean }"
+      }
+    ],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": [
+      "Field"
+    ],
+    "form": {
+      "participates": true,
+      "submits": "value while checked, nothing otherwise"
+    },
+    "accessibility": {
+      "role": "checkbox",
+      "keyboard": "Space toggles"
+    }
+  },
+  "behavior": [
+    {
+      "id": "toggle",
+      "text": "click or Space flips `checked`; a click while `indeterminate` sets `checked` and clears `indeterminate`."
+    },
+    {
+      "id": "change-event",
+      "text": "`change` fires once per user toggle, never when `checked` is set from code."
+    },
+    {
+      "id": "disabled",
+      "text": "no interaction and no events while `disabled`; still focusable for assistive technology, as native."
+    },
+    {
+      "id": "form",
+      "text": "submits `value` while checked and nothing otherwise, matching native `<input type=checkbox>`."
+    },
+    {
+      "id": "label",
+      "text": "composes with Field; clicking the label toggles, per Field's rules."
+    }
+  ],
+  "examples": [
+    {
+      "name": "checked",
+      "sets": [
+        {
+          "at": "root",
+          "state": "checked"
+        }
+      ]
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "checked"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#accent}",
+          "strokes": "{surface#accent}"
+        },
+        "checked-indicator": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "indeterminate"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#accent}",
+          "strokes": "{surface#accent}"
+        },
+        "indeterminate-indicator": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#focus}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

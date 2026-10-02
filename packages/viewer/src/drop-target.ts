@@ -3,8 +3,8 @@ import { type SceneGraph } from '@open-pencil/scene-graph'
 import { hitTestFrame } from '@open-pencil/scene-graph/hit-test'
 import { addressOf, isWithin, resolve, type UidxDocument, type UidxPatch } from '@uidx/format'
 
-import { pinFrom, pinWrites } from '@uidx/schema'
-import { canContainChildren, canInsert, moveFor, parentOf } from './layer-moves'
+import { derivedTarget, pinFrom, pinWrites } from '@uidx/schema'
+import { canContainChildren, canInsert, moveFor, parentOf, positionsDroppedBy } from './layer-moves'
 
 /**
  * The containers under a point, innermost first, ending at the page.
@@ -237,6 +237,15 @@ export function reparentTo(
     return { parent: patch.newParent, address, patches: [...stripped, patch, ...placement] }
   }
 
+  // Into an auto layout the layout places it: the old position goes, and the
+  // pointer's is not restated.
+  const dropped = positionsDroppedBy(doc, patch)
+  const flowsIn = FLOW_MODES.has(
+    (patch.newParent === '' ? null : resolve(doc.tree, patch.newParent))?.attrs.layoutMode
+      ?.value as string,
+  )
+  if (flowsIn && node.attrs.layoutPositioning?.value !== 'ABSOLUTE')
+    return { parent: patch.newParent, address, patches: [patch, ...dropped] }
   const placement: UidxPatch[] = keepAt
     ? [
         {
@@ -285,4 +294,16 @@ export function insertTargetFor(
     if (canInsert(doc, target, element)) return target
   }
   return null
+}
+
+/**
+ * The authored layer a container on the canvas stands for, or undefined when
+ * nothing may be added there. A component with states is drawn as variants
+ * (ADR 0016 §4): its default-state twin stands for the base layer it copies,
+ * and a twin of any other state is drawn from the base, so it takes nothing.
+ */
+export function authoredContainer(doc: UidxDocument, address: string): string | undefined {
+  const derived = derivedTarget(doc, address)
+  if (!derived) return address
+  return derived.isDefault ? derived.base.address : undefined
 }

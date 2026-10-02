@@ -34,6 +34,8 @@ const props = defineProps<{
   height: number | null
   /** False for a node whose size nothing computes — no Hug to offer. */
   modes: Array<{ value: 'FIXED' | 'AUTO'; label: string }> | null
+  /** The box as the canvas draws it, which is what a Fixed pick on an instance states. */
+  drawn?: { width: number; height: number } | null
   editable: boolean
   tokenSource?: TokenBindingSource
 }>()
@@ -43,21 +45,31 @@ const emit = defineEmits<{
   detach: [writes: TokenDetachWrite[]]
   preview: [prop: string, value: JsonValue]
   commit: [prop: string, value: JsonValue]
+  /** Take this attribute out of the file. */
+  remove: [prop: string]
   hover: [prop: string | null]
 }>()
 
 const isText = computed(() => props.element === 'Text')
+/**
+ * An instance spells sizing a third way: by stating the size or not. It
+ * authors no layout, so it has no axis modes to write — a stated width is
+ * Fixed, and no width follows the component (`instanceSizing` in to-scene).
+ */
+const isInstance = computed(() => props.element === 'Instance')
 
 const numberOf = (dimension: 'width' | 'height'): number | null =>
   dimension === 'width' ? props.width : props.height
 
 /** The attribute a dimension's Hug/Fixed pick writes, in this node's vocabulary. */
 function sizingPropOf(dimension: 'width' | 'height'): string {
+  if (isInstance.value) return dimension
   return isText.value ? 'textAutoResize' : sizingPropFor(props.layoutMode, dimension)
 }
 
 /** That attribute's current state, as the panel's own FIXED/AUTO pair. */
 function sizingModeOf(dimension: 'width' | 'height'): 'FIXED' | 'AUTO' {
+  if (isInstance.value) return numberOf(dimension) === null ? 'AUTO' : 'FIXED'
   if (isText.value) return textSizingFor(props.textResize, dimension)
   const axis = sizingPropFor(props.layoutMode, dimension)
   const stated =
@@ -66,6 +78,13 @@ function sizingModeOf(dimension: 'width' | 'height'): 'FIXED' | 'AUTO' {
 }
 
 function onSizing(dimension: 'width' | 'height', mode: 'FIXED' | 'AUTO'): void {
+  if (isInstance.value) {
+    // Hug is the reset: the size leaves the file and the component decides
+    // again. Fixed states the size the canvas is drawing, so nothing moves.
+    if (mode === 'AUTO') emit('remove', dimension)
+    else if (props.drawn) emit('commit', dimension, Math.round(props.drawn[dimension]))
+    return
+  }
   if (isText.value) {
     emit('commit', 'textAutoResize', textResizeWrite(props.textResize, dimension, mode))
     return

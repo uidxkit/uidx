@@ -1,9 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { applyPatches, inversePatches, parseOrThrow, type UidxDocument } from '@uidx/format'
+import {
+  applyPatches,
+  inversePatches,
+  parseOrThrow,
+  type UidxDocument,
+  type UidxPatch,
+} from '@uidx/format'
 
 import { buildTokenIndex } from '../src/token-index.js'
 import { buildDependentsIndex } from '../src/symbol-deps.js'
-import { deleteCollection, deleteToken, renameComponent, renameToken } from '../src/refactor.js'
+import {
+  deleteCollection,
+  deleteToken,
+  renameCollection,
+  renameComponent,
+  renameToken,
+  setCollectionModes,
+} from '../src/refactor.js'
 import { defaultTuple, TokenResolver } from '../src/resolve-modes.js'
 
 const doc = (id: string, body: string) =>
@@ -388,5 +401,167 @@ describe('renameComponent', () => {
       prop: 'props',
       value: { icon: 'Icon/Tick' },
     })
+  })
+})
+
+describe('styles-table references (ADR 0016 §2)', () => {
+  const tokens = doc(
+    'tokens',
+    `<Tokens>
+  <Collection name="surface">
+    <Variable name="accent" type="COLOR" value={{ r: 0, g: 0.5, b: 1, a: 1 }} />
+    <Variable name="accentHover" type="COLOR" value={{ r: 0, g: 0.4, b: 0.9, a: 1 }} />
+  </Collection>
+</Tokens>`,
+  )
+  const button = parseOrThrow(`---
+id: button
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" fills="{surface#accent}" width={80} height={32} />
+</Page>
+
+<Styles>
+  <Style state="hover" root:fills="{surface#accentHover}" root:strokes="{surface#accentHover}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert.</Prop>
+</Props>
+`)
+  const styled = new Map<string, UidxDocument>([
+    ['tokens.uidx', tokens],
+    ['button.uidx', button],
+  ])
+
+  it('counts a styles cell as a dependent', () => {
+    const found = buildDependentsIndex(styled).ofToken.get('surface#accentHover') ?? []
+    expect(found.map((d) => [d.kind, d.prop, d.style?.keys])).toEqual([
+      ['style', 'root:fills', { state: 'hover' }],
+      ['style', 'root:strokes', { state: 'hover' }],
+    ])
+  })
+
+  it('rewrites styles cells when the token is renamed', () => {
+    const plan = renameToken(
+      styled,
+      buildDependentsIndex(styled),
+      'surface#accentHover',
+      'accentPressed',
+    )
+    const patches = plan.byFile.get('button.uidx')!
+    const next = applyPatches(button.source, patches).source
+    expect(next).toContain('root:fills="{surface#accentPressed}"')
+    expect(next).toContain('root:strokes="{surface#accentPressed}"')
+    expect(next).not.toContain('accentHover')
+  })
+
+  it('inlines the literal into styles cells when the token is deleted', () => {
+    const plan = deleteToken(
+      styled,
+      buildTokenIndex([...styled.values()]),
+      buildDependentsIndex(styled),
+      'surface#accentHover',
+    )
+    const next = applyPatches(button.source, plan.byFile.get('button.uidx')!).source
+    expect(next).not.toContain('accentHover')
+    expect(parseOrThrow(next).spec?.styles?.[0]?.values.root?.fills).not.toBeUndefined()
+  })
+})
+
+describe('collection rename and modes', () => {
+  const apply = (plan: { byFile: ReadonlyMap<string, readonly UidxPatch[]> }) =>
+    new Map(
+      [...pages].map(([file, page]) => [
+        file,
+        applyPatches(page.source, [...(plan.byFile.get(file) ?? [])]).source,
+      ]),
+    )
+
+  it('renames a collection, repointing every reference and override', () => {
+    const themed = doc(
+      'themed',
+      `<Page>
+  <Frame name="card" modes={{ semantic: 'dark' }} fills={[{ type: 'SOLID', color: '{semantic#brand}' }]} />
+</Page>`,
+    )
+    const all = new Map([...pages, ['themed.uidx', themed]])
+    const plan = renameCollection(all, buildDependentsIndex(all), 'palette', 'base')
+    const core = applyPatches(CORE.source, [...plan.byFile.get('core.uidx')!]).source
+    expect(core).toContain('<Collection name="base">')
+    expect(core).toContain('value="{base#blue-500}"')
+    const home = applyPatches(HOME.source, [...plan.byFile.get('home.uidx')!]).source
+    expect(home).toContain("color: '{base#blue-500}'")
+    expect(home).toContain('opacity="{base#blue-500}"')
+
+    const moded = renameCollection(all, buildDependentsIndex(all), 'semantic', 'theme')
+    const page = applyPatches(themed.source, [...moded.byFile.get('themed.uidx')!]).source
+    expect(page).toContain("modes={{ theme: 'dark' }}")
+    expect(page).toContain('{theme#brand}')
+    expect(parseOrThrow(page)).toBeTruthy()
+  })
+
+  it('adds a mode copied from another, renames one, and folds back to a plain value', () => {
+    const added = apply(
+      setCollectionModes(pages, 'palette', [
+        { name: 'light', from: 'default' },
+        { name: 'dark', from: 'default' },
+      ]),
+    )
+    const core = parseOrThrow(added.get('core.uidx')!)
+    const index = buildTokenIndex([core])
+    expect(index.collections.get('palette')!.modes).toEqual(['light', 'dark'])
+    expect(index.entries.get('palette#lonely')!.valuesByMode).toEqual({ light: 1, dark: 1 })
+    // The semantic alias into the palette survives the rewrite.
+    expect(index.entries.get('semantic#brand')!.valuesByMode.light).toBe('{palette#blue-500}')
+
+    const renamed = apply(
+      setCollectionModes(pages, 'semantic', [
+        { name: 'day', from: 'light' },
+        { name: 'night', from: 'dark' },
+      ]),
+    ).get('core.uidx')!
+    const night = buildTokenIndex([parseOrThrow(renamed)])
+    expect(night.collections.get('semantic')!.modes).toEqual(['day', 'night'])
+    expect(night.entries.get('semantic#brand')!.valuesByMode).toEqual({
+      day: '{palette#blue-500}',
+      night: { r: 1, g: 1, b: 1, a: 1 },
+    })
+
+    const folded = apply(
+      setCollectionModes(pages, 'semantic', [{ name: 'light', from: 'light' }]),
+    ).get('core.uidx')!
+    const plain = buildTokenIndex([parseOrThrow(folded)])
+    expect(plain.collections.get('semantic')!.modes).toEqual(['default'])
+    expect(plain.entries.get('semantic#brand')!.valuesByMode).toEqual({
+      default: '{palette#blue-500}',
+    })
+    expect(() => setCollectionModes(pages, 'semantic', [])).toThrow(/at least one/)
+  })
+
+  it('re-keys node overrides when a mode is renamed and drops them when it goes', () => {
+    const themed = doc(
+      'themed',
+      `<Page>
+  <Frame name="card" modes={{ semantic: 'dark' }} />
+</Page>`,
+    )
+    const all = new Map([...pages, ['themed.uidx', themed]])
+    const renamed = setCollectionModes(all, 'semantic', [
+      { name: 'light', from: 'light' },
+      { name: 'night', from: 'dark' },
+    ])
+    expect(renamed.byFile.get('themed.uidx')).toEqual([
+      { op: 'set', address: 'card', prop: 'modes', value: { semantic: 'night' } },
+    ])
+    const removed = setCollectionModes(all, 'semantic', [{ name: 'light', from: 'light' }])
+    expect(removed.byFile.get('themed.uidx')).toEqual([
+      { op: 'remove', address: 'card', prop: 'modes' },
+    ])
   })
 })

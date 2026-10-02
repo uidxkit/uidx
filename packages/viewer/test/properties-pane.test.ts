@@ -1,7 +1,17 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyPatches, parseOrThrow, type JsonValue, type UidxPatch } from '@uidx/format'
 import PropertiesPane from '../src/PropertiesPane.vue'
+import CodeSection from '../src/CodeSection.vue'
+import ConnectSection from '../src/ConnectSection.vue'
+import ContractSection from '../src/ContractSection.vue'
+import { connection, connectionError, connectionErrorKey, headlessFailure } from '../src/headless'
+import { classifyFailure } from '../src/inspector-messages'
+import type { CodegenState } from '../src/headless'
+
+// Every mounted pane is torn down after its test, so the shared state its
+// watchers read cannot keep the last test's panes working.
+enableAutoUnmount(afterEach)
 
 const DOC = parseOrThrow(`---
 id: fields
@@ -134,11 +144,22 @@ describe('properties pane', () => {
    * they appear at all. The outline that used to carry them is gone, so
    * dropping them here puts them in the file and nowhere in the app.
    */
-  it('shows a component status and version as chips', () => {
-    const chips = pane(['Card']).findAll('.node-head .meta')
-    expect(chips.map((c) => c.text())).toEqual(['stable', '2.1.0'])
-    expect(chips[0]!.attributes('data-meta')).toBe('status')
-    expect(chips[0]!.attributes('data-value')).toBe('stable')
+  it('shows a component version as a chip and its status as a picker', () => {
+    const head = pane(['Card']).find('.node-head')
+    expect(head.findAll('span.meta').map((c) => c.text())).toEqual(['2.1.0'])
+    const status = head.find('select.meta')
+    expect(status.attributes('data-meta')).toBe('status')
+    expect(status.attributes('data-value')).toBe('stable')
+    expect((status.element as HTMLSelectElement).value).toBe('stable')
+  })
+
+  it('keeps the status in one place, editable or read-only: first after the name', () => {
+    const order = (writable: boolean) =>
+      pane(['Card'], writable)
+        .findAll('.node-head .meta')
+        .map((chip) => chip.attributes('data-meta'))
+    expect(order(true)).toEqual(['status', 'version'])
+    expect(order(false)).toEqual(['status', 'version'])
   })
 
   it('shows no chips on a node that carries no metadata', () => {
@@ -2533,5 +2554,477 @@ describe('pins (H2)', () => {
     expect(row(wrapper, 'x').find('[data-field="right"]').exists()).toBe(true)
     expect(wrapper.find('[data-field="centerX"]').exists()).toBe(false)
     expect(wrapper.find('[data-field="centerY"]').exists()).toBe(false)
+  })
+})
+
+/**
+ * Contract, Connect and Code share one shell: a tab strip that always fits
+ * and dots only a real problem, one identity row, a status line that words
+ * every fault once, and the same empty states. These pin what the shell
+ * decides, whatever each tab draws below it.
+ */
+describe('the code tabs share one shell', () => {
+  const TEAM = parseOrThrow(`---
+id: team
+---
+
+## Visual Contract
+
+<Page>
+  <Instance name="list-1" component="List" />
+  <Frame name="loose" width={10} height={10} />
+</Page>
+`)
+  const LIST = parseOrThrow(`---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" />
+</Page>
+`)
+  const MISSING =
+    "Could not read the headless library: ENOENT: no such file or directory, open '/abs/vendor/hwc/missing/custom-elements.json'"
+  const CODEGEN: CodegenState = { out: '../generated', running: false, notice: '', result: null }
+
+  const mounted: VueWrapper[] = []
+  function shell(props: Record<string, unknown>) {
+    // The Code tab renders through the server; an empty, healthy answer keeps it quiet.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => json({ files: [], diagnostics: [] })),
+    )
+    const wrapper = mount(PropertiesPane, {
+      props: { doc: DOC, selection: ['Card'], tokens, writable: true, ...props },
+    })
+    mounted.push(wrapper)
+    return wrapper
+  }
+  const json = (body: unknown): Response =>
+    new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
+  const tab = (wrapper: VueWrapper, name: string) => wrapper.get(`[data-tour="tab-${name}"]`)
+  async function open(wrapper: VueWrapper, name: string) {
+    await tab(wrapper, name).trigger('click')
+    await flushPromises()
+  }
+
+  afterEach(() => {
+    for (const wrapper of mounted.splice(0)) wrapper.unmount()
+    vi.unstubAllGlobals()
+    headlessFailure.value = null
+    connectionError.value = ''
+    connectionErrorKey.value = null
+    connection.value = { headless: null, codegen: null }
+  })
+
+  it('draws four tabs that share the strip, each label in its own ellipsizing span', () => {
+    const tabs = shell({}).findAll('.face-toggle button')
+    expect(tabs.map((t) => t.attributes('data-tour'))).toEqual([
+      'tab-design',
+      'tab-contract',
+      'tab-connect',
+      'tab-code',
+    ])
+    expect(tabs.map((t) => t.get('.face-label').text())).toEqual([
+      'Design',
+      'Contract',
+      'Connect',
+      'Code',
+    ])
+    expect(tabs.map((t) => t.attributes('aria-pressed'))).toEqual([
+      'true',
+      'false',
+      'false',
+      'false',
+    ])
+    expect(tabs.some((t) => t.find('.badge').exists())).toBe(false)
+  })
+
+  it('says read-only once, as a lock chip at the end of the identity row', () => {
+    const wrapper = shell({ writable: false })
+    const head = wrapper.get('.node-head')
+    expect(head.get('.name').attributes('title')).toBe('Card')
+    const lock = head.get('.read-only-badge')
+    expect(lock.attributes('title')).toBe(
+      'Read only. Reconnect to edit; you can still inspect and export.',
+    )
+    expect(lock.find('[data-icon="lock"]').exists()).toBe(true)
+    expect(lock.get('.sr-only').text()).toContain('Reconnect to edit')
+    expect(wrapper.find('.note.warn').exists()).toBe(false)
+    // Beside a name the chip is the icon alone.
+    expect(lock.attributes('data-labelled')).toBeUndefined()
+    // With nothing selected the row carries the chip alone, and it names itself.
+    for (const selection of [[], ['Card#root', 'Card#root/label']]) {
+      const idle = shell({ selection, writable: false })
+      const idleLock = idle.get('.node-head .read-only-badge')
+      expect(idleLock.attributes('data-labelled')).toBeDefined()
+      const word = idleLock.get('.read-only-word')
+      expect(word.text()).toBe('Read only')
+      // Screen readers hear the title's sentence once, not the word as well.
+      expect(word.attributes('aria-hidden')).toBe('true')
+      expect(idle.find('.node-head .name').exists()).toBe(false)
+    }
+  })
+
+  it('names a multi-selection once, and asks for one layer the same way on every code tab', async () => {
+    const wrapper = shell({ selection: ['Card#root', 'Card#root/label'] })
+    // The empty state says how many; the identity row does not say it first.
+    expect(wrapper.find('.node-head').exists()).toBe(false)
+    const hints: Record<string, string> = {
+      contract: 'Select one to see its contract.',
+      connect: 'Select one to see its connection.',
+      code: 'Select one to see its code.',
+    }
+    for (const [name, hint] of Object.entries(hints)) {
+      await open(wrapper, name)
+      const empty = wrapper.get('.empty-state[data-empty="multi"]')
+      expect(empty.get('.empty-title').text()).toBe('2 layers selected')
+      expect(empty.get('.empty-hint').text()).toBe(hint)
+      expect(empty.find('details.about').exists()).toBe(false)
+      // Connect still offers Project, which needs no selection.
+      expect(wrapper.find('.inspector-tab').exists(), name).toBe(name === 'connect')
+    }
+  })
+
+  it('shows nothing selected alike on every code tab, with what the tab is for', async () => {
+    const wrapper = shell({ selection: [] })
+    for (const name of ['contract', 'connect', 'code']) {
+      await open(wrapper, name)
+      const empty = wrapper.get('.empty-state[data-empty="none"]')
+      expect(empty.get('.empty-title').text()).toBe('No component selected')
+      expect(empty.get('details.about summary').text()).toContain(
+        `About ${name[0]!.toUpperCase()}${name.slice(1)}`,
+      )
+    }
+  })
+
+  it('words a library it cannot read once, on every tab, and dots only Connect', async () => {
+    const wrapper = shell({ headlessError: MISSING })
+    const connect = tab(wrapper, 'connect').get('.badge')
+    expect(connect.attributes('data-tone')).toBe('danger')
+    expect(connect.attributes('title')).toBe('Library file not found')
+    expect(tab(wrapper, 'connect').attributes('title')).toBe('Connect: Library file not found')
+    // Unchecked parts are not problems; the Code tab has not rendered yet.
+    expect(tab(wrapper, 'contract').find('.badge').exists()).toBe(false)
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    for (const name of ['contract', 'connect']) {
+      await open(wrapper, name)
+      const status = wrapper.get('.inspector-status')
+      expect(status.attributes('data-tone')).toBe('danger')
+      expect(status.get('.status-title').text()).toBe('Library file not found')
+    }
+  })
+
+  it("says the library on Code only while Code can't render", async () => {
+    const wrapper = shell({ headlessError: MISSING })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => new Response('', { status: 502 })),
+    )
+    await open(wrapper, 'code')
+    const status = wrapper.get('.inspector-status')
+    expect(status.get('.status-title').text()).toBe('Library file not found')
+    await wrapper.get('button.status-bar').trigger('click')
+    expect(status.text()).toContain("Code can't render without it.")
+    // Rendered all the same: "can't render without it" would be wrong, and
+    // the library's fault is Connect's to show.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => json({ files: [], diagnostics: [] })),
+    )
+    await wrapper.setProps({ doc: { ...DOC, sourceHash: 'edited' } })
+    await new Promise((done) => setTimeout(done, 450))
+    await flushPromises()
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+    expect(tab(wrapper, 'connect').get('.badge').attributes('title')).toBe('Library file not found')
+  })
+
+  it("takes the status line's Fix in Connect to Connect › Project, at the library", async () => {
+    const wrapper = shell({ headlessError: MISSING })
+    await open(wrapper, 'contract')
+    await wrapper.get('button.status-bar').trigger('click')
+    const fix = wrapper
+      .findAll('.status-actions .link-button')
+      .find((b) => b.text() === 'Fix in Connect')!
+    await fix.trigger('click')
+    expect(tab(wrapper, 'connect').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.getComponent(ConnectSection).props('focus')).toMatchObject({
+      target: 'library',
+    })
+    expect(wrapper.getComponent(ConnectSection).props('libraryFailed')).toBe(true)
+  })
+
+  it('retries the library from the status line', async () => {
+    const wrapper = shell({ headlessError: MISSING })
+    await open(wrapper, 'connect')
+    await wrapper.get('button.status-bar').trigger('click')
+    const fetcher = vi.fn().mockImplementation(async () => json({ path: null }))
+    vi.stubGlobal('fetch', fetcher)
+    await wrapper
+      .findAll('.status-actions .link-button')
+      .find((b) => b.text() === 'Retry')!
+      .trigger('click')
+    expect(fetcher.mock.calls[0]![0]).toBe('/__uidx/headless')
+  })
+
+  it('leaves a dead socket to the lock chip rather than saying it on every tab', async () => {
+    const offline = shell({ headlessError: 'Failed to fetch', writable: false })
+    await open(offline, 'connect')
+    expect(offline.find('.inspector-status').exists()).toBe(false)
+    const online = shell({ headlessError: 'Failed to fetch' })
+    await open(online, 'connect')
+    expect(online.get('.status-title').text()).toBe("Can't reach the uidx server")
+  })
+
+  it('puts a uidx.json that will not load on Connect and Code, and a refused profile under its field', async () => {
+    connectionError.value = 'Unexpected token } in JSON at position 48'
+    const wrapper = shell({})
+    expect(tab(wrapper, 'connect').get('.badge').attributes('title')).toBe(
+      "uidx.json isn't valid JSON",
+    )
+    await open(wrapper, 'code')
+    expect(wrapper.get('.status-title').text()).toBe("uidx.json isn't valid JSON")
+    await open(wrapper, 'contract')
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+
+    connectionError.value = 'Profile values must be strings.'
+    connectionErrorKey.value = 'profile'
+    await open(wrapper, 'connect')
+    // Said once, under the Naming grid, not again in the status line.
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+    expect(wrapper.getComponent(ConnectSection).props('fieldError')).toEqual({
+      key: 'profile',
+      text: 'Profile values must be strings',
+    })
+    expect(tab(wrapper, 'connect').find('.badge').exists()).toBe(false)
+  })
+
+  it('hands a refused field its error to show under the field', async () => {
+    connectionError.value = 'Name the module the React component is imported from.'
+    connectionErrorKey.value = 'react'
+    const wrapper = shell({})
+    await open(wrapper, 'connect')
+    expect(wrapper.getComponent(ConnectSection).props('fieldError')).toEqual({
+      key: 'react',
+      text: 'Name the module to import from',
+    })
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+  })
+
+  it('marks the Code tab when its component cannot be generated, and opens the contract from a row', async () => {
+    const wrapper = shell({})
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () =>
+        json({
+          files: [],
+          diagnostics: [
+            {
+              file: 'card.uidx',
+              line: 11,
+              column: 3,
+              message: 'part "spinner-track" has no element in the manifest',
+              severity: 'error',
+            },
+          ],
+        }),
+      ),
+    )
+    await open(wrapper, 'code')
+    await flushPromises()
+    expect(tab(wrapper, 'code').get('.badge').attributes('data-tone')).toBe('danger')
+    expect(wrapper.get('.status-title').text()).toBe("Can't generate code")
+    expect(wrapper.get('.status-count').text()).toBe('1 problem')
+    await wrapper.get('button.status-bar').trigger('click')
+    await wrapper.get('.status-rows .link-button').trigger('click')
+    expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.getComponent(ContractSection).props('focus')).toMatchObject({
+      target: 'parts',
+    })
+    // An edit made elsewhere may have fixed it: the mark goes until Code looks again.
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+    await wrapper.setProps({ doc: parseOrThrow(DOC.source.replace('2.1.0', '2.2.0')) })
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+  })
+
+  it('selects the component when another tab opens its contract from an inner layer', async () => {
+    const wrapper = shell({ selection: ['Card#root/label'] })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () =>
+        json({
+          files: [],
+          diagnostics: [
+            { file: 'card.uidx', line: 11, column: 3, message: 'bad part', severity: 'error' },
+          ],
+        }),
+      ),
+    )
+    await open(wrapper, 'code')
+    await flushPromises()
+    await wrapper.get('button.status-bar').trigger('click')
+    await wrapper.get('.status-rows .link-button').trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['Card']])
+    expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
+    // Connect's Bind parts asks the same of the same component.
+    await open(wrapper, 'connect')
+    wrapper.getComponent(ConnectSection).vm.$emit('open-contract')
+    expect(wrapper.emitted('select')).toEqual([['Card'], ['Card']])
+  })
+
+  it("opens the page that declares an instance's component for its contract", async () => {
+    const wrapper = shell({
+      doc: TEAM,
+      selection: ['list-1'],
+      components: new Map([['List', LIST.tree.children[0]!]]),
+    })
+    await open(wrapper, 'code')
+    await wrapper.getComponent(CodeSection).vm.$emit('act', { run: 'open-contract' })
+    expect(wrapper.emitted('openComponent')).toEqual([['List']])
+    expect(wrapper.emitted('select')).toBeUndefined()
+    expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
+  })
+
+  it("never dots Code for the library, before or after Code renders, nor once it's back", async () => {
+    headlessFailure.value = classifyFailure(new Error(MISSING))
+    const wrapper = shell({ headlessError: MISSING })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ error: MISSING }), {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    )
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    await open(wrapper, 'code')
+    await flushPromises()
+    expect(wrapper.get('.status-title').text()).toBe('Library file not found')
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    await open(wrapper, 'contract')
+    headlessFailure.value = null
+    await wrapper.setProps({ headlessError: '' })
+    await flushPromises()
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    expect(tab(wrapper, 'code').attributes('title')).toBe('Code')
+  })
+
+  it('drops the Code mark when Code is left before it re-renders an edit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const wrapper = shell({})
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () =>
+          json({
+            files: [],
+            diagnostics: [
+              { file: 'card.uidx', line: 11, column: 3, message: 'bad part', severity: 'error' },
+            ],
+          }),
+        ),
+      )
+      await open(wrapper, 'code')
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+      // An edit lands while Code shows; Code is left before its 400ms re-render.
+      await wrapper.setProps({ doc: parseOrThrow(DOC.source.replace('2.1.0', '2.2.0')) })
+      await vi.advanceTimersByTimeAsync(150)
+      await open(wrapper, 'contract')
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+      // Left with nothing pending, the mark stays.
+      await open(wrapper, 'code')
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+      await open(wrapper, 'contract')
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("opens every tab at its top, not at the last tab's scroll position", async () => {
+    const wrapper = shell({})
+    await open(wrapper, 'contract')
+    const pane = wrapper.get('aside.properties').element
+    pane.scrollTop = 200
+    await open(wrapper, 'connect')
+    expect(pane.scrollTop).toBe(0)
+  })
+
+  it('reports a write that failed on the Code tab, with the way to fix it', async () => {
+    const wrapper = shell({
+      selection: [],
+      codegen: {
+        ...CODEGEN,
+        result: {
+          kind: 'failed',
+          failure: {
+            code: 'no-access',
+            raw: "EACCES: permission denied, mkdir '/home/me/generated/react'",
+          },
+        },
+      },
+    })
+    expect(tab(wrapper, 'code').get('.badge').attributes('title')).toBe(
+      "Can't write to the output folder",
+    )
+    await open(wrapper, 'code')
+    await wrapper.get('button.status-bar').trigger('click')
+    await wrapper
+      .findAll('.status-actions .link-button')
+      .find((b) => b.text() === 'Change folder')!
+      .trigger('click')
+    expect(tab(wrapper, 'connect').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.getComponent(ConnectSection).props('focus')).toMatchObject({
+      target: 'output',
+    })
+  })
+
+  it('sends Connect on an instance to the page that defines its component', async () => {
+    const wrapper = shell({
+      doc: TEAM,
+      selection: ['list-1'],
+      components: new Map([['List', LIST.tree.children[0]!]]),
+    })
+    await open(wrapper, 'connect')
+    const empty = wrapper.get('.empty-state[data-empty="instance"]')
+    expect(empty.get('.empty-title').text()).toBe('Instance of List')
+    expect(empty.get('.empty-hint').text()).toBe("Connect it where it's defined.")
+    await empty.get('.link-button').trigger('click')
+    expect(wrapper.emitted('openComponent')).toEqual([['List']])
+    expect(wrapper.getComponent(ConnectSection).props('component')).toBeNull()
+    // Code is about the same component, wherever it is declared.
+    await open(wrapper, 'code')
+    expect(wrapper.getComponent(CodeSection).props('component')).toBe('List')
+    expect(wrapper.getComponent(CodeSection).props('relation')).toBe('of List')
+  })
+
+  it('offers to make a component of a layer outside every component', async () => {
+    const wrapper = shell({ doc: TEAM, selection: ['loose'], canMakeComponent: true })
+    for (const name of ['connect', 'code']) {
+      await open(wrapper, name)
+      const empty = wrapper.get('.empty-state[data-empty="outside"]')
+      expect(empty.get('.empty-title').text()).toBe('Not in a component')
+      await empty.get('.link-button').trigger('click')
+    }
+    expect(wrapper.emitted('makeComponent')).toHaveLength(2)
+  })
+
+  it('reads an inner layer as its component on Connect and Code', async () => {
+    const wrapper = shell({ selection: ['Card#root/label'] })
+    await open(wrapper, 'connect')
+    expect(wrapper.getComponent(ConnectSection).props('component')?.name).toBe('Card')
+    expect(wrapper.getComponent(ConnectSection).props('relation')).toBe('of Card')
+    await open(wrapper, 'code')
+    expect(wrapper.getComponent(CodeSection).props('component')).toBe('Card')
+    expect(wrapper.getComponent(CodeSection).props('relation')).toBe('of Card')
   })
 })

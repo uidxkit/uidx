@@ -100,7 +100,62 @@ The separate `.uidx/uidx.json` manifest controls which files belong to the docum
 {
   "id": "my-project",
   "files": ["**/*.uidx"],
-  "assets": ["assets/**"]
+  "assets": ["assets/**"],
+  "headless": "../vendor/hwc/custom-elements.json"
+}
+```
+
+`headless` is optional. It names the headless library's `custom-elements.json`,
+relative to `uidx.json`; with it, the viewer's Contract tab offers the library's
+elements and parts as choices, and `uidx codegen` checks contracts against it.
+Leave it out and the Project section of the viewer's Connect tab offers the
+libraries your dependencies ship (any package whose `package.json` has a
+`customElements` field) and writes your choice here. The object form binds the same designs to a library that spells
+things differently, without editing a design:
+
+```json
+{
+  "headless": {
+    "manifest": "node_modules/@shoelace-style/shoelace/dist/custom-elements.json",
+    "profile": { "props": "attribute", "customStates": "state", "parts": "element" },
+    "bindings": {
+      "Checkbox": {
+        "tag": "sl-checkbox",
+        "parts": { "checked-indicator": "control" },
+        "events": { "change": "sl-change" }
+      }
+    }
+  }
+}
+```
+
+`profile` says how the library reflects props (`attribute`, `data-attribute`,
+`class`), its own states (`state`, `data-attribute`, `class`) and parts
+(`element`, `data-part`). `bindings` maps a component's identity names to the
+library's. Both default to the conventions `@hwc/components` follows.
+
+`codegen` is optional too: `{ "out": "../generated", "targets": ["html", "react", "contract"] }` (add `"stories"` for Storybook CSF files beside the React components)
+says where `uidx codegen` writes without `--out`, and gives the viewer's
+Code tab a Write code button that writes the same output from the server.
+
+A team whose components already exist in a React library maps identities
+onto them instead of onto custom elements: `codegen.react` names, per
+component, the module and export, and how contract props, values and events
+are spelled there. `uidx codegen` then writes a typed adapter, not a new
+component:
+
+```json
+"codegen": {
+  "out": "../generated",
+  "react": {
+    "Button": {
+      "from": "@acme/ui",
+      "props": { "emphasis": "appearance" },
+      "values": { "emphasis": { "primary": "solid" } },
+      "events": { "press": "onClick" },
+      "children": "label"
+    }
+  }
 }
 ```
 
@@ -116,8 +171,101 @@ npx --no-install uidx check
 npx --no-install uidx fmt --check
 ```
 
+Building the design system and keeping product code on it:
+
+```sh
+npx --no-install uidx init --design-system   # starter tokens and a Button
+npx --no-install uidx tokens import tokens.json   # DTCG, from Figma or Tokens Studio
+npx --no-install uidx adopt path/to/custom-elements.json
+npx --no-install uidx components              # what agents and developers build with
+npx --no-install uidx lint src                # token literals and raw elements in app code
+npx --no-install uidx diff --base origin/main # breaking contract and token changes
+npx --no-install uidx share --out site        # a static review site
+npx --no-install uidx export fig --out figma  # Figma files
+npx --no-install uidx init --ci               # all of the above on every pull request
+```
+
 The CLI also supports reading, creating, editing, and rendering pages. See the
 [CLI guide](packages/cli/README.md) and [agent architecture](packages/agent/README.md).
+
+## Design system: one file, every render
+
+A `.uidx` file can be the identity of a component, and the components you
+ship — on the canvas, in Figma, as HTML/CSS, as React — are renders of it
+(ADRs 0012–0018). Nothing in the file computes; implementation is a renderer's
+job. One checkbox, top to bottom:
+
+```mdx
+---
+id: checkbox
+---
+
+Lets a user toggle one option. The box and its marks are the design system's;
+the label comes from a Field.
+
+## Visual Contract
+
+<Page>
+  <Component name="Checkbox" status="stable" implements="hwc-checkbox"
+    width={20} height={20} cornerRadius="{radius#sm}" fills="{surface#control}">
+    <Vector name="check" part="checked-indicator" visible={false} width={12} height={12} … />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" root:fills="{surface#accent}" checked-indicator:visible={true} />
+  <Style state="hover" root:strokes="{border#hover}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} controllable visual>Whether the option is selected.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="change" detail="{ checked: boolean }">Fires once per user toggle, never when set from code.</Event>
+</Events>
+<Accessibility role="checkbox" keyboard="Space toggles" />
+
+## Behavior
+
+- toggle: click or Space flips `checked`.
+- change-event: `change` fires once per user toggle, never when `checked` is set from code.
+```
+
+- **Identity.** The visual contract is the anatomy and layout, in Figma's
+  vocabulary. `implements` binds the component to a headless element,
+  `part` binds a layer to one of its parts.
+- **States.** A visual boolean prop is a state; `hover`, `focus` and `active`
+  are the browser's and need no declaration. The styles table gives each
+  state its look, and the canvas draws the whole set. Select a state on the
+  canvas and change it: the viewer writes the row.
+- **Contract.** What the code render exposes, every declaration with its
+  words. The inspector's Contract tab binds components and parts to the
+  library named in `uidx.json`, and edits the contract in place.
+- **Behaviour.** Short bullets that guide the logic without being code.
+- **Models.** For a list, a view model of what each row receives — declared
+  once, named by a prop's type, sampled for the canvas, never derived. Any
+  layer repeats over a list with `repeat="{items}"`; nested, that is a tree.
+  The viewer's Models face edits every model of the document in one place.
+
+A placed component can restyle its outer box (fill, stroke, corners, padding,
+opacity, shadow) and colour every text inside with `textFills`, while its
+layout and layers stay the component's and its state rows still win
+(ADR 0018):
+
+```mdx
+<Instance name="cancel" component="Button" props={{ label: 'Cancel plan', variant: 'secondary' }}
+  cornerRadius="{radius#full}" paddingLeft="{space#lg}" paddingRight="{space#lg}"
+  textFills="{text#danger}" />
+```
+
+Then `uidx check` audits the regions against the tree, and `uidx codegen`
+renders HTML/CSS and React over the headless library, checking each contract
+against its `custom-elements.json`. See `examples/design-system` for six
+components rendered end to end over `@hwc/components`.
 
 ## Documentation
 

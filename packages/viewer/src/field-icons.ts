@@ -71,10 +71,18 @@ export const ICON_PATHS = {
   'eye-off': 'M1.5 6 C 3 3.5, 9 3.5, 10.5 6 C 9 8.5, 3 8.5, 1.5 6 Z M2.5 9.5 L9.5 2.5',
   expand: 'M2 5 V2 H5 M7 2 H10 V5 M10 7 V10 H7 M5 10 H2 V7',
   droplet: 'M6 1.5 C 8 4.5, 9.5 6.5, 9.5 8 A 3.5 3.5 0 0 1 2.5 8 C 2.5 6.5, 4 4.5, 6 1.5 Z',
+  // An instance's inside is its component's (ADR 0018 §1): the locked layout line.
+  lock: 'M3 5.5 H9 V10.5 H3 Z M4.3 5.5 V4 A1.7 1.7 0 0 1 7.7 4 V5.5',
   // The UI3 pass (spec §5): the popup's chrome and the variable glyphs.
   search: 'M5.2 1.8 A 3.4 3.4 0 1 1 5.2 8.6 A 3.4 3.4 0 1 1 5.2 1.8 M7.8 7.8 L10.5 10.5',
   close: 'M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5',
   plus: 'M6 2 V10 M2 6 H10',
+  // The inspector tabs' status line and section headers: what a section is
+  // for, what went wrong, and the code block's copy confirmation.
+  info: 'M6 1.5 A4.5 4.5 0 1 1 6 10.5 A4.5 4.5 0 1 1 6 1.5 M6 5.5 V8.5 M6 3.6 V3.7',
+  'alert-circle': 'M6 1.5 A4.5 4.5 0 1 1 6 10.5 A4.5 4.5 0 1 1 6 1.5 M6 3.5 V6.5 M6 8.3 V8.4',
+  copy: 'M4 4 H10 V10 H4 Z M2 8 V2 H8',
+  check: 'M2.5 6.5 L5 9 L9.5 3.5',
   trash: 'M2 3 H10 M4.5 3 V1.5 H7.5 V3 M3 3 L3.5 10.5 H8.5 L9 3 M5 5 V8.5 M7 5 V8.5',
   variable: 'M2.5 2.5 H9.5 V9.5 H2.5 Z M4.8 4 L4.2 8 M7.8 4 L7.2 8 M3.5 5.2 H8.7 M3.3 6.8 H8.5',
   'variables-grid':

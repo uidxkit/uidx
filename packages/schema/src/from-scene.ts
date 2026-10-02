@@ -22,6 +22,7 @@ import {
   isDerivedSize,
   isPinnedAxis,
 } from './authorship.js'
+import { instanceRole } from './instance-box.js'
 import type { PinMap } from './pin-index.js'
 import { pinFrom, pinWrites, type PinAxisName } from './pins.js'
 import type { AddressMap } from './to-scene.js'
@@ -55,6 +56,15 @@ export interface ChangeContext {
    * only a document is still told the truth.
    */
   pins?: PinMap
+  /**
+   * Whether the text at a scene id is one an instance's colour reaches (ADR
+   * 0018 §4): a member of some `SceneResult.textTargets` list.
+   *
+   * What such a text draws is the instance's to change, so its fills are not
+   * written back unless a gesture vouches for them. Absent means no text is
+   * one, which is every caller written before the cascade.
+   */
+  cascaded?: (sceneId: string) => boolean
 }
 
 const POSITION_PROPS = new Set(['x', 'y'])
@@ -73,6 +83,9 @@ const SIZE_PROPS = new Set(['width', 'height'])
  * path. Only D11's pen and D12's vertex drag may say a path changed.
  */
 const VOUCHED_ONLY = new Set(['vectorPaths', 'strokeStartCap', 'strokeEndCap'])
+
+/** What an `<Instance>` never gains from the canvas (see `fromSceneChange`). */
+const INSTANCE_SIZING_MODES = ['primaryAxisSizingMode', 'counterAxisSizingMode']
 
 /** Reverse index: SceneNode field -> UIDX prop names that read it. */
 const BY_SCENE_FIELD = new Map<string, Set<string>>()
@@ -129,6 +142,48 @@ export function fromSceneChange(
   const candidates = new Set<string>()
   for (const field of Object.keys(changes)) {
     for (const prop of BY_SCENE_FIELD.get(field) ?? []) candidates.add(prop)
+  }
+
+  /** Whether the gesture this change belongs to vouches for `prop` on this node (C7). */
+  const vouches = (prop: string): boolean =>
+    ctx.authoredFor === sceneId && ctx.authored?.has(prop) === true
+
+  // An instance's sizing modes are relative to the layout its root is drawn
+  // with — for a styled component the derived variant's, not the one the
+  // author wrote — so the file says it with the size alone: a stated width is
+  // Fixed (`instanceSizing` in to-scene). The canvas flips the mode to show a
+  // resize live; that flip stays on the canvas, vouched or not. A mode the
+  // file already states is the author's, and is kept current like any other.
+  //
+  // Nor does the node hold the use's outer box as the file states it (ADR
+  // 0018 §2). The box is drawn on the node that draws the component's box —
+  // for most components a frame one level down — so this one holds no paint,
+  // no padding and opacity 1 whatever the use states. Where the box is this
+  // node, it holds it resolved: a token's colour, or the component's own value
+  // where the use states none. Writing either back would clear the use's box,
+  // unbind its token or copy the component's look into it, so a box prop, or
+  // the colour the use hands down, reaches the file only from a gesture.
+  if (node.element === 'Instance') {
+    for (const prop of INSTANCE_SIZING_MODES) {
+      if (node.attrs[prop] === undefined) candidates.delete(prop)
+    }
+    for (const prop of candidates) {
+      const role = instanceRole(prop)
+      if ((role === 'box' || role === 'cascade') && !vouches(prop)) candidates.delete(prop)
+    }
+  }
+
+  // A text that states no fills draws the colour the nearest instance hands
+  // down (ADR 0018 §4). Slot-fill text is the consumer's own, so it links and
+  // reaches here, but that colour is the instance's: written onto the text,
+  // it would stop following the instance. A gesture on the text still writes.
+  if (
+    node.element === 'Text' &&
+    node.attrs.fills === undefined &&
+    !vouches('fills') &&
+    ctx.cascaded?.(sceneId) === true
+  ) {
+    candidates.delete('fills')
   }
 
   const patches: UidxPatch[] = []
@@ -210,7 +265,7 @@ export function fromSceneChange(
     // say otherwise is refused on a flowed child. Measured live: the reflow
     // after releasing an absolute-position pin re-announced its computed x one
     // revision behind the flip, and "keep it current" wrote it back.
-    const vouched = ctx.authoredFor === sceneId && ctx.authored?.has(prop) === true
+    const vouched = vouches(prop)
     if (!vouched) {
       // An alias in the file is a binding, and the scene only ever holds what
       // it resolved to. For geometry the comparison "file !== scene" is then

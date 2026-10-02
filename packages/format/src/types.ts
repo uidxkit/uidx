@@ -310,6 +310,15 @@ export interface UidxAttr {
   loc: Range
   /** Delimited value span. `source.slice(valueLoc.start, valueLoc.end) === raw`. */
   valueLoc: Range
+  /**
+   * The state whose style row wrote this value, on an attribute of a derived
+   * node (ADR 0018 §3) — `'hover'`, `'checked'`. A marker the schema writes,
+   * like `UidxNode.derived`, and never parsed or printed. A row keyed only by
+   * visual enums, or by `state="default"`, is the component's resting look
+   * and leaves none. A stamped value sits above an instance's outer box, so
+   * the instance's layer leaves it alone.
+   */
+  stateRow?: string
 }
 
 export interface UidxNode {
@@ -328,17 +337,43 @@ export interface UidxNode {
   /** Leading whitespace on the line this element starts on. */
   indent: string
   /**
+   * The file's spec regions, attached to each `<Component>` the file declares
+   * (ADR 0013). On the node rather than only on the document so an instance
+   * expanded from another file's definition can resolve that component's
+   * model bindings and derive its variants without a second lookup.
+   */
+  spec?: DocumentSpec
+  /**
    * True for the `<Page>` implied by a bare `<Component>` root (ADR 0003 §4).
    * The node has no source span of its own, so nothing may be inserted into it
    * or removed from it until `uidx fmt` materialises the wrapper.
    */
   synthetic?: boolean
+  /**
+   * True for a node the styles table derived (ADR 0016 §4): a `<Variant>`,
+   * its root frame and their children. Synthetic too — no source span — but
+   * addressable, because an edit to one has somewhere to go: the style row
+   * its address names (the `style` patch op).
+   */
+  derived?: true
 }
 
 export interface UidxDocument {
   frontmatter: Record<string, unknown>
   intent: { raw: string; loc: Range }
   tree: UidxNode
+  /**
+   * The regions after the visual contract (ADR 0012): the component contract,
+   * behaviour guidelines, models, examples, and the styles table. Absent for
+   * a file that declares none, which is every file written before ADR 0013.
+   */
+  spec?: DocumentSpec
+  /**
+   * The source text of those regions, verbatim, from the first region heading
+   * to the end of the file. `emitDocument` prints it back unchanged, so a
+   * `uidx fmt` never loses a region it does not reformat.
+   */
+  trailing?: { raw: string; loc: Range }
   source: string
   /**
    * Cheap change-detection digest, not a cryptographic one. The server's echo
@@ -370,6 +405,82 @@ export type UidxPatch =
    * refuses.
    */
   | { op: 'set-mode'; address: string; mode: string; value: JsonValue }
+  /**
+   * Sets or clears one cell of the styles table (ADR 0016 §2): in the row
+   * whose keys are exactly `keys`, the `prop` of `target` (`root`, a part, or
+   * a node name). No `value` clears the cell; a row left empty is removed and
+   * a missing row is added, so the table never holds an empty row. This is
+   * how a state is designed from the canvas (ADR 0016 §4): the derived
+   * variant is what is drawn, the row is what is written. An empty `target`
+   * and `prop` address the whole row: a `value` of `{ target: { prop: v } }`
+   * writes it (`{}` makes a state exist before it has a look, the one empty
+   * row the table holds), no `value` removes it with every cell.
+   */
+  | { op: 'style'; keys: Record<string, string>; target: string; prop: string; value?: JsonValue }
+  /**
+   * Declares, redeclares or removes one element of `## Contract` (ADR 0013
+   * §2): a `<Prop>`, `<Event>`, `<Slot>`, `<State>` or `<Part>` named `name`.
+   * With a `declaration` the element is written in canonical form — its list
+   * (`<Props>`, …) and the region itself created when absent; without one
+   * it is removed, and a list left empty goes with it. This is how the
+   * Contract tab edits the contract without the prose ever leaving the file.
+   */
+  | {
+      op: 'contract'
+      kind: ContractKind
+      name: string
+      declaration?: ContractDeclaration
+      /**
+       * Writes the declaration under this new name, in the old one's place.
+       * Only the declaration moves: what reads the old name (bindings, style
+       * rows, examples, instances) is the caller's to carry.
+       */
+      rename?: string
+    }
+  /**
+   * One `<Model>` of `## Models`, written or removed (ADR 0015 §1). The
+   * declaration is its description; the fields are the `field` op's. A model
+   * is reprinted canonically by either, the way the styles table is.
+   */
+  | {
+      op: 'model'
+      name: string
+      declaration?: ModelDeclaration
+      /** Writes the model under this new name in its place, fields kept; readers are the caller's. */
+      rename?: string
+    }
+  /** One `<Field>` of a model, written or removed; absent, the field goes. */
+  | {
+      op: 'field'
+      model: string
+      name: string
+      declaration?: ContractDeclaration
+      /** Writes the field under this new name in its place; bindings are the caller's. */
+      rename?: string
+    }
+  /**
+   * Writes a prose region whole (ADR 0012): `## Behavior` (one `- id:
+   * sentence` bullet per rule) or `## Examples` (`<Example>` elements), as
+   * the text under its heading. The region is created in canonical order
+   * when absent; no `body`, or an empty one, removes it. What the text says
+   * is checked by the parser like any other write.
+   */
+  | { op: 'region'; name: 'Behavior' | 'Examples'; body?: string }
+  /**
+   * Rewrites the intent: the prose between the frontmatter and `## Visual
+   * Contract` that says what the file is for and when to use it.
+   */
+  | { op: 'intent'; text: string }
+  /**
+   * Writes, replaces or removes one of `## Contract`'s single elements:
+   * `<Accessibility>` (role, label, keyboard…), `<Form>` (`participates`,
+   * `submits`) or `<Composes with="A, B">`. No `attrs` removes it.
+   */
+  | {
+      op: 'contract-element'
+      element: 'Accessibility' | 'Form' | 'Composes'
+      attrs?: Record<string, JsonValue>
+    }
   // structural ops
   | { op: 'insert-node'; parent: string; index: number; node: UidxNodeSpec }
   | { op: 'remove-node'; address: string }
@@ -406,6 +517,19 @@ export type UidxPatch =
       attrs?: Record<string, JsonValue | null>
     }
 
+export type ContractKind = 'prop' | 'event' | 'slot' | 'state' | 'part'
+
+/** One contract element as the `contract` op writes it: its attributes besides `name`, and its description. */
+export interface ContractDeclaration {
+  attrs: Record<string, JsonValue>
+  description: string
+}
+
+/** A model as the `model` op writes it: the words above its fields. */
+export interface ModelDeclaration {
+  description: string
+}
+
 export interface UidxNodeSpec {
   element: UidxElement
   attrs: Record<string, JsonValue>
@@ -428,4 +552,152 @@ export interface Diagnostic {
 export interface ParseResult {
   doc: UidxDocument | null
   diagnostics: Diagnostic[]
+}
+
+/* ------------------------------------------------ design system (ADR 0012–0017) */
+
+/**
+ * One element of a spec region, lowered generically: a name, evaluated
+ * attributes, the text between its tags, and its children. The typed shapes
+ * below are built from these; the generic tree is what `uidx contract`
+ * prints, so a generator sees exactly what was written.
+ */
+export interface SpecNode {
+  name: string
+  attrs: Record<string, JsonValue>
+  /** Text content with surrounding whitespace trimmed; the description. */
+  text: string
+  children: SpecNode[]
+  loc: Range
+}
+
+/** A `<Prop>` of the contract (ADR 0013 §2). */
+export interface PropSpec {
+  name: string
+  /**
+   * A TypeScript-ish type string. A name that matches a `<Model>` — on this
+   * page or any other — means the prop receives that model (ADR 0015 §2);
+   * `Contact[]` is a list of them.
+   */
+  type: string
+  default?: JsonValue
+  /**
+   * A demonstration value for the canvas and generated markup, shown where
+   * the prop is bound (ADR 0015 §1: samples are for demonstration only). Not
+   * the default: a required text prop has no default and still needs words.
+   */
+  sample?: JsonValue
+  controllable: boolean
+  visual: boolean
+  description: string
+  loc: Range
+}
+
+export interface EventSpec {
+  name: string
+  detail?: string
+  description: string
+  loc: Range
+}
+
+/**
+ * A state the element produces itself (ADR 0013 §2): `invalid` after
+ * validation, `open` on a disclosure that manages itself. Not a prop, since
+ * the consumer cannot set it, and not the browser's `hover` or `focus`,
+ * which need no declaration. Rendered as `:state(name)` in CSS.
+ */
+export interface StateSpec {
+  name: string
+  description: string
+  loc: Range
+}
+
+/** A part of the headless root, described (ADR 0013 §2). Optional: the tree's `part="…"` bindings are the declaration. */
+export interface PartSpec {
+  name: string
+  description: string
+  loc: Range
+}
+
+/** A consumer-filled position (ADR 0013 §2, ADR 0017 §1). */
+export interface SlotSpec {
+  name: string
+  /**
+   * The headless root a filling must implement, for a slot the tree repeats
+   * (`<Slot repeat="{items}">`, ADR 0017 §2). Whether a slot repeats is the
+   * tree's to say, not the contract's.
+   */
+  accepts?: string
+  description: string
+  loc: Range
+}
+
+export interface ContractSpec {
+  props: PropSpec[]
+  events: EventSpec[]
+  states: StateSpec[]
+  parts: PartSpec[]
+  slots: SlotSpec[]
+  form?: { participates: boolean; submits?: string }
+  accessibility?: Record<string, JsonValue>
+  composes: string[]
+  loc: Range
+}
+
+/** One bullet of `## Behavior` (ADR 0014). */
+export interface BehaviorRule {
+  id: string
+  text: string
+  loc: Range
+}
+
+export interface FieldSpec {
+  name: string
+  type: string
+  key: boolean
+  optional: boolean
+  /** A value, or a list of values for varied repeats; absent when not given. */
+  sample?: JsonValue
+  description: string
+  loc: Range
+}
+
+export interface ModelSpec {
+  name: string
+  description: string
+  fields: FieldSpec[]
+  loc: Range
+}
+
+/** One `<Set>` of an example: what it changes and where (ADR 0015 §3). */
+export interface ExampleSet {
+  slot?: string
+  count?: number
+  at?: string
+  state?: string
+  value?: JsonValue
+  loc: Range
+}
+
+export interface ExampleSpec {
+  name: string
+  sets: ExampleSet[]
+  loc: Range
+}
+
+/** One row of the styles table (ADR 0016 §2). */
+export interface StyleRow {
+  /** Axis assignments: prop values and `state`. */
+  keys: Record<string, string>
+  /** part → prop → value, from `part:prop` attributes; `root` is the component's own frame. */
+  values: Record<string, Record<string, JsonValue>>
+  loc: Range
+}
+
+export interface DocumentSpec {
+  contract?: ContractSpec
+  behavior?: BehaviorRule[]
+  models?: ModelSpec[]
+  examples?: ExampleSpec[]
+  styles?: StyleRow[]
 }

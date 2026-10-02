@@ -2137,6 +2137,17 @@ where the events arrive and had nothing to exercise it until now; the schema
 tests that drive a scene edit into a generated child and get no patch back are
 the ones it was written for.
 
+*Corrected later (ADR 0018, 2026-10-01): laying every attribute of the use over
+the definition was right for where it sits and wrong for anything else. A fill
+on an instance of a component with a styles table painted the invisible wrapper
+behind the frame you see, `layoutMode` re-laid out the component's insides, and
+no hover row could beat the use's fill. Each attribute now has one role.
+Placement stays on the instance's node. The outer box (fill, stroke, corners,
+padding, opacity, effects) goes to the node that draws the component's box,
+beneath its state rows, and `textFills` colours every text inside. Its props,
+overrides and modes are read by the expansion as before. Everything else is
+the component's own, and nothing draws it on a use.*
+
 **The generated ids are still the addresses those nodes would have had** if
 someone had written them there. Not to make them writable — they are not linked,
 so nothing can — but because every other part of the viewer already reads an id
@@ -2241,6 +2252,18 @@ rule are all D1's, unchanged. A click is the only gesture offered because it is
 the only one that means anything: an instance has no size of its own to sweep,
 it hugs whatever the component is.
 
+*Corrected later (instance resize, 2026-10-01): an instance placed this way
+still states no size and still follows its component, but it can be given one.
+An `<Instance>` that states a `width` or `height` is Fixed on that axis — a
+resize on the canvas writes one, and so does a typed W/H — and the panel's Hug
+removes it again. The file holds only the dimensions, never sizing modes, and
+an authored stretch or grow keeps winning on its own axis — so sizing that axis
+by hand (a drag, a typed W/H, Fixed) takes the `layoutAlign`/`layoutGrow` out in
+the same commit, Figma's Fill → Fixed. Placing is still a click: the size
+arrives with the first resize, not the sweep. Since ADR 0018 the size lands
+where the look does: on the frame a wrapper-shaped component wraps, or on the
+instance a composition holds.*
+
 **`placing` is a sibling of `tool`, not a value inside it.** §3.3's creation
 whitelist is the five elements a person *draws*, and widening it to carry a
 component name would have made "creatable" mean two different things. The two
@@ -2303,6 +2326,17 @@ What makes this a story rather than an afternoon is the other three things.
 - **Reset needs a vocabulary the inspector does not have.** Figma marks
   overridden properties and offers "reset". Without that an author can override
   something and have no way to see it, or to put it back.
+
+*Answered in part by ADR 0018 (2026-10-01).* A use restyles its outer box
+(fills, strokes, corners, padding, opacity, effects) and the colour of every
+text inside (`textFills`). These are plain attributes on the `<Instance>`, so
+they need no override keys, and they cover the changes asked for most: a red
+button, a roomier card, white label text. The reset vocabulary exists for them
+too: a dot and ↺ per row and per section, and Reset all. Per-layer overrides
+from the editor, which is this story, stay open. ADR 0018 set them aside for
+restyling, because the consuming page would depend on the component's internal
+paths and code could not follow them. `overrides` stays the hand-written
+escape hatch.
 
 The parts that *are* solved: the key an override needs is `relativeAddress` of
 the child within the component, which is exactly what the generated ids already

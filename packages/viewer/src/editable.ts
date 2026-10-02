@@ -8,6 +8,8 @@ import {
 } from '@uidx/format'
 import {
   defaultFor,
+  INSTANCE_CASCADE_PROPS,
+  instanceRole,
   isDerivedPosition,
   isIdentityProp,
   mappingFor,
@@ -19,6 +21,7 @@ import {
   SECTION_LABEL,
   fieldOrderFor,
   sectionOrderFor,
+  type InstanceBase,
   type PropGroup,
 } from '@uidx/schema'
 
@@ -78,6 +81,27 @@ export interface EditableProp {
   readonlyReason: string | null
   /** False for a field synthesized so an empty section can offer its `+` (C8). */
   authored: boolean
+  /**
+   * Where `value` comes from: the node's own attribute (`own`); for a row of an
+   * instance's outer box the use has not set, the component it draws, which a
+   * person wrote (`component`, ADR 0018 §7); or the engine's default, where
+   * nothing states one (`engine`). `editableProps` always says. Optional so a
+   * row built by hand still type-checks.
+   */
+  origin?: 'own' | 'component' | 'engine'
+  /**
+   * The state the instance's own props select that sets this property too.
+   * A state sits above the use (ADR 0018 §3), so a value the use states shows
+   * only in the other states. Null when no state does, and for every node
+   * that is not an instance.
+   */
+  shadow?: { state: string } | null
+  /**
+   * True for a row that cannot be edited but can go: an attribute on an
+   * instance that belongs to its component's inside, which nothing draws
+   * (ADR 0018 §1). The panel offers Remove (`resetPatches`).
+   */
+  removable?: boolean
 }
 
 export interface PairedField {
@@ -119,9 +143,52 @@ const UNEDITABLE_SHAPES: Record<string, string> = {
  *
  * They are editable, through `PropertiesPane`'s structural route rather than
  * the scene one, for the same reason they are absent here.
+ *
+ * `textFills` is absent for the same reason: an instance hands it down to the
+ * texts inside instead of setting it on a node (ADR 0018 §4), so it too is a
+ * patch on the instance rather than a scene write.
  */
 export function isMapped(name: string): boolean {
-  return isIdentityProp(name) || mappingFor(name) !== undefined || PIN_PROPS.includes(name)
+  return (
+    isIdentityProp(name) ||
+    mappingFor(name) !== undefined ||
+    PIN_PROPS.includes(name) ||
+    INSTANCE_CASCADE_PROPS.includes(name)
+  )
+}
+
+/**
+ * Why an instance's attribute draws nothing (ADR 0018 §1): it belongs to the
+ * component's inside — its layout, how its strokes end and join, its text —
+ * which every target ignores on a use. Split as the agent's refusal splits it.
+ */
+function lockedReason(name: string): string {
+  const inside =
+    propUiFor(name)?.group === 'layout' ? 'the component’s own layout' : 'inside the component'
+  return `${inside} — an instance restyles only its outer box, so nothing draws this`
+}
+
+/**
+ * What an unset row of an instance's outer box shows from its component
+ * (ADR 0018 §7), or undefined to leave it to the engine as any unset row is.
+ *
+ * A box row takes the value the component draws where the box lands, for the
+ * combination the use asks for, and only one it states: an engine default
+ * never passes for the component's. Text color takes what the texts the use
+ * would colour draw now, which is a state's colour where a state the use
+ * selects colours them all, as a box row shows a state's value. When they
+ * disagree it has no one value to show, and null stands for "mixed" there,
+ * still the component's. Only a component that draws no text such a colour
+ * could reach leaves the row to the engine.
+ */
+function inheritedFrom(base: InstanceBase, name: string): { value: JsonValue } | undefined {
+  const role = instanceRole(name)
+  if (role === 'box') {
+    const value = base.values[name]
+    return value === undefined ? undefined : { value }
+  }
+  if (role !== 'cascade' || base.text === null) return undefined
+  return { value: base.text === 'mixed' ? null : base.text }
 }
 
 /**
@@ -226,7 +293,24 @@ function positionLabel(name: string): string | null {
   return null
 }
 
-export function editableProps(node: UidxNode, parent: UidxNode | null = null): EditableProp[] {
+/**
+ * `base` is what a selected instance inherits from its component
+ * (`instanceBase`): the value each unset row of its outer box shows, and the
+ * states that sit above the use (ADR 0018 §7). Without one — any node but an
+ * instance, or an instance whose component is missing — an unset row is the
+ * engine's, as it always was.
+ */
+export function editableProps(
+  node: UidxNode,
+  parent: UidxNode | null = null,
+  base: InstanceBase | null = null,
+): EditableProp[] {
+  const instance = node.element === 'Instance'
+  const inherits = instance ? base : null
+  const shadowOf = (name: string): { state: string } | null => {
+    const state = inherits?.stateWins.get(name)
+    return state === undefined ? null : { state }
+  }
   const positionReason = derivedPositionReason(node, parent)
   const reasonFor = (name: string): string | null => {
     if (name === 'x' || name === 'y') return positionReason
@@ -257,6 +341,30 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
           boundTo: bound,
           readonlyReason: 'not in the prop table, so no edit to it can be written',
           authored: true,
+          origin: 'own',
+          shadow: null,
+        }
+      }
+
+      // An instance's inside is its component's (ADR 0018 §1), and every
+      // target ignores it on a use, so no control may edit it. The file says
+      // it all the same, so it shows — unsectioned, by its own name, beside
+      // the other attributes nothing reads — and offers to go.
+      if (instance && instanceRole(name) === 'locked') {
+        return {
+          name,
+          label: name,
+          group: null,
+          control: 'readonly',
+          options: null,
+          value: attr.value,
+          raw: attr.raw,
+          boundTo: bound,
+          readonlyReason: lockedReason(name),
+          authored: true,
+          origin: 'own',
+          shadow: null,
+          removable: true,
         }
       }
 
@@ -289,6 +397,8 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
         boundTo: bound,
         readonlyReason: shapeReason ?? reasonFor(name),
         authored: true,
+        origin: 'own',
+        shadow: shadowOf(name),
       }
     })
 
@@ -313,6 +423,10 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
     if (authoredNames.has(name)) continue
     if (name === 'name' || METADATA_ATTRS.has(name)) continue
     if (ui.appliesTo && !ui.appliesTo.includes(element)) continue
+    // `appliesTo` already keeps an instance's inside off it, and
+    // `prop-ui.test.ts` holds the two tables together; said here as well
+    // because this is where the panel decides what it offers.
+    if (instance && instanceRole(name) === 'locked') continue
     let looseEdge = false
     if (PIN_PROPS.includes(name) || name === 'x' || name === 'y') {
       const standing = pinRowStanding(node, parent, name)
@@ -328,6 +442,28 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
       ui.control === 'opaque'
         ? (UNEDITABLE_SHAPES[name] ?? 'this value shape has no control yet')
         : null
+    // An instance's box row shows its component's value, list rows included:
+    // the component draws that paint, so an empty `+` would say it draws
+    // none. A token it binds reads as a binding, as an authored one does.
+    const inherited = inherits ? inheritedFrom(inherits, name) : undefined
+    if (inherited) {
+      const bound = isAlias(inherited.value) ? aliasTarget(inherited.value) : null
+      fields.push({
+        name,
+        label: positionLabel(name) ?? ui.label ?? name,
+        group: ui.group,
+        control: shapeReason ? 'readonly' : bound ? 'number' : (ui.control as ControlKind),
+        options: ui.control === 'enum' ? (ui.options ?? []) : null,
+        value: inherited.value,
+        raw: '',
+        boundTo: bound,
+        readonlyReason: shapeReason ?? reasonFor(name),
+        authored: false,
+        origin: 'component',
+        shadow: shadowOf(name),
+      })
+      continue
+    }
     fields.push({
       name,
       label: positionLabel(name) ?? ui.label ?? name,
@@ -340,12 +476,24 @@ export function editableProps(node: UidxNode, parent: UidxNode | null = null): E
       // default-shaped list would offer a paint the file does not have.
       // A loose edge shows a dash, not a number: the pin does not hold it, so
       // any value would be an offer the resolver ignores.
+      // A component that states a size is a fixed box, laid out free; the
+      // hugging column `componentSizing` gives a sizeless one is not its
+      // default, and showing Column pressed would make the click that means
+      // "make it a column" write nothing.
       value:
-        looseEdge || LIST_CONTROLS.has(ui.control) ? null : (defaultFor(element, name) ?? null),
+        looseEdge || LIST_CONTROLS.has(ui.control)
+          ? null
+          : name === 'layoutMode' &&
+              element === 'Component' &&
+              (node.attrs.width !== undefined || node.attrs.height !== undefined)
+            ? 'NONE'
+            : (defaultFor(element, name) ?? null),
       raw: '',
       boundTo: null,
       readonlyReason: looseEdge ? LOOSE_EDGE_REASON : (shapeReason ?? reasonFor(name)),
       authored: false,
+      origin: 'engine',
+      shadow: shadowOf(name),
     })
   }
   return fields

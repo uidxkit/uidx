@@ -1,0 +1,44 @@
+---
+id: "list"
+---
+
+A vertical list of people that draws one item per person. Swap the item component on any use — rows, cards or chips — without changing the list.
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft"
+    layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="FIXED"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={6}
+    fills={[{ type: 'SOLID', color: '{color#surface}' }]}
+    width={320}
+    itemSpacing="{space#xs}">
+    <Slot
+      name="item"
+      layoutMode="VERTICAL"
+      primaryAxisSizingMode="AUTO"
+      counterAxisSizingMode="AUTO"
+      repeat="{items}"
+      layoutAlign="STRETCH"
+    >
+      <Instance
+        name="row"
+        component="PersonRow"
+        props={{ person: '{item}' }}
+        layoutAlign="STRETCH"
+      />
+    </Slot>
+  
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Person[]">The people to list, in order.</Prop>
+</Props>
+
+<Slots>
+  <Slot name="item">What each person is drawn with; defaults to a PersonRow.</Slot>
+</Slots>

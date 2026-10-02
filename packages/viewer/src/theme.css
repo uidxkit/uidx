@@ -39,6 +39,7 @@
 }
 
 :root {
+  color-scheme: dark;
   /* Surfaces, back to front. */
   --bg: #1e1e1e;
   --panel: #28282b;
@@ -54,11 +55,17 @@
   /* Selection and state. */
   --accent: #0d99ff;
   --accent-dim: #0d99ff33;
+  /* Text and icons drawn on the accent. */
+  --on-accent: #ffffff;
   --danger: #f24822;
   --warn: #ffcd29;
   --ok: #14ae5c;
   /* A value that comes from a design token rather than a literal. */
   --bound: #c08bff;
+  /* Code, paths and file names. */
+  --mono-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Pressed segment of a segmented control. */
+  --segment-on: var(--raised);
   /* Scrim behind an overlay that must stay readable over the canvas. */
   --overlay: rgba(12, 14, 18, 0.9);
 
@@ -85,6 +92,33 @@
   --shadow: 0 4px 16px rgb(0 0 0 / 0.4);
   --shadow-sm: 0 1px 3px rgb(0 0 0 / 0.2);
   --shadow-float: 0 8px 32px rgb(0 0 0 / 0.24), 0 2px 8px rgb(0 0 0 / 0.16);
+}
+
+/*
+ * The light chrome: the same tokens, redefined. Chosen in the top bar and
+ * remembered per browser (theme.ts); components never ask which is on.
+ */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --panel: #ffffff;
+  --canvas-bg: #eceef1;
+  --raised: #eef0f3;
+  --line: #e1e4e9;
+  --text: #16181d;
+  --text-dim: #555b67;
+  --text-faint: #858b97;
+  --accent: #0b7de0;
+  --accent-dim: #0b7de026;
+  --danger: #d93a1a;
+  --warn: #b77900;
+  --ok: #0f9150;
+  --bound: #8a3ffc;
+  --segment-on: var(--panel);
+  --overlay: rgba(250, 251, 252, 0.94);
+  --shadow: 0 4px 16px rgb(16 24 40 / 0.12);
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.08);
+  --shadow-float: 0 12px 32px rgb(16 24 40 / 0.14), 0 2px 6px rgb(16 24 40 / 0.06);
 }
 
 * {

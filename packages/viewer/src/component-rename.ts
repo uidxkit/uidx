@@ -42,8 +42,12 @@ function isComponent(pages: ReadonlyMap<string, UidxDocument>, address: string):
  * deprecated. Existing instances of a deprecated one keep rendering — the
  * badge is about new work, not old.
  */
-export function offerableComponents(components: ReadonlyMap<string, UidxNode>): string[] {
+export function offerableComponents(
+  components: ReadonlyMap<string, UidxNode>,
+  /** The component the instance would land inside: a component cannot hold itself. */
+  exclude: string | null = null,
+): string[] {
   return [...components.entries()]
-    .filter(([, node]) => node.attrs.deprecated?.value !== true)
+    .filter(([name, node]) => node.attrs.deprecated?.value !== true && name !== exclude)
     .map(([name]) => name)
 }

@@ -1,4 +1,4 @@
-import { propUiFor } from '@uidx/schema'
+import { derivedTarget, propUiFor } from '@uidx/schema'
 import {
   addressOf,
   CONTAINER_ELEMENTS,
@@ -504,4 +504,103 @@ export function remapAddress(oldAddress: string, newAddress: string, address: st
   // contain `/` or `#` in its name.
   const segments = address.slice(oldAddress.length + 1).split(PATH_SEP)
   return segments.reduce((parent, name) => addressOf(parent, name), newAddress)
+}
+
+/**
+ * Figma's Frame selection (⌘⌥G): the selected layers, siblings under one
+ * parent, wrapped in a new frame at the place of the first of them.
+ *
+ * The frame is an auto-layout one that hugs — the shape a designer building a
+ * component reaches for, and the one the parts of a web component take — in
+ * the direction of the layout it lands in, or a row on a free canvas. The
+ * moved layers lose their `x`/`y`: inside an auto layout they are noise the
+ * layout ignores. A layer chosen on the canvas as the default-state twin of a
+ * derived component (ADR 0016 §4) stands for its base layer, which is what is
+ * wrapped; another state's twin cannot be restructured and refuses.
+ */
+export function frameSelectionFor(
+  doc: UidxDocument,
+  addresses: readonly string[],
+): { patches: UidxPatch[]; address: string } | null {
+  const picked: string[] = []
+  for (const address of addresses) {
+    const derived = derivedTarget(doc, address)
+    if (derived && !derived.isDefault) return null
+    const base = derived ? derived.base.address : address
+    if (!picked.includes(base)) picked.push(base)
+  }
+  if (picked.length === 0) return null
+  const parent = parentOf(doc, picked[0]!)
+  if (!parent || parent.synthetic) return null
+  for (const address of picked) {
+    const node = resolve(doc.tree, address)
+    if (!node || node.element === 'Component' || node.element === 'Page') return null
+    if (parentOf(doc, address) !== parent || !canRemove(doc, address)) return null
+    if (!legalChildElementsOf('Frame').has(node.element)) return null
+  }
+  if (!canInsert(doc, parent.address, 'Frame')) return null
+
+  const order = (address: string) => parent.children.findIndex((c) => c.address === address)
+  const moving = [...picked].sort((a, b) => order(a) - order(b))
+  const taken = new Set(parent.children.map((child) => child.name))
+  let name = 'frame'
+  for (let n = 2; taken.has(name); n++) name = `frame-${n}`
+  const layout = parent.attrs.layoutMode?.value
+  const attrs: Record<string, JsonValue> = {
+    name,
+    layoutMode: layout === 'VERTICAL' ? 'VERTICAL' : 'HORIZONTAL',
+    primaryAxisSizingMode: 'AUTO',
+    counterAxisSizingMode: 'AUTO',
+  }
+  // On a free canvas the frame takes the place of what it holds.
+  if (layout !== 'HORIZONTAL' && layout !== 'VERTICAL') {
+    const at = (prop: 'x' | 'y') => {
+      const values = moving
+        .map((address) => resolve(doc.tree, address)!.attrs[prop]?.value)
+        .filter((value): value is number => typeof value === 'number')
+      return values.length ? Math.min(...values) : undefined
+    }
+    const x = at('x')
+    const y = at('y')
+    if (x !== undefined) attrs.x = x
+    if (y !== undefined) attrs.y = y
+  }
+  const frame = addressOf(parent.address, name)
+  const patches: UidxPatch[] = [
+    {
+      op: 'insert-node',
+      parent: parent.address,
+      index: order(moving[0]!),
+      node: { element: 'Frame', attrs },
+    },
+  ]
+  moving.forEach((address, index) => {
+    const node = resolve(doc.tree, address)!
+    patches.push({ op: 'move-node', address, newParent: frame, index })
+    for (const prop of ['x', 'y'] as const) {
+      if (node.attrs[prop] !== undefined)
+        patches.push({ op: 'remove', address: addressOf(frame, node.name), prop })
+    }
+  })
+  return { patches, address: frame }
+}
+
+/**
+ * The `x` and `y` a move leaves behind: a layer moved into an auto layout is
+ * placed by the layout, so a position it carried would sit in the file doing
+ * nothing — and read as a meaning it does not have. Addressed to where the
+ * move puts the layer, to ride after the move in the same envelope. Empty for
+ * a free parent, and for a layer the layout does not place (absolute).
+ */
+export function positionsDroppedBy(doc: UidxDocument, move: UidxPatch): UidxPatch[] {
+  if (move.op !== 'move-node') return []
+  const node = resolve(doc.tree, move.address)
+  const parent = move.newParent === '' ? null : resolve(doc.tree, move.newParent)
+  const layout = parent?.attrs.layoutMode?.value
+  if (!node || (layout !== 'HORIZONTAL' && layout !== 'VERTICAL')) return []
+  if (node.attrs.layoutPositioning?.value === 'ABSOLUTE') return []
+  const address = addressOf(move.newParent, node.name)
+  return (['x', 'y'] as const)
+    .filter((prop) => node.attrs[prop] !== undefined)
+    .map((prop) => ({ op: 'remove', address, prop }))
 }

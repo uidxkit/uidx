@@ -125,6 +125,52 @@ export function compileOps(doc: UidxDocument, ops: readonly EditOp[]): UidxPatch
         })
         break
       }
+      case 'set_style':
+        patches.push({
+          op: 'style',
+          keys: op.keys,
+          target: op.target,
+          prop: op.prop,
+          ...(op.value === undefined ? {} : { value: op.value as JsonValue }),
+        })
+        break
+      case 'declare':
+        patches.push({
+          op: 'contract',
+          kind: op.contractKind,
+          name: op.name,
+          ...(op.remove
+            ? {}
+            : {
+                declaration: {
+                  attrs: (op.attrs ?? {}) as Record<string, JsonValue>,
+                  description: op.description ?? '',
+                },
+              }),
+        })
+        break
+      case 'set_model':
+        patches.push({
+          op: 'model',
+          name: op.name,
+          ...(op.remove ? {} : { declaration: { description: op.description ?? '' } }),
+        })
+        break
+      case 'set_field':
+        patches.push({
+          op: 'field',
+          model: op.model,
+          name: op.name,
+          ...(op.remove
+            ? {}
+            : {
+                declaration: {
+                  attrs: (op.attrs ?? {}) as Record<string, JsonValue>,
+                  description: op.description ?? '',
+                },
+              }),
+        })
+        break
     }
   }
 

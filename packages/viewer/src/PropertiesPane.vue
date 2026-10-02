@@ -8,10 +8,59 @@ import {
   preserveLengthUnit,
   hasLengthUnits,
   isUnitLength,
+  isAlias,
+  toAlias,
 } from '@uidx/format'
 import { LENGTH_FIELD_CONTEXT } from './length-field-context'
+import ContractSection from './ContractSection.vue'
+import CodeSection from './CodeSection.vue'
+import ConnectSection from './ConnectSection.vue'
+import InspectorEmpty from './InspectorEmpty.vue'
+import InspectorStatus from './InspectorStatus.vue'
+import {
+  connection,
+  connectionError,
+  connectionErrorKey,
+  connectionGeneration,
+  headlessFailure,
+  loadConnection,
+  refreshHeadless,
+  saveConnection,
+} from './headless'
+import {
+  contractProblems,
+  contractView,
+  fieldBindingCandidates,
+  textBindingCandidates,
+} from './contract-edits'
+import { describe as describeDerived } from './derived-edits'
+import type { CodegenState, HeadlessCandidate, HeadlessLibrary } from './headless'
+import {
+  ABOUT,
+  ACTION,
+  COPY,
+  EMPTY,
+  classifyFailure,
+  configLoadItem,
+  contractProblemItem,
+  fieldErrorText,
+  instanceEmpty,
+  layersSelected,
+  libraryItem,
+  problems,
+  sortByTone,
+  writeItem,
+  type CodeReport,
+  type EmptyCopy,
+  type Face,
+  type Failure,
+  type MessageAction,
+  type StatusItem,
+  type Tone,
+} from './inspector-messages'
+import { resolveSubject } from './inspector-subject'
 
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { vectorEndpoints } from '@open-pencil/core/vector'
 import {
   PropertySectionContent,
@@ -39,11 +88,31 @@ import {
   SECTION_ORDER,
   scenePropFor,
   isStrokeEndpointProp,
+  derivedDocument,
+  derivedTarget,
+  instanceBase,
+  instanceDefinition,
+  instanceRole,
+  INSTANCE_BOX_SHORTHANDS,
+  type InstanceBase,
   type PinAxis,
   type PropGroup,
   type TokenIndex,
+  type ModelIndex,
+  STRUCTURAL_PROPS,
 } from '@uidx/schema'
 import { pinWrites, type PinFrame, type PinWrites } from './pin-writes'
+import { resetPatches, sectionResetProps } from './instance-box-edits'
+import {
+  inheritedText,
+  overrideState,
+  shadowNote,
+  type OverrideContext,
+  type OverrideState,
+} from './override-state'
+import type { InstanceScope } from './resize-writes'
+import LockedLayoutRow from './LockedLayoutRow.vue'
+import OverrideMark from './OverrideMark.vue'
 import {
   convertibleToSlot,
   convertToSlotFor,
@@ -102,6 +171,11 @@ import PropertyDialog from './PropertyDialog.vue'
 import PropertyLink from './PropertyLink.vue'
 import ComponentVariantsSection from './ComponentVariantsSection.vue'
 import InstancePropsSection from './InstancePropsSection.vue'
+import PreviewDataSection from './PreviewDataSection.vue'
+import SlotCardField from './SlotCardField.vue'
+import SlotSettingsSection from './SlotSettingsSection.vue'
+import RepeatSection from './RepeatSection.vue'
+import { slotCards } from './slot-content'
 import { FieldIcon } from './field-icons'
 import type { SideValues } from './edit-models'
 import {
@@ -117,6 +191,14 @@ import type { VariableCandidate } from './variable-binding'
 const props = defineProps<{
   doc: UidxDocument | null
   selection?: string[]
+  /** The headless library the Contract and Connect tabs offer choices from (ADR 0013 §3). */
+  headless?: HeadlessLibrary | null
+  /** Why the library could not be read, as the server said it; the tabs' status line words it. */
+  headlessError?: string
+  /** Libraries the project's dependencies ship, offered in Connect while none is named. */
+  headlessCandidates?: HeadlessCandidate[]
+  /** Where generated code goes and how the last run went, for the Code tab's Write code. */
+  codegen?: CodegenState
   /** Token address -> literal, so a bound row can show what it resolves to. */
   tokens?: Map<string, JsonValue>
   /**
@@ -136,6 +218,8 @@ const props = defineProps<{
    * reason the canvas and the rail do.
    */
   components?: ReadonlyMap<string, UidxNode>
+  /** Model name -> declaration across every page, for the Contract tab's repeat rows. */
+  models?: ModelIndex
   /**
    * Every page, and the name of the one that is open (F9).
    *
@@ -146,6 +230,8 @@ const props = defineProps<{
    */
   pages?: ReadonlyMap<string, UidxDocument>
   file?: string
+  /** Which sample row the canvas previews an item component with. */
+  previewIndex?: number
   /**
    * The selected node's visual extent, as the canvas measures it.
    *
@@ -226,7 +312,324 @@ const emit = defineEmits<{
   finishVector: []
   vectorAction: [action: VectorAction]
   makeComponent: []
+  /** The Contract tab names the model a repeat draws; the shell opens the Models face on it. */
+  openModel: [name: string]
+  /** Open a component's definition, on whatever page declares it. */
+  openComponent: [name: string]
+  /** Preview another sample row on the canvas. */
+  previewSample: [index: number]
+  /** The Contract tab names layers; choosing one selects it, as the rail would. */
+  select: [address: string]
+  /** Connect › Project chose a headless library; the shell has the server write it. */
+  chooseLibrary: [path: string]
+  /** The Code tab's Write code: render every component into the output folder. */
+  generateCode: []
 }>()
+
+/**
+ * Which face the inspector shows. Design is the scene properties; Contract,
+ * Connect and Code are what the layer is to code — what its component
+ * declares, how it is wired to a library, and what the generator makes of it
+ * (ADR 0013 §3). Faces rather than more sections, because they answer
+ * different questions about the same layer, and Figma's Design / Dev split is
+ * the precedent authors already know. Pane-local: the choice is about how to
+ * look, not what is open.
+ */
+const face = ref<'design' | Face>('design')
+
+/**
+ * The pane's scroller. A tab opens at its top, its status line first, not at
+ * the scroll position the last tab was left at. `scrollTop` rather than
+ * `scrollTo`, which jsdom lacks.
+ */
+const paneEl = ref<HTMLElement | null>(null)
+watch(face, () => {
+  if (paneEl.value) paneEl.value.scrollTop = 0
+})
+
+/** The tab strip, in order. */
+const FACES = [
+  { id: 'design', label: 'Design' },
+  { id: 'contract', label: 'Contract' },
+  { id: 'connect', label: 'Connect' },
+  { id: 'code', label: 'Code' },
+] as const
+const TABS: readonly Face[] = ['contract', 'connect', 'code']
+
+/**
+ * What Contract, Connect and Code are about, answered once for all three: an
+ * instance of PersonRow is PersonRow on every tab, and a layer inside List is
+ * List's (`inspector-subject`).
+ */
+const subject = computed(() =>
+  resolveSubject(props.doc, active.value, props.selection?.length ?? 0, props.components),
+)
+
+/** The component the Code tab renders, whichever page declares it. */
+const codeComponent = computed(() =>
+  ['component', 'inside', 'instance'].includes(subject.value.kind) ? subject.value.name : null,
+)
+
+/** The component the Connect tab edits: only one this file declares. */
+const connectComponent = computed(() => subject.value.local)
+
+/**
+ * The file that declares the Code tab's component, so its diagnostics split
+ * into its own and those of the files it uses. This page when it declares
+ * the component; otherwise whichever loaded page does.
+ */
+const codeFile = computed(() => {
+  const { local, definition } = subject.value
+  if (local) return props.file
+  if (!definition) return undefined
+  for (const [file, page] of props.pages ?? [])
+    if (
+      page.tree.children.some(
+        (child) => child.element === 'Component' && child.name === definition.name,
+      )
+    )
+      return file
+  return undefined
+})
+
+/** Moves with every edit and every saved uidx.json change: what the Code tab renders from. */
+const codeStamp = computed(() => `${props.doc?.sourceHash ?? ''}:${connectionGeneration.value}`)
+
+/**
+ * Why the headless library cannot be read, by class: the shell's own record
+ * of the fetch, or else the `headlessError` prop classified here, so a pane
+ * handed only the prop words it alike.
+ */
+const libraryFailure = computed<Failure | null>(
+  () =>
+    headlessFailure.value ?? (props.headlessError ? classifyFailure(props.headlessError) : null),
+)
+
+/**
+ * Stray part bindings and bad part values on the selection: what codegen
+ * refuses, so the Contract tab's one warning. Unbound parts are progress, not
+ * problems; and nothing is checked while the library cannot be read.
+ */
+const contractProblemCount = computed(() =>
+  libraryFailure.value
+    ? 0
+    : contractProblems(
+        contractView(
+          props.doc,
+          active.value,
+          props.headless ?? null,
+          props.models,
+          props.components,
+        ),
+        props.headless ?? null,
+      ),
+)
+
+/** Whether each tab's status line is expanded, kept per tab while the pane lives. */
+const statusOpen = reactive<Record<Face, boolean>>({ contract: false, connect: false, code: false })
+/** An action asked Connect to open Project at a field; `n` makes a repeated ask new. */
+const projectFocus = ref<{ target: 'library' | 'output'; n: number } | null>(null)
+/** An action asked Contract to show the parts. */
+const contractFocus = ref<{ target: 'parts'; n: number } | null>(null)
+/** Moves on the Code tab's Retry, so it renders again. */
+const codeReload = ref(0)
+
+/** What the Code tab last found for a component, and the document stamp it was made at. */
+const codeReport = shallowRef<(CodeReport & { stamp: string }) | null>(null)
+
+/**
+ * The Code tab's report. It comes only once a render lands, so the last
+ * findings stand while the next render runs and the status line does not
+ * blink on every edit.
+ */
+function onCodeStatus(report: CodeReport): void {
+  codeReport.value = { ...report, stamp: codeStamp.value }
+}
+
+/** The component a loaded page declares, so a file that blocks Code can be opened. */
+function componentIn(file: string): string | undefined {
+  return props.pages?.get(file)?.tree.children.find((child) => child.element === 'Component')?.name
+}
+
+/*
+ * The Code tab only reports while it shows. An edit made on another face may
+ * have fixed what it found, so the report is dropped rather than left to mark
+ * the tab with a fault that may be gone; and so is one Code was left before
+ * it re-rendered the latest edit, since leaving cancels that render.
+ */
+watch([codeStamp, face], () => {
+  if (face.value !== 'code' && codeReport.value?.stamp !== codeStamp.value) codeReport.value = null
+})
+
+/**
+ * Every tab's status line, from one set of facts so the three tabs cannot
+ * contradict each other: the library on all three, uidx.json on the two that
+ * read it, Contract's stray parts, and Code's own render and last write. A
+ * dead socket is left to the app banner and the lock chip rather than said
+ * three more times.
+ */
+const tabItems = computed<Record<Face, StatusItem[]>>(() => {
+  const items: Record<Face, StatusItem[]> = { contract: [], connect: [], code: [] }
+  const offline = props.writable === false
+  const library = libraryFailure.value
+  const report = codeReport.value
+  // Code rendered all the same: "Code can't render without it" would be wrong there.
+  const rendered = report?.component === codeComponent.value && report.state !== 'failed'
+  if (library && !(offline && library.code === 'network'))
+    for (const tab of TABS)
+      if (tab !== 'code' || !rendered)
+        items[tab].push(libraryItem(library, tab, connection.value.headless?.manifest ?? null))
+  const raw = connectionError.value
+  if (raw && !connectionErrorKey.value) {
+    const load = classifyFailure(raw)
+    const item = configLoadItem(load)
+    // A dead server fails both fetches; say it once.
+    const said = items.connect.some((other) => other.title === item.title)
+    if (!said && !(offline && load.code === 'network')) {
+      items.connect.push(item)
+      items.code.push(item)
+    }
+  }
+  // A refused change, the naming profile's too, shows under its field in Connect.
+  if (contractProblemCount.value > 0)
+    items.contract.push(contractProblemItem(contractProblemCount.value))
+  if (report && report.component === codeComponent.value) items.code.push(...report.items)
+  const written = writeItem(props.codegen?.result, props.codegen?.out ?? null)
+  if (written) items.code.push(written)
+  return items
+})
+
+/** A tab's 6px dot: its tone, the status title it stands for, and words for a screen reader. */
+interface TabDot {
+  tone: Tone
+  title: string
+  label: string
+}
+
+/**
+ * A dot only for a real problem. Contract marks stray parts, never unbound
+ * ones, which are progress and show under Parts; Connect marks a library or
+ * uidx.json it cannot read; Code marks a render or a write that stopped,
+ * and only by its own findings: a render that failed for the library says
+ * nothing of its own, so the library's dot stays Connect's alone.
+ */
+const tabDot = computed<Record<Face, TabDot | null>>(() => {
+  const dot = (tab: Face, tone: Tone, count?: number): TabDot => {
+    const top = sortByTone(tabItems.value[tab])[0]
+    return {
+      tone,
+      title: top?.title ?? '',
+      label: count ? problems(count) : (top?.count ?? problems(tabItems.value[tab].length)),
+    }
+  }
+  const unread = tabItems.value.connect.filter(
+    (item) => item.id === 'library' || item.id === 'config',
+  ).length
+  const report = codeReport.value
+  const rendering = report?.component === codeComponent.value && report.items.length > 0
+  const writing =
+    props.codegen?.result?.kind === 'blocked' || props.codegen?.result?.kind === 'failed'
+  return {
+    contract:
+      contractProblemCount.value > 0 ? dot('contract', 'warn', contractProblemCount.value) : null,
+    connect: unread ? dot('connect', 'danger', unread) : null,
+    code: rendering || writing ? dot('code', 'danger') : null,
+  }
+})
+
+/** An empty state: its `data-empty`, its words, and what it offers. */
+interface EmptyState extends EmptyCopy {
+  kind: string
+  action?: MessageAction
+  about?: { label: string; text: string }
+}
+
+/**
+ * What a tab shows instead of its body, or null when it has a subject. The
+ * shell owns these so the three tabs say "nothing selected" and "several
+ * layers" alike, and explains the tab (About) only when nothing is selected.
+ * A layer outside every component is Contract's own view, since it can still
+ * draw a slot; and only Connect cannot use an instance whose component
+ * another page declares.
+ */
+function emptyFor(tab: Face): EmptyState | null {
+  const { kind, name, local, definition } = subject.value
+  if (kind === 'multi')
+    return {
+      kind,
+      title: layersSelected(props.selection?.length ?? 2),
+      hint: EMPTY[tab].multi.hint,
+    }
+  if (kind === 'none') return { kind, ...EMPTY[tab].none, about: ABOUT[tab] }
+  if (kind === 'outside' && tab !== 'contract')
+    return {
+      kind,
+      ...EMPTY[tab].outside,
+      ...(props.canMakeComponent ? { action: ACTION.makeComponent } : {}),
+    }
+  if (kind === 'instance' && !local && name && tab === 'connect') {
+    const { action, ...copy } = instanceEmpty(tab, name)
+    return { kind, ...copy, ...(definition ? { action } : {}) }
+  }
+  // An instance of a component nothing declares has no code to preview.
+  if (kind === 'instance' && !definition && name && tab === 'code')
+    return {
+      kind,
+      title: `Instance of ${name}`,
+      hint: `This document has no component called “${name}”.`,
+    }
+  return null
+}
+const tabEmpty = computed(() => (face.value === 'design' ? null : emptyFor(face.value)))
+
+/**
+ * Runs what a status line, an empty state or a tab's link asked for. Actions
+ * are data (`inspector-messages`), so one tab can point at another's control
+ * without knowing where it lives.
+ */
+function act(action: MessageAction): void {
+  switch (action.run) {
+    case 'retry-library':
+      void refreshHeadless()
+      break
+    case 'retry-config':
+      void loadConnection()
+      break
+    case 'retry-code':
+      codeReload.value += 1
+      break
+    case 'open-project':
+      face.value = 'connect'
+      projectFocus.value = {
+        target: action.arg === 'output' ? 'output' : 'library',
+        n: Date.now(),
+      }
+      break
+    case 'open-contract': {
+      // Code and Connect speak for the enclosing component, and its parts live
+      // in that component's Code binding, not in an inner layer's or an
+      // instance's view. Contract's own Show stays on its layer, whose
+      // warning is already there.
+      const { kind, local, name } = subject.value
+      if (face.value !== 'contract' && (kind === 'inside' || kind === 'instance')) {
+        if (local) emit('select', local.address)
+        else if (name) emit('openComponent', name)
+      }
+      face.value = 'contract'
+      contractFocus.value = { target: 'parts', n: Date.now() }
+      break
+    }
+    case 'select':
+      if (action.arg) emit('select', action.arg)
+      break
+    case 'open-component':
+      if (action.arg) emit('openComponent', action.arg)
+      break
+    case 'make-component':
+      emit('makeComponent')
+      break
+  }
+}
 
 function onHover(prop: string | null): void {
   const address = active.value?.address
@@ -242,7 +645,31 @@ function definitionFor(node: UidxNode): UidxNode | undefined {
   return typeof named === 'string' ? props.components?.get(named) : undefined
 }
 
-const active = computed(() => selectedNode(props.doc?.tree ?? null, props.selection ?? []))
+/**
+ * The selected node, looked up in the document *with* its derived variants
+ * (ADR 0016 §4): a state drawn from the styles table is selectable on the
+ * canvas and editable here, and the shell routes the edit to its row. The
+ * component itself is taken from the authored tree, since its derived twin
+ * carries a `variants` attribute nobody wrote and the panel must not offer
+ * to edit it.
+ */
+const active = computed(() => {
+  const doc = props.doc
+  if (!doc) return null
+  const found = selectedNode(derivedDocument(doc).tree, props.selection ?? [])
+  if (found?.element === 'Component') return selectedNode(doc.tree, props.selection ?? [])
+  // A derived `<Variant>` carries only its coordinates; what it draws — and
+  // what an edit to the state changes — is the root frame below it.
+  if (found?.element === 'Variant' && found.derived && found.children[0]) return found.children[0]
+  // The rail names a base layer of a derived component; the default state
+  // draws it (ADR 0016 §4), so an edit here is an edit to the authored node.
+  return found ?? selectedNode(doc.tree, props.selection ?? [])
+})
+
+/** The derived state the selection is in, or null for an authored node. */
+const derived = computed(() =>
+  props.doc && active.value ? derivedTarget(props.doc, active.value.address) : null,
+)
 const rootFontSize = computed(() => rootFontSizeOf(props.doc))
 provide(LENGTH_FIELD_CONTEXT, {
   rootFontSize,
@@ -266,9 +693,33 @@ function changeRootSize(event: Event): void {
     },
   ])
 }
-const parent = computed(() =>
-  active.value && props.doc ? parentOf(props.doc.tree, active.value.address) : null,
-)
+/**
+ * The node whose layout places the selection. Content a page puts into an
+ * instance's slot sits, in the file, under a `<Slot>` fill that carries a name
+ * and nothing else (ADR 0007 §2) — but it is laid out by the definition's slot
+ * of that name. Asking the fill offered an injected item component Left/Right
+ * and Constraints instead of Align self, in a column that places it.
+ */
+const parent = computed(() => {
+  if (!active.value || !props.doc) return null
+  const found = parentOf(props.doc.tree, active.value.address)
+  if (found?.element !== 'Slot') return found
+  const instance = parentOf(props.doc.tree, found.address)
+  if (instance?.element !== 'Instance') return found
+  const name = instance.attrs.component?.value
+  const definition = typeof name === 'string' ? props.components?.get(name) : undefined
+  const slot = definition ? findSlot(definition, found.name) : null
+  return slot ?? found
+})
+
+function findSlot(root: UidxNode, name: string): UidxNode | null {
+  for (const child of root.children) {
+    if (child.element === 'Slot' && child.name === name) return child
+    const deeper = child.element === 'Instance' ? null : findSlot(child, name)
+    if (deeper) return deeper
+  }
+  return null
+}
 /** The pin the selected node states, or undefined when it states none. */
 const pin = computed(() =>
   active.value
@@ -319,9 +770,77 @@ const docPinFrame = computed<PinFrame | null>(() => {
   return { box: pin.value ? resolvedBox(pin.value, box, size) : box, parent: size }
 })
 
+/**
+ * The scope the selection is written in, as the scene build reads it: the
+ * panel's tokens and the document-wide components. Enough to say which
+ * component an instance draws, and what that component draws where the
+ * instance's box lands (ADR 0018 §7).
+ */
+const sceneScope = computed<InstanceScope>(() => ({
+  resolveAlias: (address: string) => props.tokens?.get(address),
+  resolveComponent: (name: string) => props.components?.get(name),
+  models: props.models,
+  rootFontSize: rootFontSize.value,
+}))
+
+/** The selected `<Instance>`, or null for any other node. */
+const instance = computed(() => (active.value?.element === 'Instance' ? active.value : null))
+
+/** The component the selected instance draws, on whatever page declares it. */
+const instanceComponent = computed(() =>
+  instance.value ? instanceDefinition(instance.value, sceneScope.value) : undefined,
+)
+
+/** The component's name, which every override mark and reset speaks of. */
+const instanceName = computed(() => {
+  const named = instance.value?.attrs.component?.value
+  return instanceComponent.value?.name ?? (typeof named === 'string' ? named : '')
+})
+
+/**
+ * What the selected instance inherits from its component (ADR 0018 §7): the
+ * value each unset row of its outer box shows, the states its own props
+ * select — which sit above the use — and the layout its locked line reads.
+ * Null for any other node, and for an instance whose component is missing.
+ */
+const inherits = computed<InstanceBase | null>(() =>
+  instance.value ? instanceBase(instance.value, instanceComponent.value, sceneScope.value) : null,
+)
+
+/** Each longhand of an instance's box, to the shorthand that covers it (ADR 0018 §5). */
+const SHORTHAND_OF: ReadonlyMap<string, string> = new Map(
+  Object.entries(INSTANCE_BOX_SHORTHANDS).flatMap(([shorthand, longhands]) =>
+    longhands.map((longhand) => [longhand, shorthand] as const),
+  ),
+)
+
+/**
+ * The shorthand the selected instance states that a longhand row draws, or
+ * null. A use's `cornerRadius` replaces its component's corners, and its
+ * `strokeWeight` the side weights, as in CSS (ADR 0018 §5) — but not a value
+ * a state row wrote, which sits above the use (§3) and still shows.
+ */
+function governingShorthand(field: EditableProp): string | null {
+  const node = instance.value
+  const shorthand = SHORTHAND_OF.get(field.name)
+  if (!node || !shorthand || field.authored || field.shadow) return null
+  return node.attrs[shorthand] !== undefined ? shorthand : null
+}
+
+/** A longhand row under a shorthand the instance states shows that shorthand, which is what draws. */
+function withShorthands(built: EditableProp[]): EditableProp[] {
+  if (!instance.value) return built
+  const byName = new Map(built.map((field) => [field.name, field]))
+  return built.map((field) => {
+    const shorthand = governingShorthand(field)
+    const drawn = shorthand ? byName.get(shorthand) : undefined
+    return drawn ? { ...field, value: drawn.value, boundTo: drawn.boundTo } : field
+  })
+}
+
 const fields = computed<EditableProp[]>(() => {
   if (!active.value) return []
-  const built = editableProps(active.value, parent.value)
+  const built = withShorthands(editableProps(active.value, parent.value, inherits.value))
   const frame = props.pinFrame ?? docPinFrame.value
   if (!frame) return built
   /*
@@ -380,8 +899,70 @@ const sections = computed(() => {
       ? { ...field, value: node.attrs.strokeCap?.value ?? 'NONE' }
       : field,
   )
-  return sectionsFor(node, displayFields, parent.value)
+  const all = sectionsFor(node, displayFields, parent.value)
+  // A state's root sits where the arrangement puts it (ADR 0016 §4): its
+  // x and y are not the author's, so they are not offered.
+  const state = derived.value
+  if (!state || state.isDefault || state.target !== 'root') return all
+  const placed = (name: string | undefined): boolean => name === 'x' || name === 'y'
+  return all
+    .map((section) => ({
+      ...section,
+      fields: section.fields.filter(
+        (paired) => !placed(paired.field.name) && !placed(paired.pairedWith?.name),
+      ),
+    }))
+    .filter((section) => section.fields.length > 0)
 })
+
+/**
+ * What the selected state sets on this layer (ADR 0016 §2): every cell of
+ * every row that applies to the state, least specific first, the last word
+ * winning. Shown above the properties so the author sees what the state
+ * changes and can hand a value back to the base.
+ */
+const stateCells = computed(() => {
+  const state = derived.value
+  const rows = props.doc?.spec?.styles ?? []
+  if (!state || state.isDefault || !rows.length) return []
+  const applies = rows
+    .map((row, order) => ({ row, order }))
+    .filter(({ row }) =>
+      Object.entries(row.keys).every(([axis, value]) => state.keys[axis] === value),
+    )
+    .sort(
+      (a, b) =>
+        Object.keys(a.row.keys).length - Object.keys(b.row.keys).length || a.order - b.order,
+    )
+  const cells = new Map<
+    string,
+    { prop: string; value: JsonValue; keys: Record<string, string>; row: string }
+  >()
+  for (const { row } of applies) {
+    for (const [prop, value] of Object.entries(row.values[state.target] ?? {})) {
+      cells.set(prop, {
+        prop,
+        value,
+        keys: row.keys,
+        row: Object.entries(row.keys)
+          .map(([axis, v]) => `${axis}=${v}`)
+          .join(', '),
+      })
+    }
+  }
+  return [...cells.values()]
+})
+
+function showCell(value: JsonValue): string {
+  return typeof value === 'string' ? value : JSON.stringify(value)
+}
+
+/** Hands a value back to the base: the cell leaves its row. */
+function resetCell(cell: { prop: string; keys: Record<string, string> }): void {
+  const state = derived.value
+  if (!state) return
+  emit('patches', [{ op: 'style', keys: { ...cell.keys }, target: state.target, prop: cell.prop }])
+}
 /**
  * The fill this node is, or null (story F5, ADR 0007 §2).
  *
@@ -393,6 +974,25 @@ const sections = computed(() => {
 const fillSlot = computed(() =>
   active.value && props.doc && resetSlotFor(props.doc, active.value.address) ? active.value : null,
 )
+
+/**
+ * The selected fill as its owner's slot card, so the hole a designer clicked
+ * on the canvas offers what can go in it — not only how to reset it. Null
+ * when the owner's component is not in the index, which keeps the two plain
+ * buttons below as the fallback.
+ */
+const fillCard = computed(() => {
+  const fill = fillSlot.value
+  if (!fill || !props.doc) return null
+  const owner = parentOf(props.doc.tree, fill.address)
+  const named = owner?.element === 'Instance' ? owner.attrs.component?.value : undefined
+  const definition = typeof named === 'string' ? props.components?.get(named) : undefined
+  if (!owner || !definition) return null
+  const card = slotCards(owner, definition, props.components, props.models, props.pages).find(
+    (candidate) => candidate.name === fill.name,
+  )
+  return card ? { card, owner } : null
+})
 
 /** Whether emptying it would say anything — a fill with no children is already empty. */
 const fillHasContents = computed(() => (fillSlot.value?.children.length ?? 0) > 0)
@@ -518,11 +1118,40 @@ function onExport(): void {
 const meta = computed<{ name: string; value: string }[]>(() => {
   const node = active.value
   if (!node) return []
-  return [...METADATA_ATTRS].flatMap((name) => {
+  const chips = [...METADATA_ATTRS].flatMap((name) => {
+    // A component's status is a picker of its own, first, where the read-only chip sits.
+    if (name === 'status' && statusEditable.value) return []
     const value = node.attrs[name]?.value
     return typeof value === 'string' ? [{ name, value }] : []
   })
+  // A derived node says which state it is: an edit here writes that state's row.
+  if (derived.value && !derived.value.isDefault)
+    chips.unshift({ name: 'state', value: describeDerived(derived.value) })
+  return chips
 })
+
+/**
+ * A component's maturity, picked rather than typed: draft while it is being
+ * worked out, stable once others may rely on it, deprecated on its way out.
+ * Codegen, `uidx diff` and the review site all read it.
+ */
+const STATUSES = ['draft', 'stable', 'deprecated'] as const
+const statusEditable = computed(
+  () => active.value?.element === 'Component' && !derived.value && props.writable !== false,
+)
+const status = computed(() => {
+  const value = active.value?.attrs.status?.value
+  return typeof value === 'string' ? value : ''
+})
+function setStatus(value: string): void {
+  const node = active.value
+  if (!node || value === status.value) return
+  emit('patches', [
+    value === ''
+      ? { op: 'remove', address: node.address, prop: 'status' }
+      : { op: status.value ? 'set' : 'add', address: node.address, prop: 'status', value },
+  ])
+}
 
 /** What a bound row displays: the token's value, since the literal is elsewhere. */
 function resolved(field: EditableProp): number | null {
@@ -561,7 +1190,31 @@ function resolved(field: EditableProp): number | null {
 function candidatesFor(field: EditableProp) {
   const address = active.value?.address
   if (!props.doc || !address) return null
-  return bindCandidates(props.doc, address, field.name)
+  // An instance's outer box takes a value or a token, never a binding: colour
+  // reaches a component through its visual props (ADR 0018 §5).
+  if (restyles(field.name)) return null
+  return withModelFields(field.name, bindCandidates(props.doc, address, field.name))
+}
+
+/**
+ * A text's words follow a model's field as readily as a prop: `item.name` in
+ * an item component, `person.role` inside a repeat. Added to what the link
+ * pills offer — wherever a designer reaches for one — not only to the
+ * Content field's own picker.
+ */
+function withModelFields<
+  T extends { name: string; declaration: { type: string; default: JsonValue } },
+>(prop: string, candidates: T[] | null): T[] | null {
+  if (prop !== 'characters' || !candidates) return candidates
+  for (const { alias, label } of textBindings.value) {
+    if (!candidates.some((c) => c.name === alias))
+      candidates.push({
+        name: alias,
+        label,
+        declaration: { type: 'TEXT', default: '' },
+      } as unknown as T)
+  }
+  return candidates
 }
 
 /**
@@ -587,11 +1240,33 @@ const tokenSource = computed<TokenBindingSource>(() => {
   }
   if (bindings.cornerRadius) {
     for (const name of CORNER_PROPS) {
-      if (!active.value?.attrs[name]) bindings[name] = bindings.cornerRadius
+      const corner = fields.value.find((field) => field.name === name)
+      if (!corner || !ownCorner(corner)) bindings[name] = bindings.cornerRadius
     }
   }
   return { tokens: props.tokens, tokenIndex: props.tokenIndex, bindings }
 })
+
+/**
+ * Library spellings for members the Contract tab just declared under the
+ * identity's names, merged into this component's bindings in uidx.json —
+ * the same file the Connect tab edits.
+ */
+function bindNames(
+  component: string,
+  names: { attributes: Record<string, string>; events: Record<string, string> },
+): void {
+  const current = connection.value.headless?.bindings[component] ?? {}
+  void saveConnection({
+    key: 'binding',
+    component,
+    value: {
+      ...current,
+      attributes: { ...current.attributes, ...names.attributes },
+      events: { ...current.events, ...names.events },
+    },
+  })
+}
 
 function onBindVariables(names: string[], token: string): void {
   if (!props.doc || !active.value || props.writable === false) return
@@ -694,6 +1369,15 @@ function sectionLink(group: PropGroup) {
   const node = active.value
   if (!prop || !props.doc || !node) return null
   const candidates = bindCandidates(props.doc, node.address, prop)
+  // Visibility also follows an enclosing item's field (`{item.expanded}`),
+  // the way a checkbox in the body does: a tree's children frame shows only
+  // while its node is open. Declared props are already in `candidates`.
+  if (prop === 'visible' && candidates) {
+    for (const { alias } of itemFieldBindings(node, 'boolean')) {
+      candidates.push({ name: alias, declaration: { type: 'BOOLEAN', default: false } })
+    }
+  }
+  withModelFields(prop, candidates)
   const held = node.attrs[prop]?.value
   const target = held !== undefined ? aliasTarget(held) : null
   // Either binding moves the action from the header to the bound value.
@@ -776,10 +1460,34 @@ function isPropertyBound(field: EditableProp): boolean {
 
 /** Linking and unlinking are structural: they go at the document, like `props`. */
 function onLink(prop: string, name: string): void {
-  const address = active.value?.address
-  if (!props.doc || !address) return
-  const patches = bindProperty(props.doc, address, prop, name)
-  if (patches) emit('patches', patches)
+  const node = active.value
+  if (!props.doc || !node) return
+  const patches = bindProperty(props.doc, node.address, prop, name)
+  if (patches) {
+    emit('patches', patches)
+    return
+  }
+  // Not a declared prop: an item field offered by `sectionLink`, written as
+  // the alias it is, the way the body's pickers write theirs.
+  const fields = prop === 'characters' ? textBindings.value : itemFieldBindings(node, 'boolean')
+  if (fields.some((b) => b.alias === name)) {
+    const op = node.attrs[prop] === undefined ? 'add' : 'set'
+    emit('patches', [{ op, address: node.address, prop, value: toAlias(name) }])
+  }
+}
+
+/** The enclosing repeats' fields of one kind — `item.expanded`, never a bare prop. */
+function itemFieldBindings(
+  node: UidxNode,
+  kind: 'boolean' | 'number' | 'text',
+): { alias: string; label: string }[] {
+  if (!props.doc) return []
+  return fieldBindingCandidates(
+    enclosingComponent(props.doc, node.address),
+    node,
+    kind,
+    props.models,
+  ).filter((b) => b.alias.includes('.'))
 }
 
 /**
@@ -903,6 +1611,22 @@ function onMultiPreview(writes: Array<{ prop: string; value: JsonValue }>): void
 }
 
 /** The value a prop currently has, falling back to the SDK's own default. */
+/**
+ * How an axis is sized, as the canvas draws it. A sizing mode the file does
+ * not state follows the size it does: a width written beside no mode is a
+ * fixed width (the slot that showed Hug while drawn 60 wide, and ignored a
+ * Hug chosen over it), and no width either is a hug — the same reading the
+ * code target makes.
+ */
+function sizingOf(axis: 'primary' | 'counter'): string {
+  const field = fields.value.find((f) => f.name === `${axis}AxisSizingMode`)
+  if (field?.authored && typeof field.value === 'string') return field.value
+  const along = (layoutMode.value === 'VERTICAL') === (axis === 'counter') ? 'width' : 'height'
+  const size = fields.value.find((f) => f.name === along)
+  if (size?.authored) return 'FIXED'
+  return typeof field?.value === 'string' ? field.value : 'FIXED'
+}
+
 function valueOf(prop: string, fallback: string): string {
   const field = fields.value.find((f) => f.name === prop)
   return typeof field?.value === 'string' ? field.value : fallback
@@ -986,17 +1710,27 @@ const CORNER_PROPS = [
   'bottomLeftRadius',
 ] as const
 /**
- * Authored, not merely present: since C7 every applicable prop has a row, so
- * "the file writes per-corner radii" is a question about what it authored.
+ * Whether a corner row holds a radius of its own rather than the shorthand's:
+ * the file states it, or — on an instance — the component draws it and the
+ * use's `cornerRadius` has not replaced it (ADR 0018 §5).
+ */
+function ownCorner(field: EditableProp): boolean {
+  return field.authored || (field.origin === 'component' && governingShorthand(field) === null)
+}
+
+/**
+ * Stated, not merely present: since C7 every applicable prop has a row, so
+ * "the file writes per-corner radii" is a question about what it states —
+ * and, for an instance, what its component states in its place.
  */
 const hasPerCorner = computed(() =>
-  fields.value.some((f) => f.authored && CORNER_PROPS.includes(f.name as never)),
+  fields.value.some((f) => CORNER_PROPS.includes(f.name as never) && ownCorner(f)),
 )
 const showCorners = computed(
   () => (cornerField.value !== null && !cornerField.value.boundTo) || hasPerCorner.value,
 )
 
-/** Each corner as the document resolves it, falling back to the shorthand. */
+/** Each corner as its row reads it, falling back to the shorthand. */
 const cornerValues = computed<SideValues>(() => {
   const uniform = cornerField.value
     ? (heldFor(cornerField.value) ?? resolved(cornerField.value) ?? 0)
@@ -1004,8 +1738,10 @@ const cornerValues = computed<SideValues>(() => {
   // A previewed corner shows whether or not the file authors it yet: the
   // collapsed box's scrub writes all four, and the unauthored ones would
   // otherwise sit still until release.
-  const radius = (name: string): number =>
-    heldNumber(name) ?? (active.value?.attrs[name] ? numberOf(name, uniform) : uniform)
+  const radius = (name: string): number => {
+    const corner = fields.value.find((field) => field.name === name)
+    return heldNumber(name) ?? (corner && ownCorner(corner) ? numberOf(name, uniform) : uniform)
+  }
   return {
     top: radius('topLeftRadius'),
     right: radius('topRightRadius'),
@@ -1034,9 +1770,186 @@ const paddingValues = computed<SideValues>(() => ({
   left: numberOf('paddingLeft'),
 }))
 
-/** Only an auto-layout frame has axes to align along. */
-const layoutMode = computed(() => valueOf('layoutMode', 'NONE'))
+/**
+ * Only an auto-layout frame has axes to align along. An instance lays out as
+ * the node its box lands on does, which is its component's business: so it is
+ * read there (`InstanceBase.layout`), never from a `layoutMode` the use
+ * states, which nothing draws (ADR 0018 §1).
+ */
+const layoutMode = computed(() => {
+  if (!instance.value) return valueOf('layoutMode', 'NONE')
+  const mode = inherits.value?.layout.layoutMode
+  return typeof mode === 'string' ? mode : 'NONE'
+})
 const hasAutoLayout = computed(() => layoutMode.value !== 'NONE')
+
+const PADDING_PROPS = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const
+/** Every prop the corner control draws, the shorthand and smoothing included. */
+const CORNER_FAMILY = ['cornerRadius', ...CORNER_PROPS, 'cornerSmoothing'] as const
+
+/**
+ * Whether an instance shows its Padding block: where its box lays out, which
+ * is what padding insets, or where it states padding all the same, so the
+ * value can still be read and handed back.
+ */
+const instancePadding = computed(() => {
+  const node = instance.value
+  return !!node && (hasAutoLayout.value || PADDING_PROPS.some((prop) => node.attrs[prop]))
+})
+
+/**
+ * The props of `list` the selected instance leaves to its component, which a
+ * compound control draws dimmed; undefined outside an instance.
+ */
+function unstated(list: readonly string[]): string[] | undefined {
+  const node = instance.value
+  return node ? list.filter((prop) => node.attrs[prop] === undefined) : undefined
+}
+
+/* ---------------------------------------------- an instance's overrides */
+
+/** Whether a prop is the selected instance's outer box or the text colour it hands down. */
+function restyles(prop: string): boolean {
+  const role = instanceRole(prop)
+  return !!instance.value && (role === 'box' || role === 'cascade')
+}
+
+/**
+ * Where a row stands against the selected instance's component (ADR 0018 §7):
+ * dimmed while it shows the component's value, marked once the use states
+ * one. Undefined for a row that is not the outer box or the text colour — and
+ * for a longhand drawing the shorthand the use states, which is the use's own
+ * value without being a row of its own to reset.
+ */
+function overrideOf(field: EditableProp): OverrideState | undefined {
+  if (!restyles(field.name) || governingShorthand(field)) return undefined
+  return overrideState(field.origin ?? (field.authored ? 'own' : 'engine'), field.shadow ?? null)
+}
+
+/** What the component draws for `prop`, as a reset's title says it, or null when nothing is known. */
+function inheritedOf(prop: string): string | null {
+  const base = inherits.value
+  if (!base) return null
+  const value = instanceRole(prop) === 'cascade' ? base.text : base.values[prop]
+  return value === undefined ? null : inheritedText(value)
+}
+
+function overrideContextOf(field: EditableProp): OverrideContext {
+  return {
+    component: instanceName.value,
+    inherited: inheritedOf(field.name),
+    shadowedBy: field.shadow?.state ?? null,
+  }
+}
+
+/** Text color: one colour or one token the instance hands down, never a stack (ADR 0018 §4). */
+function isTextColor(field: EditableProp): boolean {
+  return instance.value !== null && field.name === 'textFills'
+}
+
+/** An unset Text color whose texts disagree, so there is no one colour of the component's to show. */
+function textMixed(field: EditableProp): boolean {
+  return isTextColor(field) && !field.authored && inherits.value?.text === 'mixed'
+}
+
+/** A row that wears a mark: a value the use states. */
+function isMarked(field: EditableProp): boolean {
+  const state = overrideOf(field)
+  return state === 'set' || state === 'shadowed'
+}
+
+/**
+ * The state hiding a value the use states in any of `rows` right now, for the
+ * note beneath them, or null: a state its own props select sits above the use
+ * (§3), so the value shows only in the other states.
+ */
+function hiddenBy(...rows: Array<EditableProp | null>): string | null {
+  for (const row of rows)
+    if (row && overrideOf(row) === 'shadowed') return row.shadow?.state ?? null
+  return null
+}
+
+/** The mark of a row whose caption the pane draws itself, as a paired row's is. */
+function rowMark(field: EditableProp) {
+  return {
+    state: overrideOf(field) ?? 'inherited',
+    component: instanceName.value,
+    inherited: inheritedOf(field.name),
+    shadowedBy: field.shadow?.state ?? null,
+    label: field.label,
+    writable: editable(field),
+  }
+}
+
+/** How a group of the instance's props stands against its component, for one mark. */
+interface GroupMark {
+  state: OverrideState
+  shadowedBy: string | null
+  /** The props of the group the use states: what its ↺ hands back. */
+  stated: string[]
+  /** The component's value, when the group states one prop and so resets to one value. */
+  inherited: string | null
+}
+
+/**
+ * The mark a group of the instance's props wears together — a section's
+ * header, a compound control's caption. Nothing while it states none of them;
+ * the winning state's chip when a state its own props select hides every one
+ * it states; the dot otherwise.
+ */
+function markFor(list: readonly string[]): GroupMark | null {
+  const node = instance.value
+  if (!node) return null
+  const stated = list.filter((prop) => node.attrs[prop] !== undefined)
+  if (stated.length === 0) return null
+  const states = stated.map((prop) => inherits.value?.stateWins.get(prop))
+  const shadowedBy = states.every((state) => state !== undefined) ? (states[0] ?? null) : null
+  return {
+    state: shadowedBy ? 'shadowed' : 'set',
+    shadowedBy,
+    stated,
+    inherited: stated.length === 1 ? inheritedOf(stated[0]!) : null,
+  }
+}
+
+/** Each section's mark, for the ↺ on its header: what the section's rows override. */
+const sectionMarks = computed(
+  () => new Map(sections.value.map((s) => [s.group, markFor(sectionResetProps(s.group))])),
+)
+const paddingMark = computed(() => markFor(PADDING_PROPS))
+const cornerMark = computed(() => markFor(CORNER_FAMILY))
+
+/**
+ * What the masked note calls a property: its row's label, one name for a
+ * family's parts — four corners read "Corner radius" — and the section's for
+ * a stroke's details, whose labels alone ("Weight") say too little.
+ */
+function boxName(prop: string): string {
+  const ui = propUiFor(prop)
+  const label = ui?.label ?? prop
+  if (PADDING_PROPS.includes(prop as never)) return 'Padding'
+  if (SHORTHAND_OF.get(prop) === 'cornerRadius') return 'Corner radius'
+  if (prop === 'strokeWeight' || SHORTHAND_OF.get(prop) === 'strokeWeight') return 'Stroke weight'
+  if (ui?.group === 'stroke' && prop !== 'strokes') return `Stroke ${label.toLowerCase()}`
+  return label
+}
+
+/**
+ * What the states the instance's own props select set on its outer box, by
+ * state: "Its checked state sets: Fill, Stroke". A state sits above the use
+ * (ADR 0018 §3), so a value the use states for one of these shows only in the
+ * other states — said once here, before any is edited.
+ */
+const masked = computed<Array<{ state: string; names: string[] }>>(() => {
+  const byState = new Map<string, string[]>()
+  for (const [prop, state] of inherits.value?.stateWins ?? []) {
+    const names = byState.get(state) ?? []
+    if (!names.includes(boxName(prop))) names.push(boxName(prop))
+    byState.set(state, names)
+  }
+  return [...byState].map(([state, names]) => ({ state, names }))
+})
+
 /** The section that owns width and height, so the Dimensions row lands with them. */
 const sizeGroup = computed<PropGroup | null>(
   () => fields.value.find((f) => f.name === 'width' || f.name === 'height')?.group ?? null,
@@ -1062,7 +1975,9 @@ const textResize = computed(() => valueOf('textAutoResize', 'NONE'))
  */
 const CONTAINERS = new Set(['Frame', 'Component', 'Slot'])
 const sizeModes = computed<Array<{ value: 'FIXED' | 'AUTO'; label: string }> | null>(() => {
-  if (hasAutoLayout.value || isText.value) {
+  // An instance states its own layout nowhere, but it can always hug: it is
+  // its component until it states a size (`DimensionsField` spells that).
+  if (hasAutoLayout.value || isText.value || active.value?.element === 'Instance') {
     return [
       { value: 'FIXED', label: 'Fixed' },
       { value: 'AUTO', label: 'Hug' },
@@ -1130,9 +2045,73 @@ function pinFields(address: string, writes: PinWrites): UidxPatch[] {
   }))
 }
 
+/**
+ * What the selected text may bind to (ADR 0015 §2): the enclosing items'
+ * fields and the component's props, offered beside Content so a binding is
+ * a pick rather than a spelling.
+ */
+const textBindings = computed(() => {
+  const node = active.value
+  if (!node || node.element !== 'Text' || !props.doc) return []
+  return textBindingCandidates(enclosingComponent(props.doc, node.address), node, props.models)
+})
+
+/**
+ * What any field may bind to, by the kind of value it takes: a checkbox
+ * takes an item's booleans (`visible="{item.done}"`), a number its numbers.
+ * Structural and paint fields take none; the token pill is theirs.
+ */
+/** Paint fields route through their own alias path below; a fill alias is a colour, not a binding. */
+const PAINT_PROPS: ReadonlySet<string> = new Set(['fills', 'strokes'])
+
+function bindingsFor(field: EditableProp): { alias: string; label: string }[] | undefined {
+  const node = active.value
+  if (!node || !props.doc) return undefined
+  if (field.name === 'characters') return textBindings.value
+  const kind =
+    field.control === 'boolean' ? 'boolean' : field.control === 'number' ? 'number' : null
+  if (!kind || STRUCTURAL_PROPS.includes(field.name) || restyles(field.name)) return undefined
+  const found = fieldBindingCandidates(
+    enclosingComponent(props.doc, node.address),
+    node,
+    kind,
+    props.models,
+  )
+  return found.length ? found : undefined
+}
+
 function onCommit(prop: string, value: JsonValue): void {
   if (!active.value) return
   const address = active.value.address
+  /**
+   * An instance's outer box and the colour it hands down are patches on the
+   * `<Instance>`, never scene writes (ADR 0018 §7): the node that draws them
+   * is generated, and the instance's own node is only the wrapper around it.
+   * The commit still goes to the canvas, ahead of the structural routes below
+   * and whatever the value holds, because the canvas is drawing the scrub and
+   * holds it over every document that lands until the release lets it go. A
+   * patch sent from here skipped that, so ↺, Reset all and undo changed the
+   * file under a pill still drawn at the scrubbed value. The canvas writes
+   * the patch itself, with the value as given (`restyleInstance`).
+   */
+  if (restyles(prop)) {
+    preview.value = null
+    emit('commit', address, prop, value)
+    return
+  }
+  /**
+   * A `{binding}` typed or picked into Content is a binding, not a text: the
+   * canvas route resolves it and writes the sample, or writes nothing when
+   * the sample already shows. It goes straight to the file, as a fill's
+   * alias does below.
+   */
+  if (isAlias(value) && !PAINT_PROPS.has(prop)) {
+    preview.value = null
+    emit('patches', [
+      { op: active.value.attrs[prop] === undefined ? 'add' : 'set', address, prop, value },
+    ])
+    return
+  }
   /**
    * Fills and strokes route structurally, not through the scene, whenever an
    * alias is anywhere in play (the value just committed, or what the node
@@ -1228,6 +2207,22 @@ function onCommit(prop: string, value: JsonValue): void {
 }
 
 /**
+ * Attributes taken out of the file — an instance's size, when Hug hands the
+ * axis back to its component; an override's ↺, a section's, or a Remove on an
+ * attribute nothing draws (ADR 0018 §7). Straight to the file, like a pin's
+ * removals: the scene has no write that means "stop stating this". Several
+ * at once leave as one envelope, so one undo brings them all back.
+ */
+function onRemove(prop: string | readonly string[]): void {
+  const node = active.value
+  if (!node) return
+  const patches = resetPatches(node, typeof prop === 'string' ? [prop] : prop)
+  if (patches.length === 0) return
+  preview.value = null
+  emit('patches', patches)
+}
+
+/**
  * A token pill's detach, for any type (Finding 2). The scene already renders
  * the resolved value the pill shows, so routing this through `onCommit` (and
  * from there, `App.vue`'s scene-derived patch) would produce no scene change
@@ -1252,106 +2247,258 @@ function onDetach(prop: string, value: JsonValue): void {
 </script>
 
 <template>
-  <aside class="properties">
+  <aside ref="paneEl" class="properties">
     <header class="inspector-header">
       <div class="inspector-title">
-        <h2>Design</h2>
-        <span v-if="writable === false" class="read-only-badge">Read only</span>
+        <nav class="face-toggle" aria-label="Inspector view">
+          <button
+            v-for="tab in FACES"
+            :key="tab.id"
+            type="button"
+            :data-tour="`tab-${tab.id}`"
+            :aria-pressed="face === tab.id"
+            :title="
+              tab.id !== 'design' && tabDot[tab.id]
+                ? `${tab.label}: ${tabDot[tab.id]!.title}`
+                : tab.label
+            "
+            @click="face = tab.id"
+          >
+            <span class="face-label">{{ tab.label }}</span>
+            <span
+              v-if="tab.id !== 'design' && tabDot[tab.id]"
+              class="badge"
+              :data-tone="tabDot[tab.id]!.tone"
+              :title="tabDot[tab.id]!.title"
+              ><span class="sr-only">{{ tabDot[tab.id]!.label }}</span></span
+            >
+          </button>
+        </nav>
       </div>
-      <div v-if="active" class="node-head">
-        <span class="element">{{ active.element }}</span>
-        <span class="name">{{ active.name }}</span>
+      <!-- A multi-selection has no identity: the empty state says what is
+           selected, as it says nothing is. -->
+      <div v-if="active || writable === false" class="node-head">
+        <template v-if="active">
+          <span class="element">{{ active.element }}</span>
+          <span class="name" :title="active.name">{{ active.name }}</span>
+          <select
+            v-if="statusEditable"
+            class="meta status-pick"
+            data-meta="status"
+            :data-value="status"
+            :value="status"
+            aria-label="Component status"
+            title="Draft while it is worked out; stable once others may rely on it; deprecated on its way out"
+            @change="setStatus(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">no status</option>
+            <option v-for="option in STATUSES" :key="option" :value="option">{{ option }}</option>
+          </select>
+          <span
+            v-for="chip in meta"
+            :key="chip.name"
+            class="meta"
+            :data-meta="chip.name"
+            :data-value="chip.value"
+            :title="`${chip.name}: ${chip.value}`"
+            >{{ chip.value }}</span
+          >
+        </template>
         <span
-          v-for="chip in meta"
-          :key="chip.name"
-          class="meta"
-          :data-meta="chip.name"
-          :data-value="chip.value"
-          :title="chip.name"
-          >{{ chip.value }}</span
+          v-if="writable === false"
+          class="read-only-badge"
+          :data-labelled="active ? undefined : ''"
+          :title="COPY.readOnly"
+          ><FieldIcon name="lock" /><span
+            v-if="!active"
+            class="read-only-word"
+            aria-hidden="true"
+            >{{ COPY.readOnlyShort }}</span
+          ><span class="sr-only">{{ COPY.readOnly }}</span></span
         >
       </div>
     </header>
 
-    <p v-if="!active" class="note">
-      {{
-        (selection?.length ?? 0) > 1
-          ? 'Select a single layer to edit its properties.'
-          : 'Select a layer to adjust its size, layout, and appearance.'
-      }}
-    </p>
-    <p v-else-if="writable === false" class="note warn">
-      Reconnect to edit. You can still inspect properties and export.
-    </p>
+    <!-- Contract, Connect and Code share one frame: the status line, the empty
+         state, then the tab itself inside the editor that styles its controls. -->
+    <template v-if="face !== 'design'">
+      <InspectorStatus
+        :key="face"
+        v-model:open="statusOpen[face]"
+        :items="tabItems[face]"
+        @act="act"
+      />
+      <InspectorEmpty v-if="tabEmpty" v-bind="tabEmpty" @act="act" />
+      <section v-if="face === 'connect' || !tabEmpty" class="editor inspector-tab">
+        <ConnectSection
+          v-if="face === 'connect'"
+          :doc="doc"
+          :component="connectComponent"
+          :library="headless ?? null"
+          :candidates="headlessCandidates"
+          :config="connection"
+          :writable="writable !== false"
+          :relation="subject.relation"
+          :focus="projectFocus"
+          :library-failed="!!libraryFailure"
+          :file="file"
+          :field-error="
+            connectionErrorKey && connectionError
+              ? {
+                  key: connectionErrorKey,
+                  text: fieldErrorText(connectionErrorKey, connectionError),
+                }
+              : null
+          "
+          @patches="emit('patches', $event)"
+          @save="saveConnection"
+          @choose-library="emit('chooseLibrary', $event)"
+          @open-contract="act(ACTION.openContract)"
+          @act="act"
+        />
+        <CodeSection
+          v-else-if="face === 'code'"
+          :component="codeComponent"
+          :relation="subject.kind === 'component' ? null : subject.relation"
+          :file="codeFile"
+          :declared-in="componentIn"
+          :reload="codeReload"
+          :stamp="codeStamp"
+          :codegen="codegen"
+          :writable="writable !== false"
+          @generate-code="emit('generateCode')"
+          @status="onCodeStatus"
+          @act="act"
+        />
+        <ContractSection
+          v-else
+          :doc="doc"
+          :node="active"
+          :library="headless ?? null"
+          :library-error="libraryFailure?.raw ?? ''"
+          :models="models"
+          :components="components"
+          :pages="pages"
+          :file="file"
+          :writable="writable !== false"
+          :focus="contractFocus"
+          :can-make-component="canMakeComponent"
+          @patches="emit('patches', $event)"
+          @remap="emit('remap', $event)"
+          @refused="emit('refused', $event)"
+          @select="emit('select', $event)"
+          @open-model="emit('openModel', $event)"
+          @bind-names="bindNames"
+          @act="act"
+        />
+      </section>
+    </template>
+    <template v-else>
+      <p v-if="!active" class="note">
+        {{
+          (selection?.length ?? 0) > 1
+            ? 'Select a single layer to edit its properties.'
+            : 'Select a layer to adjust its size, layout, and appearance.'
+        }}
+      </p>
 
-    <!--
+      <section v-if="stateCells.length" class="state-cells" aria-label="What this state sets">
+        <p class="state-cells-title">This state sets</p>
+        <ul>
+          <li v-for="cell in stateCells" :key="cell.prop">
+            <code class="state-cell-prop">{{ cell.prop }}</code>
+            <span class="state-cell-value" :title="showCell(cell.value)">{{
+              showCell(cell.value)
+            }}</span>
+            <span class="state-cell-row" :title="`from the row ${cell.row}`">{{ cell.row }}</span>
+            <button
+              type="button"
+              :disabled="writable === false"
+              :title="`Remove ${cell.prop} from the ${cell.row} row — the base value returns`"
+              @click="resetCell(cell)"
+            >
+              Reset
+            </button>
+          </li>
+        </ul>
+      </section>
+
+      <!--
       A fill's two states, as the two gestures that reach them (ADR 0007 §2).
       Reset removes the fill and the definition's default returns; empty keeps
       the fill and draws nothing on purpose. They are different documents, so
       they are different buttons.
     -->
-    <GraphicsSection
-      v-if="active?.element === 'Vector'"
-      :node="active"
-      :info="vectorInfo"
-      :writable="writable !== false"
-      :can-make-component="canMakeComponent === true"
-      @edit="emit('editVector', $event)"
-      @finish="emit('finishVector')"
-      @action="emit('vectorAction', $event)"
-      @make-component="emit('makeComponent')"
-      @patches="emit('patches', $event)"
-    />
-    <section v-if="fillSlot" class="fill-actions">
-      <p class="note">
-        This fills the slot <strong>{{ fillSlot.name }}</strong
-        >. Its layout belongs to the component that declares it; what is inside is this
-        page&rsquo;s.
-      </p>
-      <div class="fill-buttons">
-        <button
-          type="button"
-          :disabled="writable === false"
-          title="Remove the fill — the component's default content comes back"
-          @click="resetFill"
-        >
-          Reset slot
-        </button>
-        <button
-          type="button"
-          :disabled="writable === false || !fillHasContents"
-          title="Keep the fill and empty it — the slot draws nothing"
-          @click="emptyFill"
-        >
-          Delete contents
-        </button>
-      </div>
-    </section>
-
-    <section
-      v-if="!active && doc && !doc.tree.synthetic && (selection?.length ?? 0) === 0"
-      class="root-size-setting"
-    >
-      <label class="field-caption" for="root-font-size">Root font size</label>
-      <div class="root-size-input">
-        <input
-          id="root-font-size"
-          type="number"
-          min="1"
-          step="1"
-          :value="rootFontSize"
-          :disabled="writable === false"
-          @change="changeRootSize"
-          @blur="changeRootSize"
-          @keydown.enter="changeRootSize"
+      <GraphicsSection
+        v-if="active?.element === 'Vector'"
+        :node="active"
+        :info="vectorInfo"
+        :writable="writable !== false"
+        :can-make-component="canMakeComponent === true"
+        @edit="emit('editVector', $event)"
+        @finish="emit('finishVector')"
+        @action="emit('vectorAction', $event)"
+        @make-component="emit('makeComponent')"
+        @patches="emit('patches', $event)"
+      />
+      <section v-if="fillSlot" class="fill-actions">
+        <p class="note">
+          This fills the slot <strong>{{ fillSlot.name }}</strong
+          >. Its layout belongs to the component that declares it; what is inside is this
+          page&rsquo;s.
+        </p>
+        <SlotCardField
+          v-if="fillCard"
+          :card="fillCard.card"
+          :instance="fillCard.owner"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @select="emit('select', $event)"
         />
-        <span>px</span>
-      </div>
-      <p class="note">1rem = {{ rootFontSize }}px</p>
-    </section>
-    <!-- The editor for the one selected node. -->
-    <section v-if="active" class="editor">
-      <!--
+        <div v-else class="fill-buttons">
+          <button
+            type="button"
+            :disabled="writable === false"
+            title="Remove the fill — the component's default content comes back"
+            @click="resetFill"
+          >
+            Reset slot
+          </button>
+          <button
+            type="button"
+            :disabled="writable === false || !fillHasContents"
+            title="Keep the fill and empty it — the slot draws nothing"
+            @click="emptyFill"
+          >
+            Delete contents
+          </button>
+        </div>
+      </section>
+
+      <section
+        v-if="!active && doc && !doc.tree.synthetic && (selection?.length ?? 0) === 0"
+        class="root-size-setting"
+      >
+        <label class="field-caption" for="root-font-size">Root font size</label>
+        <div class="root-size-input">
+          <input
+            id="root-font-size"
+            type="number"
+            min="1"
+            step="1"
+            :value="rootFontSize"
+            :disabled="writable === false"
+            @change="changeRootSize"
+            @blur="changeRootSize"
+            @keydown.enter="changeRootSize"
+          />
+          <span>px</span>
+        </div>
+        <p class="note">1rem = {{ rootFontSize }}px</p>
+      </section>
+      <!-- The editor for the one selected node. -->
+      <section v-if="active" class="editor">
+        <!--
         Making a hole out of what is already there (story F5, ADR 0007 §6).
         Offered for anything whose attributes would still mean something on a
         `<Slot>`, which is a question `prop-ui.ts` answers per element — so this
@@ -1362,133 +2509,240 @@ function onDetach(prop: string, value: JsonValue): void {
         the other way round asks the author to act before they have been told
         what on.
       -->
-      <div v-if="convertible" class="node-actions">
-        <button
-          type="button"
-          :disabled="writable === false"
-          title="Turn this into a slot — it keeps its layout, and its children become the default content"
-          @click="convertToSlot"
-        >
-          Convert to slot
-        </button>
-      </div>
-      <!--
+        <div v-if="convertible" class="node-actions">
+          <button
+            type="button"
+            :disabled="writable === false"
+            title="Turn this into a slot — it keeps its layout, and its children become the default content"
+            @click="convertToSlot"
+          >
+            Convert to slot
+          </button>
+        </div>
+        <!--
         Above the layer's own, the way Figma stacks them, and named apart from
         them because this repo already calls a scene attribute a "property"
         (F6's own warning).
       -->
-      <!--
+        <!--
         Which component an instance is, before what it says: Figma's swap
         control is the top row of the panel, and a swap changes every property
         below it.
       -->
-      <div
-        v-if="swapRow"
-        class="instance-swap-row"
-        :data-linked="swapRow.boundTo ? 'true' : undefined"
-      >
-        <label>Component</label>
-        <span v-if="!swapRow.boundTo" class="swap-name">{{ swapRow.component }}</span>
-        <PropertyLink
-          :bound-to="swapRow.boundTo"
-          :candidates="swapRow.candidates"
-          icon="prop-instance"
-          :editable="writable !== false"
-          :variables="[]"
-          :component-name="componentName"
-          @link="(name) => onLink('component', name)"
-          @unlink="onUnlink('component')"
-          @create="onCreate('component')"
-          @edit="onEditDeclaration"
-        />
-      </div>
+        <div
+          v-if="swapRow && (swapRow.boundTo || swapRow.candidates)"
+          class="instance-swap-row"
+          :data-linked="swapRow.boundTo ? 'true' : undefined"
+        >
+          <label>Component</label>
+          <span v-if="!swapRow.boundTo" class="swap-name">{{ swapRow.component }}</span>
+          <PropertyLink
+            :bound-to="swapRow.boundTo"
+            :candidates="swapRow.candidates"
+            icon="prop-instance"
+            :editable="writable !== false"
+            :variables="[]"
+            :component-name="componentName"
+            @link="(name) => onLink('component', name)"
+            @unlink="onUnlink('component')"
+            @create="onCreate('component')"
+            @edit="onEditDeclaration"
+          />
+        </div>
 
-      <!--
+        <!--
         An instance's own properties come first: using a component is choosing
-        its content, and the geometry below is the only other thing an instance
-        lets anyone change.
+        its content, and the geometry and its outer box below are the only
+        other things an instance lets anyone change (ADR 0018).
       -->
-      <InstancePropsSection
-        v-if="active.element === 'Instance'"
-        :doc="doc"
-        :instance="active"
-        :definition="definitionFor(active)"
-        :writable="writable !== false"
-        @patches="emit('patches', $event)"
-      />
+        <!--
+          A slot inside a component, set up by the component's author: what it
+          repeats over, what it draws, what it takes. A fill is the other side
+          of the same slot and has its own card below.
+        -->
+        <SlotSettingsSection
+          v-if="active.element === 'Slot' && !fillSlot"
+          :doc="doc"
+          :node="active"
+          :components="components"
+          :models="models"
+          :pages="pages"
+          :library="headless ?? null"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @open-model="emit('openModel', $event)"
+          @select="emit('select', $event)"
+        />
 
-      <!--
+        <InstancePropsSection
+          v-if="active.element === 'Instance'"
+          :doc="doc"
+          :instance="active"
+          :definition="definitionFor(active)"
+          :components="components"
+          :models="models"
+          :pages="pages"
+          :preview-index="previewIndex ?? 0"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @select="emit('select', $event)"
+          @open-component="emit('openComponent', $event)"
+          @open-model="emit('openModel', $event)"
+          @preview="emit('previewSample', $event)"
+        />
+
+        <!--
         A component's states come before its properties: a state is the coarser
         fact — which button this is, before what it says.
       -->
-      <ComponentVariantsSection
-        v-if="active.element === 'Component' && active.attrs.variants !== undefined"
-        :doc="doc"
-        :component="active"
-        :pages="pages"
-        :file="file"
-        :writable="writable !== false"
-        @patches="emit('patches', $event)"
-        @remap="emit('remap', $event)"
-        @refused="emit('refused', $event)"
-      />
+        <!--
+          Repeat, for any layer inside a component (ADR 0017 §2): the layer and
+          what it holds become the template drawn once per item. A slot has it
+          inside its own panel above; a state's derived layer repeats as its
+          base does.
+        -->
+        <div
+          v-if="
+            active.element !== 'Slot' &&
+            active.element !== 'Component' &&
+            doc &&
+            !derivedTarget(doc, active.address)
+          "
+          class="repeat-host"
+        >
+          <RepeatSection
+            :doc="doc"
+            :node="active"
+            :components="components"
+            :models="models"
+            :writable="writable !== false"
+            @patches="emit('patches', $event)"
+            @select="emit('select', $event)"
+            @open-model="emit('openModel', $event)"
+          />
+        </div>
 
-      <ComponentPropsSection
-        v-if="active.element === 'Component'"
-        :pages="pages"
-        :file="file"
-        :doc="doc"
-        :component="active"
-        :writable="writable !== false"
-        @remap="emit('remap', $event)"
-        @patches="emit('patches', $event)"
-      />
+        <PreviewDataSection
+          v-if="active.element === 'Component'"
+          :component="active"
+          :models="models"
+          :index="previewIndex ?? 0"
+          @preview="emit('previewSample', $event)"
+          @open-model="emit('openModel', $event)"
+        />
 
-      <p v-if="!fields.length" class="note">This node declares no properties.</p>
+        <ComponentVariantsSection
+          v-if="active.element === 'Component' && active.attrs.variants !== undefined"
+          :doc="doc"
+          :component="active"
+          :pages="pages"
+          :file="file"
+          :writable="writable !== false"
+          @patches="emit('patches', $event)"
+          @remap="emit('remap', $event)"
+          @refused="emit('refused', $event)"
+        />
 
-      <PropertySectionRoot
-        v-for="section in sections"
-        :key="section.group"
-        :open="openSections[section.group]"
-        class="section"
-        :aria-label="section.label"
-        @update:open="openSections[section.group] = $event"
-      >
-        <!-- The header is inert markup; the primitive hands the toggle back
+        <!--
+          The legacy props={{}} declaration (story F6). A component with a
+          ## Contract declares its props there; showing both would offer two
+          places to declare one thing, each writing something different.
+        -->
+        <p
+          v-if="active.element === 'Component' && doc?.spec?.contract"
+          class="note"
+          data-field="props-in-contract"
+        >
+          Properties are declared in the
+          <button type="button" class="link-button" @click="face = 'contract'">Contract</button>
+          tab.
+        </p>
+        <ComponentPropsSection
+          v-else-if="active.element === 'Component'"
+          :pages="pages"
+          :file="file"
+          :doc="doc"
+          :component="active"
+          :writable="writable !== false"
+          @remap="emit('remap', $event)"
+          @patches="emit('patches', $event)"
+        />
+
+        <p v-if="!fields.length" class="note">This node declares no properties.</p>
+
+        <!--
+          What a state the instance's own props select sets on its outer box,
+          in the box a derived state's cells use: a state sits above the use
+          (ADR 0018 §3), so the author learns which of their values will not
+          show before they edit one.
+        -->
+        <section
+          v-if="masked.length"
+          class="state-cells"
+          data-field="masked"
+          aria-label="What its state sets"
+        >
+          <p v-for="entry in masked" :key="entry.state" class="state-cells-title">
+            Its {{ entry.state }} state sets: {{ entry.names.join(', ') }}
+          </p>
+        </section>
+
+        <PropertySectionRoot
+          v-for="section in sections"
+          :key="section.group"
+          :open="openSections[section.group]"
+          class="section"
+          :aria-label="section.label"
+          @update:open="openSections[section.group] = $event"
+        >
+          <!-- The header is inert markup; the primitive hands the toggle back
              through its slot, so the click has to be wired here. The chevron
              turns with data-state, Figma's own affordance. -->
-        <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
-          <button
-            type="button"
-            class="section-toggle"
-            v-bind="stateAttrs"
-            :aria-expanded="openSections[section.group]"
-            @click="actions.toggle()"
-          >
-            <PropertySectionTitle class="section-title">{{ section.label }}</PropertySectionTitle>
-            <span class="chevron" aria-hidden="true">›</span>
-          </button>
-          <!-- Figma hangs the node's visibility off the Appearance header
+          <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
+            <button
+              type="button"
+              class="section-toggle"
+              v-bind="stateAttrs"
+              :aria-expanded="openSections[section.group]"
+              @click="actions.toggle()"
+            >
+              <PropertySectionTitle class="section-title">{{ section.label }}</PropertySectionTitle>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+            <!-- An instance's overrides in this section, handed back in one
+               go (ADR 0018 §7). A paint or effect row has no caption to wear
+               a mark, so the header wears it for them. -->
+            <OverrideMark
+              v-if="sectionMarks.get(section.group)"
+              :state="sectionMarks.get(section.group)!.state"
+              :component="instanceName"
+              :inherited="sectionMarks.get(section.group)!.inherited"
+              :shadowed-by="sectionMarks.get(section.group)!.shadowedBy"
+              :label="section.label"
+              :writable="writable !== false"
+              @reset="onRemove(sectionMarks.get(section.group)!.stated)"
+            />
+            <!-- Figma hangs the node's visibility off the Appearance header
                rather than burying it in a checkbox row. -->
-          <button
-            v-if="section.group === 'appearance'"
-            type="button"
-            class="cluster-btn section-eye"
-            :disabled="writable === false || !!visibleBound"
-            :title="
-              visibleBound
-                ? `visibility is linked to ${visibleBound}`
-                : isVisible
-                  ? 'hide this node'
-                  : 'show this node'
-            "
-            :aria-label="isVisible ? 'hide' : 'show'"
-            :aria-pressed="!isVisible"
-            @click="onCommit('visible', !isVisible)"
-          >
-            <FieldIcon :name="isVisible ? 'eye' : 'eye-off'" />
-          </button>
-          <!--
+            <button
+              v-if="section.group === 'appearance'"
+              type="button"
+              class="cluster-btn section-eye"
+              :disabled="writable === false || !!visibleBound"
+              :title="
+                visibleBound
+                  ? `visibility is linked to ${visibleBound}`
+                  : isVisible
+                    ? 'hide this node'
+                    : 'show this node'
+              "
+              :aria-label="isVisible ? 'hide' : 'show'"
+              :aria-pressed="!isVisible"
+              @click="onCommit('visible', !isVisible)"
+            >
+              <FieldIcon :name="isVisible ? 'eye' : 'eye-off'" />
+            </button>
+            <!--
             The boolean apply flow, beside the eye it fills — Figma's own
             placement ("Boolean property: the Appearance section"). Only while
             unbound: once a property drives visibility the pill is a row in the
@@ -1496,89 +2750,89 @@ function onDetach(prop: string, value: JsonValue): void {
             chevron, and a property name of any length overflows it. Figma puts
             the pill in the section for the same reason.
           -->
-          <span
-            v-for="link in [sectionLink(section.group)].filter((l) => l && !l.boundTo)"
-            :key="link!.prop"
-            class="section-link"
-          >
-            <PropertyLink
-              :bound-to="null"
-              :candidates="link!.candidates"
-              :icon="link!.prop === 'visible' ? 'prop-boolean' : 'prop-text'"
-              :editable="writable !== false"
-              :variables="link!.variables"
-              allow-variables
-              :variable-label="link!.prop === 'visible' ? 'Visibility' : 'Content'"
-              :component-name="componentName"
-              @link="(name) => onLink(link!.prop, name)"
-              @unlink="onUnlink(link!.prop)"
-              @create="onCreate(link!.prop)"
-              @pick-variable="(a) => onPickVariable(link!.prop, a)"
-            />
-          </span>
-          <!-- Fill/Stroke/Effects append here, Figma's placement — the
+            <span
+              v-for="link in [sectionLink(section.group)].filter((l) => l && !l.boundTo)"
+              :key="link!.prop"
+              class="section-link"
+            >
+              <PropertyLink
+                :bound-to="null"
+                :candidates="link!.candidates"
+                :icon="link!.prop === 'visible' ? 'prop-boolean' : 'prop-text'"
+                :editable="writable !== false"
+                :variables="link!.variables"
+                allow-variables
+                :variable-label="link!.prop === 'visible' ? 'Visibility' : 'Content'"
+                :component-name="componentName"
+                @link="(name) => onLink(link!.prop, name)"
+                @unlink="onUnlink(link!.prop)"
+                @create="onCreate(link!.prop)"
+                @pick-variable="(a) => onPickVariable(link!.prop, a)"
+              />
+            </span>
+            <!-- Fill/Stroke/Effects append here, Figma's placement — the
                in-field header row these buttons used to sit in is gone. -->
-          <button
-            v-if="ADDABLE[section.group]"
-            type="button"
-            class="cluster-btn"
-            :data-section-add="section.group"
-            :aria-label="`Add ${section.group === 'effects' ? 'effect' : section.group}`"
-            :disabled="writable === false || sectionAddDisabled(section.group)"
-            :title="
-              sectionAddDisabled(section.group)
-                ? `${ADDABLE[section.group]} the panel cannot edit — authored with variables; edit the file`
-                : `add ${section.group === 'effects' ? 'an effect' : 'a solid paint'}`
-            "
-            @click="onSectionAdd(section.group)"
-          >
-            <FieldIcon name="plus" />
-          </button>
-        </PropertySectionHeader>
-        <PropertySectionContent class="section-body">
-          <!--
+            <button
+              v-if="ADDABLE[section.group]"
+              type="button"
+              class="cluster-btn"
+              :data-section-add="section.group"
+              :aria-label="`Add ${section.group === 'effects' ? 'effect' : section.group}`"
+              :disabled="writable === false || sectionAddDisabled(section.group)"
+              :title="
+                sectionAddDisabled(section.group)
+                  ? `${ADDABLE[section.group]} the panel cannot edit — authored with variables; edit the file`
+                  : `add ${section.group === 'effects' ? 'an effect' : 'a solid paint'}`
+              "
+              @click="onSectionAdd(section.group)"
+            >
+              <FieldIcon name="plus" />
+            </button>
+          </PropertySectionHeader>
+          <PropertySectionContent class="section-body">
+            <!--
             Figma's **Apply variable mode**, in the Appearance section it puts
             it in (G8). Leads the section because a mode governs every value
             below it: changing it re-resolves the rows underneath, so reading
             it after them would explain the numbers only in hindsight.
           -->
-          <ModeRow
-            v-if="section.group === 'appearance'"
-            :token-index="tokenIndex"
-            :explicit="explicitModes"
-            :editable="writable !== false"
-            @set="onSetMode"
-            @clear="onClearMode"
-          />
+            <ModeRow
+              v-if="section.group === 'appearance'"
+              :token-index="tokenIndex"
+              :explicit="explicitModes"
+              :editable="writable !== false"
+              @set="onSetMode"
+              @clear="onClearMode"
+            />
 
-          <!--
+            <!--
             A `<Text>`'s Resizing switch leads the section, above Dimensions —
             Figma's own stacking, and the reason this is rendered here rather
             than left to the generic rows below (which would put it after
             every dimension it governs). `HANDLED_BY_SECTION` keeps it from
             also appearing there.
           -->
-          <div
-            v-if="textResizeField && section.group === sizeGroup"
-            class="field"
-            :data-prop="textResizeField.name"
-            @mouseenter="onHover(textResizeField.name)"
-            @mouseleave="onHover(null)"
-          >
-            <PropertyField
-              :field="textResizeField"
-              :resolved-value="resolved(textResizeField)"
-              :held-value="heldFor(textResizeField)"
-              :editable="editable(textResizeField)"
-              :swatches="swatches"
-              :tokens="tokens"
-              :token-index="tokenIndex"
-              @preview="onPreview"
-              @commit="onCommit"
-            />
-          </div>
+            <div
+              v-if="textResizeField && section.group === sizeGroup"
+              class="field"
+              :data-prop="textResizeField.name"
+              @mouseenter="onHover(textResizeField.name)"
+              @mouseleave="onHover(null)"
+            >
+              <PropertyField
+                :field="textResizeField"
+                :resolved-value="resolved(textResizeField)"
+                :held-value="heldFor(textResizeField)"
+                :editable="editable(textResizeField)"
+                :swatches="swatches"
+                :tokens="tokens"
+                :token-index="tokenIndex"
+                @preview="onPreview"
+                @commit="onCommit"
+              />
+            </div>
 
-          <!--
+            <!--
             Dimensions: W and H each carry the Hug/Fixed state that governs
             them, replacing the separate sizing-mode rows (§5). Figma's own
             word for this row — "Resizing" names the switch above, and the two
@@ -1588,333 +2842,446 @@ function onDetach(prop: string, value: JsonValue): void {
             its box — it just has no Hug to offer unless it is a `<Text>`,
             whose glyphs size it.
           -->
-          <DimensionsField
-            v-if="sizeGroup && section.group === sizeGroup && active"
-            :element="active.element"
-            :layout-mode="layoutMode"
-            :primary-axis-sizing="valueOf('primaryAxisSizingMode', 'FIXED')"
-            :counter-axis-sizing="valueOf('counterAxisSizingMode', 'FIXED')"
-            :text-resize="textResize"
-            :width="authoredNumber('width')"
-            :height="authoredNumber('height')"
-            :modes="sizeModes"
-            :editable="writable !== false"
-            :token-source="tokenSource"
-            @bind="onBindVariables"
-            @detach="onDetachVariables"
-            @preview="onPreview"
-            @commit="onCommit"
-            @hover="onHover"
-          />
+            <DimensionsField
+              v-if="sizeGroup && section.group === sizeGroup && active"
+              :element="active.element"
+              :layout-mode="layoutMode"
+              :primary-axis-sizing="sizingOf('primary')"
+              :counter-axis-sizing="sizingOf('counter')"
+              :text-resize="textResize"
+              :width="authoredNumber('width')"
+              :height="authoredNumber('height')"
+              :modes="sizeModes"
+              :drawn="pinFrame?.box ?? null"
+              :editable="writable !== false"
+              :token-source="tokenSource"
+              @bind="onBindVariables"
+              @detach="onDetachVariables"
+              @preview="onPreview"
+              @commit="onCommit"
+              @remove="onRemove"
+              @hover="onHover"
+            />
 
-          <InspectorGroup
-            v-for="group in inspectorGroups(section.group, genericFields(section))"
-            :key="group.id"
-            :group="group"
-          >
-            <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-align">
-              <span class="field-caption">Alignment</span>
-              <AlignmentMatrix
-                :primary="valueOf('primaryAxisAlignItems', 'MIN')"
-                :counter="valueOf('counterAxisAlignItems', 'MIN')"
-                :layout-mode="layoutMode"
-                :editable="writable !== false"
-                @commit="onMultiCommit"
-                @hover="onHover"
+            <!--
+            An instance's layout is its component's (ADR 0018 §1): one
+            read-only line, with the way to the component, where a frame has
+            direction, gap and alignment controls that here would write what
+            nothing draws. Its padding is the outer box's, so it stays a
+            control — here, since the spacing group a frame's sits in is gone.
+          -->
+            <template v-if="instance && section.group === sizeGroup">
+              <LockedLayoutRow
+                v-if="inherits"
+                :layout="inherits.layout"
+                :component="instanceName"
+                @open-component="emit('openComponent', $event)"
               />
-            </div>
+              <div v-if="instancePadding" class="field field-padding" data-field="instance-padding">
+                <span class="field-caption" :class="{ marked: paddingMark }">
+                  <span>Padding</span>
+                  <OverrideMark
+                    v-if="paddingMark"
+                    :state="paddingMark.state"
+                    :component="instanceName"
+                    :inherited="paddingMark.inherited"
+                    :shadowed-by="paddingMark.shadowedBy"
+                    label="Padding"
+                    :writable="writable !== false"
+                    @reset="onRemove(paddingMark.stated)"
+                  />
+                </span>
+                <PaddingField
+                  :values="paddingValues"
+                  :inherited="unstated(PADDING_PROPS)"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+                <p v-if="paddingMark?.shadowedBy" class="shadow-note">
+                  {{ shadowNote(paddingMark.shadowedBy) }}
+                </p>
+              </div>
+            </template>
 
-            <template v-for="paired in group.fields" :key="paired.field.name">
-              <div
-                v-if="paired.pairedWith"
-                class="field field-pair"
-                :data-prop="paired.field.name"
-                :data-authored="paired.field.authored || paired.pairedWith?.authored"
-                :title="paired.field.readonlyReason ?? undefined"
-                @mouseenter="onHover(paired.field.name)"
-                @mouseleave="onHover(null)"
-              >
-                <!--
+            <InspectorGroup
+              v-for="group in inspectorGroups(section.group, genericFields(section))"
+              :key="group.id"
+              :group="group"
+            >
+              <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-align">
+                <span class="field-caption">Alignment</span>
+                <AlignmentMatrix
+                  :primary="valueOf('primaryAxisAlignItems', 'MIN')"
+                  :counter="valueOf('counterAxisAlignItems', 'MIN')"
+                  :layout-mode="layoutMode"
+                  :editable="writable !== false"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+              </div>
+
+              <template v-for="paired in group.fields" :key="paired.field.name">
+                <div
+                  v-if="paired.pairedWith"
+                  class="field field-pair"
+                  :data-prop="paired.field.name"
+                  :data-authored="paired.field.authored || paired.pairedWith?.authored"
+                  :title="paired.field.readonlyReason ?? undefined"
+                  @mouseenter="onHover(paired.field.name)"
+                  @mouseleave="onHover(null)"
+                >
+                  <!--
                 One caption above each half — Left | Right, Top | Bottom, Line
                 height | Letter spacing. The x pair used to carry one spanning
                 "Position" caption with letters inside the boxes instead;
                 review preferred every edge named the same way, above.
               -->
-                <div class="pair-captions">
-                  <span class="field-caption">{{ paired.field.label }}</span>
-                  <span class="field-caption">{{ paired.pairedWith.label }}</span>
-                </div>
-                <div class="pair-grid">
-                  <div
-                    class="field-cell"
-                    :data-prop="paired.field.name"
-                    @mouseenter="onHover(paired.field.name)"
-                    @mouseleave="onHover(null)"
-                  >
-                    <PropertyField
-                      :field="paired.field"
-                      :resolved-value="resolved(paired.field)"
-                      :held-value="heldFor(paired.field)"
-                      :editable="editable(paired.field)"
-                      :swatches="swatches"
-                      :candidates="candidatesFor(paired.field)"
-                      :variables="variablesFor(paired.field)"
-                      :component-name="componentName"
-                      :tokens="tokens"
-                      :token-index="tokenIndex"
-                      compact
-                      @preview="onPreview"
-                      @commit="onCommit"
-                      @link="onLink"
-                      @unlink="onUnlink"
-                      @create="onCreate"
-                      @edit="onEditDeclaration"
-                      @pick-variable="onPickVariable"
-                      @detach="onDetach"
-                    />
+                  <!-- A half an instance overrides wears its mark here, since a
+                     compact field draws no caption of its own. -->
+                  <div class="pair-captions">
+                    <span class="field-caption" :class="{ marked: isMarked(paired.field) }">
+                      <span>{{ paired.field.label }}</span>
+                      <OverrideMark
+                        v-if="isMarked(paired.field)"
+                        v-bind="rowMark(paired.field)"
+                        @reset="onRemove(paired.field.name)"
+                      />
+                    </span>
+                    <span class="field-caption" :class="{ marked: isMarked(paired.pairedWith) }">
+                      <span>{{ paired.pairedWith.label }}</span>
+                      <OverrideMark
+                        v-if="isMarked(paired.pairedWith)"
+                        v-bind="rowMark(paired.pairedWith)"
+                        @reset="onRemove(paired.pairedWith.name)"
+                      />
+                    </span>
                   </div>
-                  <div
-                    class="field-cell"
-                    :data-prop="paired.pairedWith.name"
-                    :title="paired.pairedWith.readonlyReason ?? undefined"
-                    @mouseenter="onHover(paired.pairedWith.name)"
-                    @mouseleave="onHover(null)"
-                  >
-                    <PropertyField
-                      :field="paired.pairedWith"
-                      :resolved-value="resolved(paired.pairedWith)"
-                      :held-value="heldFor(paired.pairedWith)"
-                      :editable="editable(paired.pairedWith)"
-                      :swatches="swatches"
-                      :candidates="candidatesFor(paired.pairedWith)"
-                      :variables="variablesFor(paired.pairedWith)"
-                      :component-name="componentName"
-                      :tokens="tokens"
-                      :token-index="tokenIndex"
-                      compact
-                      @preview="onPreview"
-                      @commit="onCommit"
-                      @link="onLink"
-                      @unlink="onUnlink"
-                      @create="onCreate"
-                      @edit="onEditDeclaration"
-                      @pick-variable="onPickVariable"
-                      @detach="onDetach"
-                    />
+                  <div class="pair-grid">
+                    <div
+                      class="field-cell"
+                      :data-prop="paired.field.name"
+                      @mouseenter="onHover(paired.field.name)"
+                      @mouseleave="onHover(null)"
+                    >
+                      <PropertyField
+                        :field="paired.field"
+                        :resolved-value="resolved(paired.field)"
+                        :held-value="heldFor(paired.field)"
+                        :editable="editable(paired.field)"
+                        :swatches="swatches"
+                        :candidates="candidatesFor(paired.field)"
+                        :variables="variablesFor(paired.field)"
+                        :component-name="componentName"
+                        :tokens="tokens"
+                        :token-index="tokenIndex"
+                        :override="overrideOf(paired.field)"
+                        compact
+                        @preview="onPreview"
+                        @commit="onCommit"
+                        @link="onLink"
+                        @unlink="onUnlink"
+                        @create="onCreate"
+                        @edit="onEditDeclaration"
+                        @pick-variable="onPickVariable"
+                        @detach="onDetach"
+                      />
+                    </div>
+                    <div
+                      class="field-cell"
+                      :data-prop="paired.pairedWith.name"
+                      :title="paired.pairedWith.readonlyReason ?? undefined"
+                      @mouseenter="onHover(paired.pairedWith.name)"
+                      @mouseleave="onHover(null)"
+                    >
+                      <PropertyField
+                        :field="paired.pairedWith"
+                        :resolved-value="resolved(paired.pairedWith)"
+                        :held-value="heldFor(paired.pairedWith)"
+                        :editable="editable(paired.pairedWith)"
+                        :swatches="swatches"
+                        :candidates="candidatesFor(paired.pairedWith)"
+                        :variables="variablesFor(paired.pairedWith)"
+                        :component-name="componentName"
+                        :tokens="tokens"
+                        :token-index="tokenIndex"
+                        :override="overrideOf(paired.pairedWith)"
+                        compact
+                        @preview="onPreview"
+                        @commit="onCommit"
+                        @link="onLink"
+                        @unlink="onUnlink"
+                        @create="onCreate"
+                        @edit="onEditDeclaration"
+                        @pick-variable="onPickVariable"
+                        @detach="onDetach"
+                      />
+                    </div>
                   </div>
+                  <p v-if="hiddenBy(paired.field, paired.pairedWith)" class="shadow-note">
+                    {{ shadowNote(hiddenBy(paired.field, paired.pairedWith)!) }}
+                  </p>
                 </div>
-              </div>
+                <div
+                  v-else
+                  class="field"
+                  :class="{ 'field-check': paired.field.control === 'boolean' }"
+                  :data-prop="paired.field.name"
+                  :data-authored="paired.field.authored"
+                  :data-linked="isPropertyBound(paired.field) || undefined"
+                  :title="paired.field.readonlyReason ?? undefined"
+                  @mouseenter="onHover(paired.field.name)"
+                  @mouseleave="onHover(null)"
+                >
+                  <PropertyField
+                    :field="paired.field"
+                    :text-direction="textDirection"
+                    :resolved-value="resolved(paired.field)"
+                    :held-value="heldFor(paired.field)"
+                    :editable="editable(paired.field)"
+                    :swatches="swatches"
+                    :candidates="candidatesFor(paired.field)"
+                    :bindings="bindingsFor(paired.field)"
+                    :variables="variablesFor(paired.field)"
+                    :component-name="componentName"
+                    :tokens="tokens"
+                    :token-index="tokenIndex"
+                    :override="overrideOf(paired.field)"
+                    :override-context="overrideContextOf(paired.field)"
+                    :single="isTextColor(paired.field)"
+                    :mixed="textMixed(paired.field)"
+                    @preview="onPreview"
+                    @commit="onCommit"
+                    @link="onLink"
+                    @unlink="onUnlink"
+                    @create="onCreate"
+                    @edit="onEditDeclaration"
+                    @pick-variable="onPickVariable"
+                    @detach="onDetach"
+                    @reset="onRemove"
+                  />
+                  <p v-if="hiddenBy(paired.field)" class="shadow-note">
+                    {{ shadowNote(hiddenBy(paired.field)!) }}
+                  </p>
+                </div>
+              </template>
               <div
-                v-else
-                class="field"
-                :class="{ 'field-check': paired.field.control === 'boolean' }"
-                :data-prop="paired.field.name"
-                :data-authored="paired.field.authored"
-                :data-linked="isPropertyBound(paired.field) || undefined"
-                :title="paired.field.readonlyReason ?? undefined"
-                @mouseenter="onHover(paired.field.name)"
-                @mouseleave="onHover(null)"
+                v-if="group.id === 'layout-spacing' && hasAutoLayout"
+                class="field field-padding"
               >
-                <PropertyField
-                  :field="paired.field"
-                  :text-direction="textDirection"
-                  :resolved-value="resolved(paired.field)"
-                  :held-value="heldFor(paired.field)"
-                  :editable="editable(paired.field)"
-                  :swatches="swatches"
-                  :candidates="candidatesFor(paired.field)"
-                  :variables="variablesFor(paired.field)"
-                  :component-name="componentName"
-                  :tokens="tokens"
-                  :token-index="tokenIndex"
-                  @preview="onPreview"
-                  @commit="onCommit"
-                  @link="onLink"
-                  @unlink="onUnlink"
-                  @create="onCreate"
-                  @edit="onEditDeclaration"
-                  @pick-variable="onPickVariable"
-                  @detach="onDetach"
+                <span class="field-caption">Padding</span>
+                <PaddingField
+                  :values="paddingValues"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
                 />
               </div>
-            </template>
-            <div v-if="group.id === 'layout-spacing' && hasAutoLayout" class="field field-padding">
-              <span class="field-caption">Padding</span>
-              <PaddingField
-                :values="paddingValues"
-                :editable="writable !== false"
-                :token-source="tokenSource"
-                @bind="onBindVariables"
-                @detach="onDetachVariables"
-                @preview="onMultiPreview"
-                @commit="onMultiCommit"
-                @hover="onHover"
-              />
-            </div>
-            <div v-if="group.id === 'appearance-main' && showCorners" class="field field-corner">
-              <span class="field-caption">Corner radius</span>
-              <CornerField
-                :corners="cornerValues"
-                :per-corner="hasPerCorner"
-                :smoothing="numberOf('cornerSmoothing')"
-                :editable="writable !== false"
-                :token-source="tokenSource"
-                @bind="onBindVariables"
-                @detach="onDetachVariables"
-                @preview="onMultiPreview"
-                @commit="onMultiCommit"
-                @hover="onHover"
-              />
-            </div>
-          </InspectorGroup>
-        </PropertySectionContent>
-      </PropertySectionRoot>
+              <div v-if="group.id === 'appearance-main' && showCorners" class="field field-corner">
+                <span class="field-caption" :class="{ marked: cornerMark }">
+                  <span>Corner radius</span>
+                  <OverrideMark
+                    v-if="cornerMark"
+                    :state="cornerMark.state"
+                    :component="instanceName"
+                    :inherited="cornerMark.inherited"
+                    :shadowed-by="cornerMark.shadowedBy"
+                    label="Corner radius"
+                    :writable="writable !== false"
+                    @reset="onRemove(cornerMark.stated)"
+                  />
+                </span>
+                <CornerField
+                  :corners="cornerValues"
+                  :per-corner="hasPerCorner"
+                  :smoothing="numberOf('cornerSmoothing')"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  :inherited="unstated(CORNER_FAMILY)"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+                <p v-if="cornerMark?.shadowedBy" class="shadow-note">
+                  {{ shadowNote(cornerMark.shadowedBy) }}
+                </p>
+              </div>
+            </InspectorGroup>
+            <!-- Where an instance's text colour reaches, and where it stops (ADR 0018 §4). -->
+            <p v-if="instance && section.group === 'textColor'" class="note section-note">
+              Every text inside {{ instanceName }} · slot text with its own colour keeps it
+            </p>
+          </PropertySectionContent>
+        </PropertySectionRoot>
 
-      <!--
+        <!--
         One dialog for the pane, not one per row: only one field can be asking
         at a time, and the submit is the pane's to make either way.
       -->
-      <PropertyDialog
-        v-if="creating"
-        :key="creating.prop"
-        mode="create"
-        :type="creating.type"
-        :value="creating.value"
-        @submit="onCreateSubmit"
-        @close="creating = null"
-      />
+        <PropertyDialog
+          v-if="creating"
+          :key="creating.prop"
+          mode="create"
+          :type="creating.type"
+          :value="creating.value"
+          @submit="onCreateSubmit"
+          @close="creating = null"
+        />
 
-      <PropertyDialog
-        v-if="editing"
-        :key="editing.from"
-        mode="edit"
-        :type="editing.type"
-        :name="editing.from"
-        :value="editing.value"
-        @submit="onEditSubmit"
-        @close="editing = null"
-      />
+        <PropertyDialog
+          v-if="editing"
+          :key="editing.from"
+          mode="edit"
+          :type="editing.type"
+          :name="editing.from"
+          :value="editing.value"
+          @submit="onEditSubmit"
+          @close="editing = null"
+        />
 
-      <InspectorGroup
-        v-if="unmapped.length"
-        :group="{
-          id: 'additional-properties',
-          label: 'Additional properties',
-          advanced: true,
-          fields: unmapped.map((field) => ({ field, pairedWith: null })),
-        }"
-      >
-        <div
-          v-for="field in unmapped"
-          :key="field.name"
-          class="field"
-          :data-prop="field.name"
-          :data-authored="field.authored"
-          @mouseenter="onHover(field.name)"
-          @mouseleave="onHover(null)"
+        <InspectorGroup
+          v-if="unmapped.length"
+          :group="{
+            id: 'additional-properties',
+            label: 'Additional properties',
+            advanced: true,
+            fields: unmapped.map((field) => ({ field, pairedWith: null })),
+          }"
         >
-          <PropertyField
-            :field="field"
-            :resolved-value="null"
-            :held-value="null"
-            :editable="editable(field)"
-            :swatches="swatches"
-            :tokens="tokens"
-            :token-index="tokenIndex"
-            @preview="onPreview"
-            @commit="onCommit"
-            @detach="onDetach"
-          />
-        </div>
-      </InspectorGroup>
-      <!--
+          <div
+            v-for="field in unmapped"
+            :key="field.name"
+            class="field"
+            :data-prop="field.name"
+            :data-authored="field.authored"
+            @mouseenter="onHover(field.name)"
+            @mouseleave="onHover(null)"
+          >
+            <PropertyField
+              :field="field"
+              :resolved-value="null"
+              :held-value="null"
+              :editable="editable(field)"
+              :swatches="swatches"
+              :tokens="tokens"
+              :token-index="tokenIndex"
+              @preview="onPreview"
+              @commit="onCommit"
+              @detach="onDetach"
+            />
+            <!-- An instance's attribute that belongs to its component's inside
+               draws nothing (ADR 0018 §1): it cannot be edited, only let go. -->
+            <button
+              v-if="field.removable"
+              type="button"
+              class="remove-attr"
+              :disabled="writable === false"
+              :title="`Remove ${field.name} from this instance — nothing draws it`"
+              @click="onRemove(field.name)"
+            >
+              Remove
+            </button>
+          </div>
+        </InspectorGroup>
+        <!--
         Export closes the panel, after every section that styles the layer —
         the last thing you do to a layer is take it away as a file. It is not
         a `PropGroup`: it reads no property, writes no patch, and holds no
         value the document could carry.
       -->
-      <PropertySectionRoot
-        v-model:open="exportOpen"
-        class="section"
-        aria-label="Export"
-        data-export-section
-      >
-        <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
-          <button
-            type="button"
-            class="section-toggle"
-            v-bind="stateAttrs"
-            :aria-expanded="exportOpen"
-            @click="actions.toggle()"
-          >
-            <PropertySectionTitle class="section-title">Export</PropertySectionTitle>
-            <span class="chevron" aria-hidden="true">›</span>
-          </button>
-        </PropertySectionHeader>
-        <PropertySectionContent class="section-body">
-          <!--
+        <PropertySectionRoot
+          v-model:open="exportOpen"
+          class="section"
+          aria-label="Export"
+          data-export-section
+        >
+          <PropertySectionHeader v-slot="{ actions, stateAttrs }" class="section-head">
+            <button
+              type="button"
+              class="section-toggle"
+              v-bind="stateAttrs"
+              :aria-expanded="exportOpen"
+              @click="actions.toggle()"
+            >
+              <PropertySectionTitle class="section-title">Export</PropertySectionTitle>
+              <span class="chevron" aria-hidden="true">›</span>
+            </button>
+          </PropertySectionHeader>
+          <PropertySectionContent class="section-body">
+            <!--
             The whole vocabulary on one row rather than behind a menu: three
             formats fit, and a menu that has to be opened to be read hides how
             few choices there are.
           -->
-          <div class="format-pills" role="radiogroup" aria-label="Export format">
-            <button
-              v-for="format in EXPORT_FORMATS"
-              :key="format"
-              type="button"
-              role="radio"
-              class="format-pill"
-              :data-export-format="format"
-              :aria-checked="exportFormat === format"
-              @click="exportFormat = format"
-            >
-              {{ format }}
-            </button>
-          </div>
+            <div class="format-pills" role="radiogroup" aria-label="Export format">
+              <button
+                v-for="format in EXPORT_FORMATS"
+                :key="format"
+                type="button"
+                role="radio"
+                class="format-pill"
+                :data-export-format="format"
+                :aria-checked="exportFormat === format"
+                @click="exportFormat = format"
+              >
+                {{ format }}
+              </button>
+            </div>
 
-          <!--
+            <!--
             Scale and the pixels it lands on, side by side, because one is the
             question and the other is its consequence. Under SVG both go quiet
             rather than disappearing: a section that changed height on every
             format click would move the button out from under the cursor.
           -->
-          <div class="export-row">
-            <label class="export-field">
-              <span>Scale</span>
-              <input
-                type="text"
-                inputmode="decimal"
-                data-export-scale
-                :value="exportScale"
-                :disabled="!scaleApplies"
-                @input="onExportScale"
-              />
-            </label>
-            <span class="export-field">
-              <span>Pixels</span>
-              <span class="export-pixels" data-export-pixels>
-                {{ exportPixels ? `${exportPixels.width} × ${exportPixels.height}` : '—' }}
+            <div class="export-row">
+              <label class="export-field">
+                <span>Scale</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  data-export-scale
+                  :value="exportScale"
+                  :disabled="!scaleApplies"
+                  @input="onExportScale"
+                />
+              </label>
+              <span class="export-field">
+                <span>Pixels</span>
+                <span class="export-pixels" data-export-pixels>
+                  {{ exportPixels ? `${exportPixels.width} × ${exportPixels.height}` : '—' }}
+                </span>
               </span>
-            </span>
-          </div>
+            </div>
 
-          <!--
+            <!--
             The button names the file, so the answer is legible before it is
             given. Enabled while the file is read-only: every other control in
             this panel writes, and this one only reads.
           -->
-          <button
-            type="button"
-            class="export-run"
-            data-export-run
-            :disabled="!canExport"
-            @click="onExport"
-          >
-            Export {{ exportFileName }}
-          </button>
-        </PropertySectionContent>
-      </PropertySectionRoot>
-    </section>
+            <button
+              type="button"
+              class="export-run"
+              data-export-run
+              :disabled="!canExport"
+              @click="onExport"
+            >
+              Export {{ exportFileName }}
+            </button>
+          </PropertySectionContent>
+        </PropertySectionRoot>
+      </section>
+    </template>
   </aside>
 </template>
 
@@ -1947,7 +3314,10 @@ function onDetach(prop: string, value: JsonValue): void {
 }
 
 .properties {
-  overflow: auto;
+  /* Nothing in the pane may scroll it sideways; a wide value scrolls or
+     ellipsizes inside its own box. */
+  overflow-x: hidden;
+  overflow-y: auto;
   min-width: 0;
   padding: 0 var(--section-pad);
   background: var(--panel);
@@ -1970,27 +3340,97 @@ function onDetach(prop: string, value: JsonValue): void {
   border-bottom: 1px solid var(--line);
 }
 .inspector-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  min-width: 0;
 }
-h2 {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0;
-}
+/* The lock chip: read-only said once, at the end of the identity row, for
+   every face. Its words are its title and its screen-reader text, and with
+   nothing else in the row it also shows "Read only". */
 .read-only-badge {
-  color: var(--warn);
+  display: inline-flex;
+  flex: none;
+  order: 3;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  color: var(--text-dim);
+}
+.read-only-badge[data-labelled] {
+  width: auto;
+  gap: 4px;
+  padding: 0 6px;
   font-size: var(--ui-size-sm);
+}
+/*
+ * The same toggle the left rail uses for Elements / Tokens / Fonts, the
+ * pane's width: four tabs share it, each its label's width plus an equal
+ * share of the rest, and a label ellipsizes before the strip overflows.
+ */
+.face-toggle {
+  display: flex;
+  box-sizing: border-box;
+  width: 100%;
+  gap: 2px;
+  padding: 3px;
+  background: var(--bg);
+  border-radius: 8px;
+}
+.face-toggle button {
+  display: inline-flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  min-width: 0;
+  /* Narrow sides, so all four labels and two dots fit a 264px pane. */
+  padding: 4px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  /* A 28px strip: the header is 52px tall, 84px with a one-line identity row. */
+  line-height: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.face-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.face-toggle button[aria-pressed='true'] {
+  background: var(--segment-on);
+  color: var(--text);
+  box-shadow: var(--shadow-sm);
+}
+.face-toggle button:hover {
+  color: var(--text);
+}
+/* A tab with a real problem: a dot in the problem's tone, no count. */
+.face-toggle .badge {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--warn);
+  font-size: 0;
+}
+.face-toggle .badge[data-tone='danger'] {
+  background: var(--danger);
 }
 .note {
   color: var(--text-faint);
   font-size: var(--ui-size);
   line-height: 1.5;
   margin: 12px 0;
-}
-.note.warn {
-  color: var(--warn);
 }
 .section-link {
   position: relative;
@@ -2032,6 +3472,25 @@ h2 {
   position: relative;
   margin-bottom: 8px;
 }
+/* The Code tab fills the pane, so Write code sits on its bottom edge
+   whatever the length of the file shown, with no strip under it. */
+.properties:has(> .editor > .code > .write) {
+  display: flex;
+  flex-direction: column;
+}
+.editor.inspector-tab:has(> .code > .write) {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  margin-bottom: 0;
+}
+/* Connect's Project under an empty state: the same full-bleed rule that
+   separates sections, so the empty state reads as one and not as a header. */
+.empty-state + .inspector-tab {
+  margin-inline: calc(-1 * var(--section-pad));
+  padding-inline: var(--section-pad);
+  border-top: 1px solid var(--line);
+}
 .section {
   /* Full-bleed separators: the rule runs edge to edge of the pane, UI3's
      section boundary, so the margins undo the pane's own padding. */
@@ -2049,30 +3508,6 @@ h2 {
   font-size: var(--ui-size);
   font-weight: 600;
   color: var(--text);
-}
-/* One box for every header icon: 24px hit target, 12px glyph, quiet at
-   rest, a raised pill on hover — Figma's header cluster buttons. */
-.cluster-btn {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--row-h);
-  height: var(--row-h);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.cluster-btn:hover:not(:disabled) {
-  background: var(--raised);
-  color: var(--text);
-}
-.cluster-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .section-toggle {
   display: flex;
@@ -2122,6 +3557,39 @@ h2 {
 .field-caption {
   display: block;
   color: var(--text-dim);
+}
+/* A caption wearing an instance's override mark: the label, then the dot or
+   state chip and its ↺ — PropertyField's own marked caption. */
+.field-caption.marked {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Why a value the use states does not show right now (ADR 0018 §3). */
+.shadow-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: var(--warn);
+  font-size: var(--ui-size-sm);
+  line-height: 1.4;
+}
+.section-note {
+  margin: 4px 0 0;
+  font-size: var(--ui-size-sm);
+}
+.remove-attr {
+  margin-top: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.remove-attr:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
 }
 .span-caption {
   grid-column: 1 / -1;
@@ -2197,24 +3665,43 @@ h2 {
 .field > :deep(.structured) {
   grid-column: 1 / -1;
 }
+/* The identity row: the name first, in full where it fits; chips that don't
+   fit move to a second line, never squeezing the name. A name longer than
+   the row ellipsizes, keeping its full text in its title. */
 .node-head {
   display: flex;
-  gap: var(--gap);
-  align-items: center;
   flex-wrap: wrap;
-  padding-top: 12px;
+  gap: 4px 6px;
+  align-items: center;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 32px;
+  padding-top: 8px;
 }
 .element {
   order: 2;
-  color: var(--text-dim);
-  font-size: var(--ui-size-sm);
-  padding: 2px 6px;
+  flex: none;
+  box-sizing: border-box;
+  max-width: 40%;
+  height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+  color: var(--text-dim);
+  font-size: var(--ui-size-sm);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 /*
  * A maturity chip, coloured by what the status means rather than by a palette
@@ -2222,11 +3709,33 @@ h2 {
  * same amber as a warning, deprecated the same red as a rejection.
  */
 .meta {
-  padding: 0 var(--gap-sm);
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 45%;
+  height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta[data-meta='status'] {
+  /* The status is a word or two: the name ellipsizes before it does. */
+  flex: none;
+}
+.status-pick {
+  /* As wide as the chosen status, not the longest option: the name needs
+     the room more. Browsers without it keep the native width. */
+  field-sizing: content;
+  background: none;
+  font: inherit;
+  font-size: var(--ui-size-sm);
+  cursor: pointer;
 }
 .meta[data-meta='status'][data-value='stable'] {
   border-color: var(--ok);
@@ -2362,6 +3871,11 @@ h2 {
   cursor: default;
 }
 
+.repeat-host:has(.repeat-section) {
+  padding: 0 0 var(--section-pad);
+  margin-bottom: var(--pad);
+  border-bottom: 1px solid var(--line);
+}
 .fill-actions {
   padding: 0 var(--section-pad) var(--pad);
   border-bottom: 1px solid var(--line);
@@ -2390,5 +3904,56 @@ h2 {
 .fill-buttons button:disabled {
   color: var(--text-faint);
   cursor: default;
+}
+.state-cells {
+  margin: 8px 12px 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  font-size: var(--ui-size);
+}
+.state-cells-title {
+  margin: 0 0 6px;
+  color: var(--text-dim);
+}
+.state-cells-title:last-child {
+  margin-bottom: 0;
+}
+.state-cells ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.state-cells li {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr) auto;
+  grid-template-areas: 'prop value reset' 'row row reset';
+  gap: 0 8px;
+  align-items: center;
+  padding: 3px 0;
+}
+.state-cell-prop {
+  grid-area: prop;
+}
+.state-cell-value {
+  grid-area: value;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.state-cell-row {
+  grid-area: row;
+  color: var(--text-faint);
+  font-size: 10px;
+}
+.state-cells button {
+  grid-area: reset;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
 }
 </style>

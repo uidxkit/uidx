@@ -1,20 +1,25 @@
+import { derivedDocument, repeatOf } from './design-system.js'
 import { rootFontSizeOf, DEFAULT_ROOT_FONT_SIZE } from '@uidx/format'
 import { SceneGraph, type NodeType, type SceneNode } from '@open-pencil/scene-graph'
 import {
   addressDepth,
   addressOf,
+  aliasTarget,
   ENTITY_SEP,
+  hasVariants,
   isWithin,
   type SceneElement,
   type UidxDocument,
   type UidxNode,
 } from '@uidx/format'
 
+import { boxTargetOf, INSTANCE_BOX_PROPS, nodeAtPath } from './instance-box.js'
 import { pinFrom, type Pin } from './pins.js'
 import type { MutablePinMap } from './pin-index.js'
 import { defaultTuple, mergeModes, type ModeTuple } from './resolve-modes.js'
 import {
   generatedChildProps,
+  instanceFills,
   instanceRootProps,
   layOutAround,
   nodeTypeFor,
@@ -46,6 +51,10 @@ export type SceneChange =
    * copy of it (spec §3). `prev`/`next` are the definition node before and
    * after; `applyChanges` recomputes the copy's props from each and writes the
    * difference, so an instance override on the same property still wins.
+   *
+   * `id` spells the copy under the instance's address. `applyChanges` finds it
+   * under wherever the instance is drawn, by `relative`: for an instance in a
+   * slot fill, that is not its address (ADR 0007 §3).
    */
   | {
       kind: 'update-generated'
@@ -55,11 +64,18 @@ export type SceneChange =
       relative: string
       prev: UidxNode
       next: UidxNode
+      /** The mode tuple in force at the instance, so a token resolves as the page draws it there (G8). */
+      tuple?: ModeTuple
     }
   /**
    * An instance's own scene node, recomputed from the instance and its
    * definition before and after — the instance's own attributes changed, or
-   * the component (or variant) root's did (spec §3).
+   * the component (or variant) root's did (spec §3). The frame its component
+   * wraps is recomputed with it, since that frame takes the instance's box
+   * and stated size (ADR 0018 §2). An instance gets no plain `update`.
+   *
+   * `id` is the instance's address, which `applyChanges` draws where the
+   * bimap says, like every other address it is handed.
    */
   | {
       kind: 'update-instance-root'
@@ -68,6 +84,11 @@ export type SceneChange =
       nextInstance: UidxNode
       prevDefinition: UidxNode
       nextDefinition: UidxNode
+      /**
+       * The mode tuple in force at the instance, its own `modes` included: a
+       * token on its box binds there (ADR 0018 §5), as one in its definition does.
+       */
+      tuple?: ModeTuple
     }
   /**
    * A pin changed (ADR 0011).
@@ -100,10 +121,41 @@ function defaultsFor(type: NodeType): Readonly<Record<string, unknown>> {
   return cached
 }
 
-function indexNodes(
-  doc: UidxDocument,
-): Map<string, { node: UidxNode; parent: string | null; index: number }> {
-  const out = new Map<string, { node: UidxNode; parent: string | null; index: number }>()
+type IndexedNode = { node: UidxNode; parent: string | null; index: number }
+
+/** What a repeat rides on (ADR 0017 §2); a change to one re-expands the rows. */
+const REPEATS = ['repeat', 'as']
+
+/** True when a repeat, or a node a repeat draws, was added, removed or changed. */
+function repeatChanged(before: Map<string, IndexedNode>, after: Map<string, IndexedNode>): boolean {
+  const underRepeat = (index: Map<string, IndexedNode>, address: string): boolean => {
+    for (let at: string | null = address; at !== null; at = index.get(at)?.parent ?? null) {
+      const node = index.get(at)?.node
+      if (node && repeatOf(node)) return true
+    }
+    return false
+  }
+  for (const [address] of before)
+    if (!after.has(address) && underRepeat(before, address)) return true
+  for (const [address, entry] of after) {
+    const previous = before.get(address)
+    if (!previous) {
+      if (underRepeat(after, address)) return true
+      continue
+    }
+    if (REPEATS.some((p) => !deepEqual(previous.node.attrs[p]?.value, entry.node.attrs[p]?.value)))
+      return true
+    if (
+      !deepEqual(attrValues(previous.node), attrValues(entry.node)) &&
+      (underRepeat(after, address) || underRepeat(before, address))
+    )
+      return true
+  }
+  return false
+}
+
+function indexNodes(doc: UidxDocument): Map<string, IndexedNode> {
+  const out = new Map<string, IndexedNode>()
   const walk = (node: UidxNode, parent: string | null, index: number): void => {
     out.set(node.address, { node, parent, index })
     node.children.forEach((child, i) => walk(child, node.address, i))
@@ -122,8 +174,9 @@ function indexNodes(
  * Callers fall back to `toSceneGraph`.
  *
  * Nodes are matched by address, which is exactly why this is tractable: scene
- * ids *are* addresses (ADR 0003), so there is no keying heuristic and no
- * "moved or recreated?" ambiguity. A renamed node changes address and therefore
+ * ids *are* addresses (ADR 0003), or for slot-fill content the bimap names the
+ * one an address is drawn at (ADR 0007 §3), so there is no keying heuristic and
+ * no "moved or recreated?" ambiguity. A renamed node changes address and therefore
  * reads as a remove plus an insert — correct, if slightly heavy-handed, and
  * renames are rare enough not to optimise for yet.
  */
@@ -135,6 +188,10 @@ export function diffDocuments(
 ): SceneChange[] | null {
   if (prev.frontmatter.id !== next.frontmatter.id) return null
   if (rootFontSizeOf(prev) !== rootFontSizeOf(next)) return null
+  // The same expansion the builder applied (ADR 0016 §4): a diff between a
+  // derived scene and an underived document would remove every variant.
+  prev = derivedDocument(prev)
+  next = derivedDocument(next)
   const rootFontSize = rootFontSizeOf(next)
 
   const before = indexNodes(prev)
@@ -148,7 +205,27 @@ export function diffDocuments(
     if (previous && !deepEqual(previous.node.attrs.modes?.value, entry.node.attrs.modes?.value)) {
       return null
     }
+    // A node that kept its address but became another element — an instance
+    // detached into a frame, a frame retagged — is a different scene node
+    // (another type, and an instance's generated subtree to drop): rebuild.
+    if (previous && previous.node.element !== entry.node.element) return null
+    // A component that gains its first state, or loses its last, turns into
+    // a set of variants or back (ADR 0016 §4) — another scene type, laid out
+    // by `arrangeVariants`. The diff would only move children: rebuild.
+    if (
+      previous &&
+      entry.node.element === 'Component' &&
+      nodeTypeFor(previous.node) !== nodeTypeFor(entry.node)
+    )
+      return null
   }
+
+  // ADR 0017 §2: a repeat's echoes (`row-2`, `row-3`) are generated at ids
+  // this diff does not enumerate, so what a repeat rides on — the list, the
+  // item's name — and anything a repeat draws, its layer and the
+  // subtree below, rebuild when they change; the same honesty an instance's
+  // copies get. Beside a repeat, the incremental path still serves.
+  if (repeatChanged(before, after)) return null
 
   // Story F3. An instance's subtree is generated from a `<Component>` that may
   // live on another page entirely, so a page-shaped diff cannot see what
@@ -164,7 +241,7 @@ export function diffDocuments(
   // own rather than a line here.
   const generated: SceneChange[] = []
   if (usesInstances(before) || usesInstances(after)) {
-    const copies = compositionChanges(before, after)
+    const copies = compositionChanges(before, after, tuples)
     if (copies === null) return null
     generated.push(...copies)
   }
@@ -223,13 +300,27 @@ export function diffDocuments(
       continue
     }
 
-    const props = diffProps(
-      previous.node,
-      entry.node,
-      resolverFor(resolveAlias, tokens, tuples.get(address)),
-      rootFontSize,
-    )
-    if (props) changes.push({ kind: 'update', address, props })
+    // A binding to the component's contract — `{label}`, `{item.name}` — is
+    // resolved by the full build against the component's defaults and its
+    // models' samples, a scope this path does not hold: here both sides would
+    // read as unbound and the change would vanish (a text rebound from
+    // `{item.role}` to `{item.id}` kept drawing the role). Rebuild instead.
+    if (rebindsContract(previous.node, entry.node)) return null
+    // An instance's own node takes only where it sits, and its box lands on
+    // the node that draws it, for most components a level down (ADR 0018 §2).
+    // Its attributes painted straight onto its node drew that box behind the
+    // component instead. `update-instance-root` recomputes both from the
+    // instance and its definition, and what it cannot express rebuilds
+    // (`compositionChanges`).
+    if (entry.node.element !== 'Instance') {
+      const props = diffProps(
+        previous.node,
+        entry.node,
+        resolverFor(resolveAlias, tokens, tuples.get(address)),
+        rootFontSize,
+      )
+      if (props) changes.push({ kind: 'update', address, props })
+    }
 
     const pin = pinFrom(
       entry.node.attrs,
@@ -300,6 +391,13 @@ function resolverFor(
   return tokens && tuple ? withModes(base, tokens.resolver.resolve(tuple)) : base
 }
 
+/** `options` resolving tokens in `tuple`'s modes: as the page draws the node a change is for (G8). */
+function inModes(options: SceneOptions, tuple: ModeTuple | undefined): SceneOptions {
+  return tuple && options.tokens
+    ? { ...options, resolveAlias: resolverFor(options.resolveAlias, options.tokens, tuple) }
+    : options
+}
+
 type NodeIndex = Map<string, { node: UidxNode; parent: string | null; index: number }>
 
 const usesInstances = (index: NodeIndex): boolean =>
@@ -312,23 +410,32 @@ function entityOf(address: string): string {
 }
 
 /**
- * What an attribute change inside a component means for the instances on this
- * page (story F3, spec §3).
+ * What a change to an instance, or inside a component, means for the
+ * instances on this page (story F3, spec §3).
  *
  * Returns null — rebuild — when something the incremental path cannot express
- * has moved: an instance appearing, disappearing or changing its own
- * attributes (`component`, `overrides`, anything); any structural change
- * inside a component; an attribute change on a `<Component>` or `<Variant>`
- * itself, whose props flow into every instance's root; or a component that is
- * instanced from *inside* another component, whose copies nest under ids this
- * pass does not enumerate.
+ * has moved: an instance appearing or disappearing, or changing what it
+ * expands (`EXPANDS`); a fill written or taken away, which swaps the
+ * definition's default content in that slot for the page's own (ADR 0007
+ * §2); any structural change inside a component; a component that is
+ * instanced from *inside* another component, or content in the fill of an
+ * instance a component holds, whose copies nest under ids this pass does not
+ * enumerate; a composition's box or size, which the instance it holds draws a
+ * level further down (ADR 0018 §2); or a change that a coloured slot fill's
+ * text colour reaches (§4).
  *
- * Otherwise returns one `update-generated` per (changed inner node, instance
- * that expands its component and — for a variant set — chose its variant).
- * That is the atlas case: a frame inside one `<Variant>` of a component with
- * fifteen instances on the page, toggled from the layers rail.
+ * Otherwise returns one `update-instance-root` per instance whose own
+ * attributes or component root moved, and one `update-generated` per (changed
+ * inner node, instance that expands its component and — for a variant set —
+ * chose its variant). That is the atlas case: a frame inside one `<Variant>`
+ * of a component with fifteen instances on the page, toggled from the layers
+ * rail. Each carries the mode tuple in force at its instance (`tuples`).
  */
-function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] | null {
+function compositionChanges(
+  before: NodeIndex,
+  after: NodeIndex,
+  tuples: ReadonlyMap<string, ModeTuple | null>,
+): SceneChange[] | null {
   /** An instance, a component, or anything inside a component. */
   const composed = (index: NodeIndex, address: string): boolean => {
     const entry = index.get(address)
@@ -338,7 +445,31 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
   }
 
   for (const address of before.keys()) {
-    if (!after.has(address) && composed(before, address)) return null
+    if (after.has(address)) continue
+    if (composed(before, address) || isFill(before, address)) return null
+  }
+
+  if (colouredFillChanged(before, after)) return null
+
+  // Which dimensions an instance fixes depends on the layout it sits in
+  // (`instanceFills`): a stretch fills the width of a column and the height of
+  // a row. A parent that turns between the two re-decides that for an
+  // instance stating a size beside a fill, and the parent's own update says
+  // nothing to the instance's root. (A move to another parent is another
+  // address, so a remove and an insert — already a rebuild.)
+  for (const [address, entry] of after) {
+    const previous = before.get(address)
+    if (!previous || entry.node.element !== 'Instance') continue
+    const was = layoutOf(before, previous.parent)
+    const now = layoutOf(after, entry.parent)
+    if (was === now) continue
+    const refixed = (node: UidxNode): boolean =>
+      (['width', 'height'] as const).some(
+        (dimension) =>
+          node.attrs[dimension] !== undefined &&
+          instanceFills(node, was)[dimension] !== instanceFills(node, now)[dimension],
+      )
+    if (refixed(previous.node) || refixed(entry.node)) return null
   }
 
   const instances: { node: UidxNode; previous: UidxNode; address: string }[] = []
@@ -348,13 +479,16 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
   /** Instances whose own attributes moved, and definition roots that moved. */
   const changedInstances = new Set<string>()
   const changedRoots = new Set<string>()
-  /** Attributes an instance's expansion reads; a change to one is a rebuild. */
-  const EXPANDS = ['component', 'props', 'overrides', 'layoutGrow']
-
+  /**
+   * Attributes an instance's expansion reads; a change to one is a rebuild.
+   * `textFills` reaches every text the instance draws, at any depth: those of
+   * the instances it nests and of its slot fill too (ADR 0018 §4).
+   */
+  const EXPANDS = ['component', 'props', 'overrides', 'layoutGrow', 'textFills']
   for (const [address, entry] of after) {
     const previous = before.get(address)
     if (!previous) {
-      if (composed(after, address)) return null
+      if (composed(after, address) || isFill(after, address)) return null
       continue
     }
     if (entry.node.element === 'Instance') {
@@ -364,8 +498,9 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
           EXPANDS.some((p) => !deepEqual(previous.node.attrs[p]?.value, entry.node.attrs[p]?.value))
         )
           return null
-        // Its own look changed — visible, opacity, a size override — which
-        // is the instance's root node and nothing underneath it.
+        // Where it sits or its outer box changed — visible, a size, a fill —
+        // which is the instance's root node and the frame its component
+        // wraps, and nothing deeper (`update-instance-root`).
         if (after.get(entityOf(address))?.node.element === 'Component') return null
         changedInstances.add(address)
       }
@@ -396,6 +531,16 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
     changedInner.push({ address, previous: previous.node, next: entry.node })
   }
 
+  // A definition change can move where a use's box lands (ADR 0018 §2): a
+  // wrapper that starts to paint takes the box back from the frame inside it.
+  // The node that had it would keep the use's look, so that rebuilds.
+  const touched = new Set([...changedRoots, ...changedInner.map((c) => entityOf(c.address))])
+  for (const name of touched) {
+    const was = before.get(name)?.node
+    const now = after.get(name)?.node
+    if (was && now && boxPlaces(was).join() !== boxPlaces(now).join()) return null
+  }
+
   const out: SceneChange[] = []
   // Instance roots: the instance's own attributes moved, or its component's
   // root did. Both recompute the root from (instance, definition) before and
@@ -403,14 +548,29 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
   // its instances stay on the rebuild path.
   for (const instance of instances) {
     const name = instance.node.attrs.component?.value
-    if (typeof name !== 'string') continue
     const ownMoved = changedInstances.has(instance.address)
-    const rootMoved = changedRoots.has(name)
+    const rootMoved = typeof name === 'string' && changedRoots.has(name)
     if (!ownMoved && !rootMoved) continue
+    // With no plain update for an instance, nothing else would say where one
+    // that names no component sits.
+    if (typeof name !== 'string') return null
     if (nestedInstanced.has(name)) return null
     const nextDefinition = after.get(name)?.node
     const prevDefinition = before.get(name)?.node
     if (!nextDefinition || !prevDefinition || nextDefinition.element !== 'Component') return null
+    // A composition hands the use's box and size to the instance it holds
+    // (ADR 0018 §2), which draws them on its own frame: a level below the
+    // frame this update reaches. So a change to either rebuilds, as does one
+    // to the definition's root, which decides whether it composes at all.
+    if (
+      (composes(prevDefinition, instance.previous) || composes(nextDefinition, instance.node)) &&
+      (rootMoved ||
+        HANDED_DOWN.some(
+          (p) => !deepEqual(instance.previous.attrs[p]?.value, instance.node.attrs[p]?.value),
+        ))
+    )
+      return null
+    const tuple = tuples.get(instance.address)
     out.push({
       kind: 'update-instance-root',
       id: instance.address,
@@ -418,6 +578,7 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
       nextInstance: instance.node,
       prevDefinition,
       nextDefinition,
+      ...(tuple ? { tuple } : {}),
     })
   }
   for (const changed of changedInner) {
@@ -436,6 +597,11 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
         variant = parent.node
         break
       }
+      // In the fill of an instance the component holds: every copy sits
+      // where that instance's own definition puts the slot, which these
+      // names do not say (ADR 0007 §3), and the bimap holds one copy under
+      // the component's address. Neither can be found from here.
+      if (parent.node.element === 'Instance') return null
       at = parent
     }
     if (variant === null) names.unshift(at.node.name)
@@ -446,6 +612,11 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
       const chosen = variantFor(definition, instance.node)
       if (variant !== null && chosen !== variant) continue
       if (variant === null && chosen !== undefined) continue
+      // Its texts take the colour of the instance whose fill it sits in
+      // (ADR 0018 §4), and the copy is computed without it. The rebuild keeps
+      // the cascade exact; carrying the colour is a later saving.
+      if (inColouredFill(after, instance.address)) return null
+      const tuple = tuples.get(instance.address)
       out.push({
         kind: 'update-generated',
         id: names.reduce((id, name) => addressOf(id, name), instance.address),
@@ -454,13 +625,112 @@ function compositionChanges(before: NodeIndex, after: NodeIndex): SceneChange[] 
         relative,
         prev: changed.previous,
         next: changed.next,
+        ...(tuple ? { tuple } : {}),
       })
     }
   }
   return out
 }
 
+/**
+ * What a composition hands the instance it holds, as if that instance had
+ * stated it (ADR 0018 §2): the use's box, and the size it fixes, which turns
+ * on what the use says about its size and on what its parent fills.
+ */
+const HANDED_DOWN: readonly string[] = [
+  ...INSTANCE_BOX_PROPS,
+  'width',
+  'height',
+  'layoutGrow',
+  'layoutAlign',
+  'layoutPositioning',
+  'primaryAxisSizingMode',
+  'counterAxisSizingMode',
+]
+
+/** Where a component draws a use's box (`boxTargetOf`), for each variant it may draw. */
+function boxPlaces(definition: UidxNode): string[] {
+  const sources = hasVariants(definition)
+    ? definition.children.filter((child) => child.element === 'Variant')
+    : [definition]
+  return sources.map((source) => {
+    const target = boxTargetOf(source)
+    return target.kind === 'self' ? 'self' : `${target.kind}:${target.path.join('/')}`
+  })
+}
+
+/** Whether `instance` draws a composition: a component holding one instance and nothing else. */
+function composes(definition: UidxNode, instance: UidxNode): boolean {
+  return boxTargetOf(variantFor(definition, instance) ?? definition).kind === 'instance'
+}
+
+/**
+ * Whether `address` is a fill: a `<Slot>` written under an instance, whose
+ * content takes the place of the definition's default there (ADR 0007 §2).
+ */
+function isFill(index: NodeIndex, address: string): boolean {
+  const parent = index.get(address)?.parent ?? null
+  return parent !== null && index.get(parent)?.node.element === 'Instance'
+}
+
+/**
+ * Whether `address` sits in the fill of an instance that hands its texts a
+ * colour (ADR 0018 §4), at any depth. Nothing but fill content has an
+ * instance above it in the file.
+ */
+function inColouredFill(index: NodeIndex, address: string): boolean {
+  const parent = index.get(address)?.parent ?? null
+  for (let at: string | null = parent; at !== null; at = index.get(at)?.parent ?? null) {
+    const node = index.get(at)?.node
+    if (node?.element === 'Instance' && node.attrs.textFills !== undefined) return true
+  }
+  return false
+}
+
+/**
+ * True when a node was added to the fill of an instance that hands its texts
+ * a colour, or a text there stopped stating its own fills (ADR 0018 §4). Both
+ * now take that colour, where an insert or an update draws a node only as the
+ * file states it. A text that states its fills keeps them, so any other edit
+ * there is still an update.
+ */
+function colouredFillChanged(before: NodeIndex, after: NodeIndex): boolean {
+  for (const [address, entry] of after) {
+    const previous = before.get(address)
+    if (previous?.node === entry.node) continue
+    const inherits =
+      !previous ||
+      (entry.node.element === 'Text' &&
+        entry.node.attrs.fills === undefined &&
+        previous.node.attrs.fills !== undefined)
+    if (inherits && inColouredFill(after, address)) return true
+  }
+  return false
+}
+
+/** The layout a node lays its children out on, as the file states it. */
+function layoutOf(index: NodeIndex, address: string | null): SceneNode['layoutMode'] | undefined {
+  const value = address === null ? undefined : index.get(address)?.node.attrs.layoutMode?.value
+  return typeof value === 'string' ? (value as SceneNode['layoutMode']) : undefined
+}
+
 /** Same element, same attribute names, same source text for each — offsets aside. */
+/** Whether an attribute moved to or from a contract binding (an alias with no `#`). */
+function rebindsContract(a: UidxNode, b: UidxNode): boolean {
+  const contractAlias = (value: unknown): boolean => {
+    if (typeof value !== 'string') return false
+    const target = aliasTarget(value)
+    return target !== null && !target.includes('#')
+  }
+  for (const k of new Set([...Object.keys(a.attrs), ...Object.keys(b.attrs)])) {
+    const before = a.attrs[k]
+    const after = b.attrs[k]
+    if (before?.raw === after?.raw) continue
+    if (contractAlias(before?.value) || contractAlias(after?.value)) return true
+  }
+  return false
+}
+
 function sameAuthoredAttrs(a: UidxNode, b: UidxNode): boolean {
   if (a.element !== b.element) return false
   const ka = Object.keys(a.attrs)
@@ -524,6 +794,9 @@ export interface ApplyResult {
  * The failure is silent: the canvas moves and the file never changes. Keeping
  * the map here, beside the mutation that invalidates it, is what stops the two
  * from drifting; passing it separately would only move the chance to forget.
+ *
+ * The map is also what says where an address is drawn (`drawnAt`), which for
+ * slot-fill content is not the address itself (ADR 0007 §3).
  */
 export function applyChanges(
   scene: SceneResult,
@@ -532,106 +805,112 @@ export function applyChanges(
 ): ApplyResult {
   options = { ...options, rootFontSize: options.rootFontSize ?? scene.rootFontSize }
   const { graph, rootId, addresses, pins } = scene
+  const at = (address: string): string => drawnAt(scene, address)
   /** Nodes whose subtree or ancestors may need laying out again, in order. */
   const touched: string[] = []
   for (const change of changes) {
     switch (change.kind) {
       case 'remove': {
-        const id = sceneIdOf(change.address, rootId)
+        const id = at(change.address)
         const parent = graph.getNode(id)?.parentId
         graph.deleteNode(id)
         // Deleting a node takes its subtree with it, and so do both maps.
         addresses.unlink(change.address)
-        pins.unlink(change.address)
+        pins.unlink(id)
         if (parent) touched.push(parent)
         break
       }
-      case 'insert':
+      case 'insert': {
+        const parent = at(change.parent)
+        // Into a slot fill, a node is drawn under the slot's id, as the build
+        // draws the rest of the fill; anywhere else, at its address.
+        const id =
+          parent === sceneIdOf(change.parent, rootId)
+            ? change.node.address
+            : addressOf(parent, change.node.name)
         insertSubtree(
           graph,
           change.node,
-          sceneIdOf(change.parent, rootId),
+          id,
+          parent,
           change.index,
           addresses,
           pins,
-          change.tuple && options.tokens
-            ? {
-                ...options,
-                resolveAlias: resolverFor(options.resolveAlias, options.tokens, change.tuple),
-              }
-            : options,
+          inModes(options, change.tuple),
         )
-        touched.push(change.node.address)
+        touched.push(id)
         break
-      case 'update':
-        graph.updateNode(sceneIdOf(change.address, rootId), change.props)
-        touched.push(sceneIdOf(change.address, rootId))
+      }
+      case 'update': {
+        const id = at(change.address)
+        graph.updateNode(id, change.props)
+        touched.push(id)
         break
+      }
       case 'update-generated': {
+        const instance = at(change.instance.address)
+        const id = addressOf(instance, change.relative)
         // A filled slot's subtree is never generated, so the copy may not
         // exist; nothing to update then.
-        if (!graph.getNode(change.id)) break
-        touched.push(change.id)
+        if (!graph.getNode(id)) break
+        touched.push(id)
+        const parentLayout = layoutAbove(graph, instance)
+        const scoped = inModes(options, change.tuple)
         const was = generatedChildProps(
           change.instance,
           change.definition,
           change.prev,
           change.relative,
-          options,
-        ) as Record<string, unknown>
+          scoped,
+          parentLayout,
+        )
         const now = generatedChildProps(
           change.instance,
           change.definition,
           change.next,
           change.relative,
-          options,
-        ) as Record<string, unknown>
-        const props: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(now)) {
-          if (!deepEqual(was[key], value)) props[key] = value
-        }
-        const defaults = defaultsFor(NODE_TYPE[change.next.element as SceneElement])
-        for (const key of Object.keys(was)) {
-          if (key in now || !(key in defaults)) continue
-          if (!deepEqual(was[key], defaults[key])) props[key] = defaults[key]
-        }
-        if (Object.keys(props).length) graph.updateNode(change.id, props as Partial<SceneNode>)
+          scoped,
+          parentLayout,
+        )
+        const props = movedProps(was, now, NODE_TYPE[change.next.element as SceneElement])
+        if (props) graph.updateNode(id, props)
         break
       }
       case 'update-instance-root': {
-        if (!graph.getNode(change.id)) break
-        touched.push(change.id)
-        const was = instanceRootProps(
-          change.prevInstance,
-          change.prevDefinition,
-          options,
-        ) as Record<string, unknown>
-        const now = instanceRootProps(
-          change.nextInstance,
-          change.nextDefinition,
-          options,
-        ) as Record<string, unknown>
-        const props: Record<string, unknown> = {}
-        for (const [key, value] of Object.entries(now)) {
-          if (!deepEqual(was[key], value)) props[key] = value
-        }
-        const defaults = defaultsFor(NODE_TYPE.Instance)
-        for (const key of Object.keys(was)) {
-          if (key in now || !(key in defaults)) continue
-          if (!deepEqual(was[key], defaults[key])) props[key] = defaults[key]
-        }
-        if (Object.keys(props).length) graph.updateNode(change.id, props as Partial<SceneNode>)
+        const id = at(change.id)
+        if (!graph.getNode(id)) break
+        touched.push(id)
+        const parentLayout = layoutAbove(graph, id)
+        const scoped = inModes(options, change.tuple)
+        const props = movedProps(
+          instanceRootProps(change.prevInstance, change.prevDefinition, scoped, parentLayout),
+          instanceRootProps(change.nextInstance, change.nextDefinition, scoped, parentLayout),
+          NODE_TYPE.Instance,
+          // The canvas flips an instance's sizing to draw a resize live, and
+          // `fromSceneChange` keeps that flip out of the file — so the sizing
+          // the file implies is measured against the node, not the old file.
+          graph.getNode(id),
+        )
+        if (props) graph.updateNode(id, props)
+        const framed = wrappedFrameUpdate(
+          id,
+          { instance: change.prevInstance, definition: change.prevDefinition },
+          { instance: change.nextInstance, definition: change.nextDefinition },
+          scoped,
+          parentLayout,
+        )
+        if (framed && graph.getNode(framed.id)) graph.updateNode(framed.id, framed.props)
         break
       }
       case 'pin':
-        pins.link(change.address, change.pin)
+        pins.link(at(change.address), change.pin)
         break
-      // A move keeps the node's address, and addresses are scene ids, so both
-      // maps are already right.
+      // A move keeps the node's address, and so where it is drawn: both maps
+      // are already right.
       case 'move': {
-        const id = sceneIdOf(change.address, rootId)
+        const id = at(change.address)
         const from = graph.getNode(id)?.parentId
-        graph.reorderChild(id, sceneIdOf(change.parent, rootId), change.index)
+        graph.reorderChild(id, at(change.parent), change.index)
         touched.push(id)
         if (from) touched.push(from)
         break
@@ -648,9 +927,130 @@ export function applyChanges(
   return { applied: changes.length, touched: unique }
 }
 
+/** One version of an instance, with the definition it is drawn from. */
+export interface InstanceVersion {
+  instance: UidxNode
+  definition: UidxNode
+}
+
+/**
+ * The node a wrapper-shaped component draws its box on takes the instance's
+ * outer box and the size it states (`boxTargetOf`, `pinnedFrame`; ADR 0018
+ * §2), a level or more below the instance — where a rebuild puts them. This
+ * is that node's id and what moves on it when the instance goes from `prev`
+ * to `next`, or null when the box is the instance's own node or nothing on it
+ * moves. Both sides come from `generatedChildProps`, the build's own rule for
+ * that node, so a box or a size written and then cleared is put back exactly.
+ * Nothing else under the instance turns on its box or size: a frame the box
+ * is found through only wraps it, and hugs it either way.
+ *
+ * Both versions draw their box at the same place: a definition change that
+ * moves it rebuilds (`diffDocuments`).
+ *
+ * `applyChanges` asks when the file says so. The canvas asks while a resize
+ * is still under the author's hand, with the instance as the gesture would
+ * leave the file: a build was the only thing that put the size on the frame,
+ * so the box moved and the pill inside it waited for the echo. Asking the
+ * same question here is what keeps the preview and the echo from disagreeing.
+ */
+export function wrappedFrameUpdate(
+  id: string,
+  prev: InstanceVersion,
+  next: InstanceVersion,
+  options: SceneOptions,
+  parentLayout?: SceneNode['layoutMode'],
+): { id: string; props: Partial<SceneNode> } | null {
+  const prevRoot =
+    variantFor(prev.definition, prev.instance, options.resolveAlias) ?? prev.definition
+  const nextRoot =
+    variantFor(next.definition, next.instance, options.resolveAlias) ?? next.definition
+  const target = boxTargetOf(nextRoot)
+  if (target.kind === 'self') return null
+  const before = nodeAtPath(prevRoot, target.path)
+  if (!before) return null
+  const relative = target.path.join('/')
+  const props = movedProps(
+    generatedChildProps(prev.instance, prev.definition, before, relative, options, parentLayout),
+    generatedChildProps(
+      next.instance,
+      next.definition,
+      target.node,
+      relative,
+      options,
+      parentLayout,
+    ),
+    NODE_TYPE[target.node.element as SceneElement],
+  )
+  return props ? { id: target.path.reduce(addressOf, id), props } : null
+}
+
 /** Addresses are scene ids, except the root `<Page>`, which is the graph's page. */
 function sceneIdOf(address: string, rootId: string): string {
   return address === '' ? rootId : address
+}
+
+/**
+ * Where the scene draws an address: `sceneIdOf`, unless the bimap records
+ * otherwise. It does for slot-fill content, whose id follows where the
+ * definition puts the slot while its address follows the file (ADR 0007 §3),
+ * so `p#content/btn` can be drawn at `p#root/body/content/btn`. A change is
+ * addressed by the file, so every one goes through here.
+ */
+function drawnAt(scene: SceneResult, address: string): string {
+  return scene.addresses.sceneIdOf(address) ?? sceneIdOf(address, scene.rootId)
+}
+
+/** The fields that say whether layout computes a dimension or keeps the one it is given. */
+const SIZING_FIELDS = ['primaryAxisSizing', 'counterAxisSizing'] as const
+
+/**
+ * What changed between a node's props before and after, as a scene update,
+ * or null for nothing. A prop that stopped being computed goes back to the
+ * engine's default for the type, which is what a rebuild would leave there.
+ *
+ * `live`, when given, is the node as the scene holds it, and its sizing is
+ * compared against `now` directly rather than against `was`.
+ */
+function movedProps(
+  was: Partial<SceneNode>,
+  now: Partial<SceneNode>,
+  type: NodeType,
+  live?: SceneNode,
+): Partial<SceneNode> | null {
+  const before = was as Record<string, unknown>
+  const after = now as Record<string, unknown>
+  const props: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(after)) {
+    if (!deepEqual(before[key], value)) props[key] = value
+  }
+  const defaults = defaultsFor(type)
+  for (const key of Object.keys(before)) {
+    if (key in after || !(key in defaults)) continue
+    if (!deepEqual(before[key], defaults[key])) props[key] = defaults[key]
+  }
+  if (live) {
+    for (const field of SIZING_FIELDS) {
+      const value = after[field] ?? defaults[field]
+      if (!deepEqual(live[field], value)) props[field] = value
+    }
+  }
+  // Layout writes a computed dimension over the node's own, so while an axis
+  // hugged or filled, the node held layout's number and not the one either
+  // side states. An axis that changes how it is decided gets the stated number
+  // back — what a rebuild starts from — or a stretch's 504 stays standing on
+  // an axis just made Fixed at 50.
+  if (SIZING_FIELDS.some((field) => field in props)) {
+    for (const dimension of ['width', 'height']) {
+      props[dimension] = after[dimension] ?? defaults[dimension]
+    }
+  }
+  return Object.keys(props).length ? (props as Partial<SceneNode>) : null
+}
+
+/** The layout of the node a scene node sits in — what an instance's stretch is measured against. */
+function layoutAbove(graph: SceneGraph, id: string): SceneNode['layoutMode'] | undefined {
+  const parentId = graph.getNode(id)?.parentId
+  return parentId ? graph.getNode(parentId)?.layoutMode : undefined
 }
 
 /**
@@ -667,10 +1067,15 @@ function sceneIdOf(address: string, rootId: string): string {
  * An `<Instance>` never reaches here: `diffDocuments` returns null — rebuild —
  * for every change that touches composition, so an instance is only ever built
  * by `toSceneGraph`, which is the one place that holds the component resolver.
+ *
+ * `id` is where the node is drawn: its address, or in a slot fill an id that
+ * follows the slot's, which every child below it follows in turn (ADR 0007
+ * §3) — and which it links under, as the build links fill content.
  */
 function insertSubtree(
   graph: SceneGraph,
   node: UidxNode,
+  id: string,
   parentId: string,
   index: number,
   addresses: MutableAddressMap,
@@ -678,7 +1083,7 @@ function insertSubtree(
   options: SceneOptions,
 ): void {
   graph.createNodeWithId(
-    node.address,
+    id,
     // `nodeTypeFor`, not the bare table: a `<Component>` that declares variants
     // becomes a `COMPONENT_SET`, and an insert has to build the same node the
     // full build would (ADR 0005 §1).
@@ -686,11 +1091,20 @@ function insertSubtree(
     parentId,
     scenePropsFor(node, [], options.resolveAlias, options.resolveAsset, options.rootFontSize),
   )
-  addresses.link(node.address, node.address)
-  pins.link(node.address, pinFrom(node.attrs, options.rootFontSize, options.resolveAlias))
-  graph.reorderChild(node.address, parentId, index)
+  addresses.link(node.address, id)
+  pins.link(id, pinFrom(node.attrs, options.rootFontSize, options.resolveAlias))
+  graph.reorderChild(id, parentId, index)
   node.children.forEach((child, i) =>
-    insertSubtree(graph, child, node.address, i, addresses, pins, options),
+    insertSubtree(
+      graph,
+      child,
+      id === node.address ? child.address : addressOf(id, child.name),
+      id,
+      i,
+      addresses,
+      pins,
+      options,
+    ),
   )
 }
 

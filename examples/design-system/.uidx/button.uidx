@@ -1,0 +1,57 @@
+---
+id: button
+---
+
+The one control every screen has. Emphasis and size are visual props; the
+label is consumer text.
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="stable" implements="hwc-button"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    itemSpacing="{space#xs}" paddingLeft="{space#md}" paddingRight="{space#md}"
+    paddingTop="{space#sm}" paddingBottom="{space#sm}" cornerRadius="{radius#md}"
+    fills="{surface#accent}" strokes="{surface#accent}" strokeWeight={1}>
+    <Vector name="leading" part="leading-icon" visible={false} width={14} height={14} fills="{text#onAccent}"
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M2 7 H12 M7 2 V12' }]} />
+    <Text name="label" part="label" characters="{label}" fontSize={14} fontWeight="MEDIUM" fills="{text#onAccent}" />
+  </Component>
+</Page>
+
+<Styles>
+  <Style variant="secondary" root:fills="{surface#raised}" root:strokes="{border#default}" label:fills="{text#default}" leading-icon:fills="{text#default}" />
+  <Style variant="outline" root:fills="{surface#control}" root:strokes="{border#default}" label:fills="{text#default}" leading-icon:fills="{text#default}" />
+  <Style variant="ghost" root:fills="{surface#control}" root:strokes="{surface#control}" label:fills="{text#default}" leading-icon:fills="{text#default}" />
+  <Style variant="destructive" root:fills="{surface#danger}" root:strokes="{surface#danger}" />
+  <Style variant="link" root:fills="{surface#control}" root:strokes="{surface#control}" label:fills="{surface#accent}" leading-icon:fills="{surface#accent}" />
+  <Style size="small" root:paddingLeft="{space#sm}" root:paddingRight="{space#sm}" root:paddingTop="{space#xs}" root:paddingBottom="{space#xs}" label:fontSize={12} />
+  <Style size="large" root:paddingLeft="{space#lg}" root:paddingRight="{space#lg}" root:paddingTop="{space#md}" root:paddingBottom="{space#md}" label:fontSize={16} />
+  <Style state="hover" root:fills="{surface#accentHover}" root:strokes="{surface#accentHover}" />
+  <Style state="hover" variant="secondary" root:fills="{surface#raised}" root:strokes="{border#hover}" />
+  <Style state="hover" variant="outline" root:fills="{surface#control}" root:strokes="{border#hover}" />
+  <Style state="hover" variant="ghost" root:fills="{surface#raised}" root:strokes="{surface#raised}" />
+  <Style state="hover" variant="destructive" root:fills="{surface#danger}" root:strokes="{surface#danger}" />
+  <Style state="hover" variant="link" root:fills="{surface#control}" root:strokes="{surface#control}" label:fills="{surface#accentHover}" leading-icon:fills="{surface#accentHover}" />
+  <Style state="focus" root:strokes="{border#focus}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Save changes">The button's text.</Prop>
+  <Prop name="variant" type="'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link'" default="primary" visual>Emphasis.</Prop>
+  <Prop name="size" type="'small' | 'medium' | 'large'" default="medium" visual>Padding and type scale.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+  <Prop name="type" type="'button' | 'submit' | 'reset'" default="button">What activation does to the enclosing form.</Prop>
+</Props>
+<Form submits="nothing of its own; type=submit calls the form's requestSubmit, type=reset resets it" />
+<Accessibility role="button" keyboard="Enter and Space activate" />
+
+## Behavior
+
+- activation: click, Enter or Space activates; `type="submit"` calls `requestSubmit` on the enclosing form, `type="reset"` resets it, `type="button"` does nothing to the form.
+- disabled: no activation and no events while `disabled`.
+- icon: the leading icon is hidden unless the design turns it on; it never carries the accessible name, the label does.

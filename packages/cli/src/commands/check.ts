@@ -16,6 +16,9 @@ import {
   type UidxNode,
 } from '@uidx/format'
 import { isKnownProp } from '@uidx/schema/known-props'
+import { auditDesignSystem } from '@uidx/schema/design-system-audit'
+import { auditInstanceBox, componentIndex } from '@uidx/schema/instance-box-audit'
+import { modelIndex } from '@uidx/schema/design-system'
 import {
   assetProblem,
   documentAssets,
@@ -88,6 +91,20 @@ export async function check(patterns: string[], options: CheckOptions = {}): Pro
     }
 
     reports.push({ file, diagnostics: all })
+  }
+
+  // The design-system regions have to agree with the tree and with each
+  // other (ADRs 0013–0017); the parser checked each region's own shape. After
+  // every page is parsed, because a model is shared across pages (ADR 0015
+  // §1) and the audit answers "is Contact declared?" for the whole document.
+  const models = modelIndex(parsed.map((page) => page.doc))
+  // An instance's outer box (ADR 0018) is checked against the component it
+  // names, which usually lives on another page — so after every page too.
+  const components = componentIndex(parsed.map((page) => page.doc))
+  for (const { file, doc } of parsed) {
+    reports
+      .find((report) => report.file === file)!
+      .diagnostics.push(...auditDesignSystem(doc, models), ...auditInstanceBox(doc, components))
   }
 
   // An image reference is a claim about the filesystem, and CI is where a
@@ -250,7 +267,7 @@ async function documentOrCwd(cwd: string): Promise<string[]> {
  * Accepts globs, directories and plain paths. A bare directory is expanded to
  * every `.uidx` beneath it so `uidx check .` does the obvious thing.
  */
-async function expand(patterns: string[], cwd: string): Promise<string[]> {
+export async function expand(patterns: string[], cwd: string): Promise<string[]> {
   const globs = await Promise.all(
     patterns.map(async (pattern) => {
       if (pattern.includes('*')) return pattern

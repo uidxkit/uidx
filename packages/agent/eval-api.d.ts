@@ -82,6 +82,25 @@ declare function ops(file: string): {
   move(address: string, newParent: string, index: number): void
   /** Rename the node at `address` (its address changes with it). */
   rename(address: string, name: string): void
+  /**
+   * Write one `<Styles>` cell (ADR 0016 §2): the row keyed by `keys` (e.g.
+   * `{ state: 'hover' }`), `target` `'root'` or a part, `prop` a scene prop.
+   * Omit `value` to clear the cell.
+   */
+  style(keys: Record<string, string>, target: string, prop: string, value?: unknown): void
+  /** Declare one `## Contract` entry: `kind` is prop, event, slot, state or part. */
+  declare(
+    kind: 'prop' | 'event' | 'slot' | 'state' | 'part',
+    name: string,
+    description: string,
+    attrs?: Record<string, unknown>,
+  ): void
+  /** Remove one `## Contract` entry. */
+  undeclare(kind: 'prop' | 'event' | 'slot' | 'state' | 'part', name: string): void
+  /** Declare (or redescribe) one `<Model>` of `## Models`. */
+  model(name: string, description: string): void
+  /** Declare one `<Field>` of a model; attrs such as `{ type, key, optional, sample }`. */
+  field(model: string, name: string, description: string, attrs?: Record<string, unknown>): void
 }
 
 /** Captured and returned in the outcome's `logs` (capped at 200 lines). */

@@ -1,11 +1,16 @@
 export {
   toSceneGraph,
   layOutEntity,
+  instanceDefinition,
+  instanceFills,
+  instanceSceneProps,
   scenePropsFor,
   scenePropFor,
+  slotOfSceneNode,
   variantFor,
   NODE_TYPE,
   type AddressMap,
+  type InstanceFills,
   type MutableAddressMap,
   type SceneResult,
 } from './to-scene.js'
@@ -17,7 +22,14 @@ export {
   type VariantBox,
   type VariantPlacement,
 } from './variant-layout.js'
-export { diffDocuments, applyChanges, type SceneChange, type ApplyResult } from './reconcile.js'
+export {
+  diffDocuments,
+  applyChanges,
+  wrappedFrameUpdate,
+  type ApplyResult,
+  type InstanceVersion,
+  type SceneChange,
+} from './reconcile.js'
 export { fromSceneChange, type ChangeContext } from './from-scene.js'
 export {
   hasAuthoredGeometry,
@@ -30,6 +42,15 @@ export {
   type NodeLookup,
 } from './authorship.js'
 export { KNOWN_PROPS, PIN_PROPS, STRUCTURAL_PROPS, isKnownProp } from './known-props.js'
+export * from './instance-box.js'
+export {
+  instanceBase,
+  instancePreview,
+  type InstanceBase,
+  type InstanceBoxTarget,
+  type InstanceLayout,
+  type InstancePreviewUpdate,
+} from './instance-panel.js'
 export {
   pinFrom,
   pinWrites,
@@ -78,9 +99,12 @@ export { buildDependentsIndex, type Dependent, type DependentsIndex } from './sy
 export {
   deleteCollection,
   deleteToken,
+  renameCollection,
   renameComponent,
   renameToken,
   rewriteAliases,
+  setCollectionModes,
+  type ModeShape,
   type DeletePlan,
   type DeleteCollectionPlan,
   type RefactorPlan,
@@ -113,3 +137,41 @@ export {
   strokeEndpointValue,
   type StrokeEndpointProp,
 } from './stroke-endpoints.js'
+export { auditDesignSystem } from './design-system-audit.js'
+export {
+  axesOf,
+  contractJson,
+  DEFAULT_STATE,
+  defaultVariantName,
+  deriveVariants,
+  derivedDocument,
+  derivesVariants,
+  enumValues,
+  modelByRef,
+  nodeNamed,
+  partNode,
+  propSpec,
+  ROOT_PART,
+  sampleAt,
+  specBindings,
+  STATE_AXIS,
+  stateAxis,
+  styleTarget,
+  visualAxes,
+  modelIndex,
+  modelOfType,
+  stateKind,
+  INTERACTION_STATES,
+  type ModelIndex,
+  defaultVariantAddress,
+  derivedTarget,
+  type DerivedTarget,
+  modelSamples,
+  sampleCount,
+  repeatOf,
+  repeatListType,
+  repeatModel,
+  type RepeatAttrs,
+  type RepeatScope,
+} from './design-system.js'
+export { DTCG_VERSION, fromDtcg, toDtcg, type DtcgExport, type DtcgImport } from './dtcg.js'

@@ -97,6 +97,31 @@ describe('the rows an instance shows', () => {
   })
 })
 
+describe('a contract prop with a domain', () => {
+  const BADGE = resolve(
+    parseOrThrow(
+      `${page('badge', `  <Component name="Badge" status="draft" width={10} height={10} />`)}
+## Contract
+
+<Props>
+  <Prop name="tone" type="'info' | 'danger'" default="info" visual>Tone.</Prop>
+</Props>
+`,
+    ).tree,
+    'Badge',
+  )!
+  const use = page('home', `  <Instance name="save" component="Badge" />`)
+
+  it('is offered as a picker of its words, and refuses any other', () => {
+    const [tone] = instancePropRows(instanceIn(use), BADGE)
+    expect(tone).toMatchObject({ name: 'tone', domain: ['info', 'danger'], resolved: 'info' })
+    const doc = parseOrThrow(use)
+    expect(setInstanceProp(doc, 'save', BADGE, 'tone', 'loud')).toBeNull()
+    const out = apply(use, setInstanceProp(doc, 'save', BADGE, 'tone', 'danger'))!
+    expect(resolve(parseOrThrow(out).tree, 'save')!.attrs.props!.value).toEqual({ tone: 'danger' })
+  })
+})
+
 describe('assigning one', () => {
   it('adds the attribute when the instance sets nothing yet', () => {
     const source = uses()
@@ -349,5 +374,105 @@ describe('an axis in the instance panel', () => {
     expect(panel.emitted('patches')).toEqual([
       [[{ op: 'add', address: 'save', prop: 'props', value: { state: 'hover' } }]],
     ])
+  })
+})
+
+describe('filling a slot from the panel', () => {
+  const CARD = parseOrThrow(
+    page(
+      'card',
+      `  <Component name="Card" status="draft" width={40} height={40}>
+    <Slot name="media">
+      <Frame name="placeholder" width={10} height={10} />
+    </Slot>
+  </Component>
+  <Component name="Icon" status="draft" width={8} height={8} />`,
+    ),
+  )
+  const definition = resolve(CARD.tree, 'Card')!
+  const components = new Map([
+    ['Card', definition],
+    ['Icon', resolve(CARD.tree, 'Icon')!],
+  ])
+  const mounted = (body: string) => {
+    const doc = parseOrThrow(page('home', body))
+    return mount(InstancePropsSection, {
+      props: { doc, instance: resolve(doc.tree, 'card')!, definition, components, writable: true },
+    })
+  }
+
+  it('offers text and the other components for an empty slot, and writes the fill', async () => {
+    const section = mounted(`  <Instance name="card" component="Card" />`)
+    const card = section.find('[data-slot="media"]')
+    expect(card.attributes('data-content')).toBe('default')
+    await card.find('.slot-trigger').trigger('click')
+    const choices = card.findAll('[data-choice]').map((choice) => choice.attributes('data-choice'))
+    expect(choices).toEqual(['Icon', ':text', ':empty', ':default'])
+    await card.find('[data-choice="Icon"]').trigger('click')
+    expect(section.emitted('patches')).toEqual([
+      [
+        [
+          {
+            op: 'insert-node',
+            parent: 'card',
+            index: 0,
+            node: {
+              element: 'Slot',
+              attrs: { name: 'media' },
+              children: [{ element: 'Instance', attrs: { name: 'icon', component: 'Icon' } }],
+            },
+          },
+        ],
+      ],
+    ])
+    // The pick closes the picker.
+    expect(card.find('.slot-popup').exists()).toBe(false)
+  })
+
+  it('names what fills a slot and resets it back to the default', async () => {
+    const section = mounted(`  <Instance name="card" component="Card">
+    <Slot name="media">
+      <Text name="caption" characters="Hi" />
+    </Slot>
+  </Instance>`)
+    const row = section.find('[data-slot="media"]')
+    expect(row.attributes('data-content')).toBe('text')
+    expect(row.find('.slot-label').text()).toBe('Text')
+    await row.find('[aria-label="Reset slot media"]').trigger('click')
+    expect(section.emitted('patches')).toEqual([[[{ op: 'remove-node', address: 'card#media' }]]])
+  })
+
+  it('swaps what fills a slot in one edit, keeping the fill', async () => {
+    const section = mounted(`  <Instance name="card" component="Card">
+    <Slot name="media">
+      <Text name="caption" characters="Hi" />
+    </Slot>
+  </Instance>`)
+    const row = section.find('[data-slot="media"]')
+    await row.find('.slot-trigger').trigger('click')
+    await row.find('[data-choice="Icon"]').trigger('click')
+    expect(section.emitted('patches')).toEqual([
+      [
+        [
+          { op: 'remove-node', address: 'card#media/caption' },
+          {
+            op: 'insert-node',
+            parent: 'card#media',
+            index: 0,
+            node: { element: 'Instance', attrs: { name: 'icon', component: 'Icon' } },
+          },
+        ],
+      ],
+    ])
+  })
+
+  it('selects what fills a slot from its card', async () => {
+    const section = mounted(`  <Instance name="card" component="Card">
+    <Slot name="media">
+      <Instance name="icon" component="Icon" />
+    </Slot>
+  </Instance>`)
+    await section.find('[aria-label="Select content of media"]').trigger('click')
+    expect(section.emitted('select')).toEqual([['card#media/icon']])
   })
 })

@@ -1,6 +1,7 @@
 <script setup lang="ts">
+import { rowBindingFor, scopesInside } from './instance-data'
 import { LENGTH_PROPS, rootFontSizeOf } from '@uidx/format'
-import { computed, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, nextTick, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { createEditor } from '@open-pencil/core/editor'
 import {
   getAbsolutePosition,
@@ -8,6 +9,7 @@ import {
   getWorldMatrix,
   transformVectorNetwork,
   TransformMatrix,
+  type SceneNode,
   type VectorNetwork,
 } from '@open-pencil/scene-graph'
 import { vectorNetworkToSVGPaths } from '@open-pencil/core'
@@ -17,6 +19,7 @@ import { addressOf, autoName, resolve } from '@uidx/format'
 import {
   containerChainAt,
   dropTargetFor,
+  authoredContainer,
   insertTargetFor,
   reparentTo,
   type DropPlacement,
@@ -34,15 +37,26 @@ import {
   type VectorEditInfo,
 } from './vertex-edit'
 import { drawingHint } from './graphics-tools'
+import { variantHeaders, type VariantCell } from './variant-labels'
 import { resizeVectorPaths } from './vector-resize'
 import type { Point, Rect } from './gesture-model'
 import { importSvg, type SvgProblem } from './svg-import'
-import { reorderFor } from './layer-moves'
+import { canInsert, reorderFor } from './layer-moves'
 import { positioningWrites } from './position-writes'
-import { resolvePins, withStrokeEndpoints } from '@uidx/schema'
+import { resolvePins, withStrokeEndpoints, type ModelIndex } from '@uidx/schema'
 import { strokeEdit } from './stroke-edits'
 import { declaredComponents, definitionsMoved, instancedComponents } from './definitions-moved'
-import { authoredSizing, resizeWrites, sizingFlipFor } from './resize-writes'
+import {
+  authoredSizing,
+  instanceResizeWrites,
+  instanceSizing,
+  releasedFills,
+  resizedBox,
+  resizeWrites,
+  sizingFlipFor,
+} from './resize-writes'
+import { createWrappedFrame, type InstanceFraming } from './wrapped-frame'
+import { instanceBoxEdit } from './instance-box-edits'
 import type { PinFrame } from './pin-writes'
 import { provideEditor, useCanvas } from '@open-pencil/vue'
 import {
@@ -50,6 +64,7 @@ import {
   diffDocuments,
   createSpec,
   fromSceneChange,
+  instanceRole,
   isCreatable,
   isPositionAuthored,
   scenePropFor,
@@ -58,6 +73,9 @@ import {
   type SceneResult,
   type TokenIndex,
   type TokenResolver,
+  defaultVariantAddress,
+  derivedDocument,
+  slotOfSceneNode,
 } from '@uidx/schema'
 import type { Diagnostic, JsonValue, UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 
@@ -65,8 +83,10 @@ import { pageIdFor, rasterFormatFor, type ExportBounds, type ExportFormat } from
 import { seedFonts } from './fonts'
 import { coverageForFont, fontGeneration, fontLibraryError, projectFonts } from './font-library'
 import { collapseBurst, novelPatches } from './patch-burst'
+import { drawnNode } from './derived-edits'
 import { useCanvasControls } from './useCanvasControls'
-import { hoverTargetFor } from './hover-map'
+import { hoverNodeFor, hoverTargetFor } from './hover-map'
+import { theme } from './theme'
 
 const props = defineProps<{
   doc: UidxDocument | null
@@ -114,6 +134,10 @@ const props = defineProps<{
    * so this arrives the same way `tokens` does, and for the same reason.
    */
   components?: ReadonlyMap<string, UidxNode>
+  /** Model name -> declaration across every page, for the same reason as `components`. */
+  models?: ModelIndex
+  /** Which sample row an item component outside a repeat previews with (ADR 0015 §2). */
+  previewSample?: number
   /**
    * Mode-aware token resolution (G8).
    *
@@ -136,6 +160,20 @@ const resolveComponent = (name: string): UidxNode | undefined => props.component
  */
 const assets = createAssetStore()
 const resolveAsset = (src: string): string | undefined => assets.hashOf(src)
+
+/**
+ * What the scene is built with. One place, because a full build, the
+ * incremental update and a resize asking how an instance sizes must all
+ * resolve the same component the same way.
+ */
+const sceneOptions = () => ({
+  resolveAlias,
+  resolveAsset,
+  resolveComponent,
+  tokens: props.sceneTokens,
+  models: props.models,
+  sampleIndex: props.previewSample ?? 0,
+})
 
 // Before mount, deliberately: `useCanvas` asks the font manager for Inter as
 // soon as it mounts, and seeding after that is too late for the first paint.
@@ -170,8 +208,34 @@ const onSurfaceReady = (): void => {
   ready.value = true
   void renderWithAssets(props.doc)
 }
+/**
+ * The rulers in the chrome's theme. They are drawn by the renderer, not CSS,
+ * so the colours are handed over as floats when the theme changes.
+ */
+const RULERS = {
+  dark: {
+    background: { r: 0.157, g: 0.157, b: 0.169, a: 1 },
+    tick: { r: 0.4, g: 0.4, b: 0.42, a: 1 },
+    text: { r: 0.6, g: 0.6, b: 0.62, a: 1 },
+    // Drawn on the accent-coloured selection badges.
+    label: { r: 1, g: 1, b: 1, a: 1 },
+  },
+  light: {
+    background: { r: 1, g: 1, b: 1, a: 1 },
+    tick: { r: 0.8, g: 0.81, b: 0.83, a: 1 },
+    text: { r: 0.45, g: 0.47, b: 0.52, a: 1 },
+    label: { r: 1, g: 1, b: 1, a: 1 },
+  },
+} as const
+editor.state.rulerTheme = RULERS[theme.value]
+
 const sceneCanvas = useCanvas(sceneEl, editor, { layer: 'scene', onReady: onSurfaceReady })
 const overlayCanvas = useCanvas(canvasEl, editor, { layer: 'overlays', onReady: onSurfaceReady })
+// The renderer reads the theme on every frame; a switch only needs one drawn.
+watch(theme, (value) => {
+  editor.state.rulerTheme = RULERS[value]
+  if (ready.value) overlayCanvas.renderNow()
+})
 /** Both layers at once, lower first — every caller here means the whole picture. */
 const canvas = {
   renderNow: (): void => {
@@ -271,6 +335,11 @@ const emit = defineEmits<{
   vertexEdit: [address: string | null]
   vectorInfo: [info: VectorEditInfo | null]
   drawingDone: []
+  /**
+   * A right-click on the canvas, in viewport px, after the node under it
+   * was selected. The shell owns the actions, so it draws the menu.
+   */
+  contextMenu: [at: { x: number; y: number }]
 }>()
 
 /**
@@ -282,7 +351,8 @@ const emit = defineEmits<{
  */
 function dropParentAt(draggedId: string, point: { x: number; y: number }): string | null {
   const built = scene.value
-  const dragged = built?.addresses.addressOf(draggedId)
+  const drawn = built?.addresses.addressOf(draggedId)
+  const dragged = drawn === undefined || !current ? undefined : authoredContainer(current, drawn)
   if (!built || !current || dragged === undefined) return null
   const sceneChain = containerChainAt(built.graph, built.rootId, point, draggedId)
 
@@ -300,11 +370,20 @@ function dropParentAt(draggedId: string, point: { x: number; y: number }): strin
     return firstFillFor(current, dragged, [id], holes) ? id : null
   }
 
+  // Default-state twins stand for their base layers (ADR 0016 §4), as in a draw.
+  const sceneOf = new Map<string, string>()
   const chain = sceneChain
-    .map((id) => built.addresses.addressOf(id))
+    .map((id) => {
+      const address = built.addresses.addressOf(id)
+      const authored = address === undefined ? undefined : authoredContainer(current!, address)
+      if (authored !== undefined && !sceneOf.has(authored)) sceneOf.set(authored, id)
+      return authored
+    })
     .filter((address): address is string => address !== undefined)
   const target = dropTargetFor(current, dragged, chain)
-  return target ? (built.addresses.sceneIdOf(target.parent) ?? null) : null
+  return target
+    ? (sceneOf.get(target.parent) ?? built.addresses.sceneIdOf(target.parent) ?? null)
+    : null
 }
 
 /**
@@ -322,7 +401,11 @@ const vectorInfo = shallowRef<VectorEditInfo | null>(null)
 const toolHint = computed(() => drawingHint(props.tool))
 
 const controls = useCanvasControls(canvasEl, editorWithPlacement, {
-  onChange: scheduleCameraReadout,
+  onChange: () => {
+    scheduleCameraReadout()
+    if (textEdit.value) placeTextEdit()
+  },
+  onActivate: (id) => openTextEdit(id),
   isAddressable,
   dropTargetFor: dropParentAt,
   tool: () => props.tool ?? (props.placing ? 'Instance' : null),
@@ -366,7 +449,8 @@ const controls = useCanvasControls(canvasEl, editorWithPlacement, {
    */
   onReparent: (draggedId, parentSceneId) => {
     const built = scene.value
-    const dragged = built?.addresses.addressOf(draggedId)
+    const drawn = built?.addresses.addressOf(draggedId)
+    const dragged = drawn === undefined || !current ? undefined : authoredContainer(current, drawn)
     if (!built || !current || dragged === undefined) return
 
     // The first fill: two ops rather than one, because the wrapper the node
@@ -378,7 +462,8 @@ const controls = useCanvasControls(canvasEl, editorWithPlacement, {
       return
     }
 
-    const parent = built.addresses.addressOf(parentSceneId)
+    const drawnParent = built.addresses.addressOf(parentSceneId)
+    const parent = drawnParent === undefined ? undefined : authoredContainer(current, drawnParent)
     if (parent === undefined) return
     // The container the highlight named, asked of the document once more — the
     // patch is the document's arithmetic, never the pointer's.
@@ -514,23 +599,56 @@ function createNode(
   if (!built || !current) return
   if (placing === null && !isCreatable(element)) return
 
+  // A component with states is drawn as its variants (ADR 0016 §4): the frame
+  // under the pointer is a default-state twin, which stands for the base layer
+  // the new node goes into, while its scene node still says where it sits. A
+  // twin of any other state cannot take a child, so it is passed over.
+  const sceneOf = new Map<string, string>()
   const chain = containerChainAt(built.graph, built.rootId, at, '')
-    .map((id) => built.addresses.addressOf(id))
+    .map((id) => {
+      const address = built.addresses.addressOf(id)
+      const authored = address === undefined ? undefined : authoredContainer(current!, address)
+      if (authored !== undefined && !sceneOf.has(authored)) sceneOf.set(authored, id)
+      return authored
+    })
     .filter((address): address is string => address !== undefined)
-  const parent = insertTargetFor(current, element, chain)
+  // Placing an instance with a slot selected fills the slot (ADR 0007): the
+  // hole is the target the author named, wherever the click landed.
+  const selected = props.selection?.length === 1 ? props.selection[0]! : null
+  const selectedNode = selected ? resolve(current.tree, selected) : null
+  const parent =
+    placing !== null &&
+    selectedNode?.element === 'Slot' &&
+    canInsert(current, selected!, 'Instance')
+      ? selected
+      : insertTargetFor(current, element, chain)
   if (parent === null) return
 
   const parentNode = resolve(current.tree, parent)
-  const parentSceneId = built.addresses.sceneIdOf(parent)
+  const parentSceneId = sceneOf.get(parent) ?? built.addresses.sceneIdOf(parent)
   if (!parentNode || parentSceneId === undefined) return
 
-  const where = localTo(parentSceneId, at)
+  // Inside an auto layout the layout places the node, so a position would be
+  // noise in the file that nothing reads.
+  const flows =
+    parentNode.attrs.layoutMode?.value === 'HORIZONTAL' ||
+    parentNode.attrs.layoutMode?.value === 'VERTICAL'
+  const where = flows ? null : localTo(parentSceneId, at)
   // An instance is named after what it is an instance of, not after its
   // element: two `Icon/Check`s read as `check-1` and `check-2` rather than as
   // `instance-1` and `instance-2`, which say nothing. The component's own name
   // may be grouped (`Icon/Check`), and only the last segment is the noun.
   const base = placing === null ? element : (placing.split('/').at(-1) ?? 'instance')
   const name = autoName(base, parentNode.children)
+  // Placed inside a repeated row, a component that takes the row's model is
+  // bound to it now — written in the file, shown as a pill, removable.
+  const binding =
+    placing === null
+      ? null
+      : rowBindingFor(
+          props.components?.get(placing),
+          scopesInside(current, parentNode, props.components, props.models),
+        )
   const spec =
     placing === null
       ? createSpec(element as CreatableElement, name, { at: where, size })
@@ -540,6 +658,7 @@ function createNode(
             name,
             component: placing,
             ...(where ? { x: where.x, y: where.y } : {}),
+            ...(binding ? { props: binding } : {}),
           },
         }
 
@@ -548,6 +667,176 @@ function createNode(
   // The node does not exist yet; its address does. `applySelection` skips what
   // the graph has not got, and runs again when the echo brings it.
   emit('selection', [addressOf(parent, name)])
+  // A text placed with the tool is a text about to be typed: it opens for
+  // editing the moment the file echoes it back, as it does in every canvas tool.
+  if (element === 'Text') pendingTextEdit = addressOf(parent, name)
+}
+
+/*
+ * Editing the words of a `<Text>` in place.
+ *
+ * The inspector's Content field always could, but a designer double-clicks
+ * the words on the canvas — Figma, Framer, Builder and Webflow all edit there.
+ * The editor is a textarea laid over the node at the camera's scale, with the
+ * node's own face and size; the canvas keeps drawing underneath, and the
+ * words reach the file as one `characters` write when the editing ends.
+ */
+type TextEdit = {
+  id: string
+  address: string
+  original: string
+  draft: string
+  style: Record<string, string>
+}
+const textEdit = ref<TextEdit | null>(null)
+const textEditEl = ref<HTMLTextAreaElement | null>(null)
+/** The address of a text the tool just placed, to open once the echo lands. */
+let pendingTextEdit: string | null = null
+
+function textStyleFor(node: UidxNode, id: string): Record<string, string> | null {
+  const built = scene.value
+  const drawn = editor.graph?.getNode(id)
+  const at = editorWithPlacement.absolutePositionOf(id)
+  if (!built || !drawn || !at) return null
+  const zoom = editor.state.zoom
+  const origin = toPane(at)
+  const size = (value: unknown, fallback: number): number =>
+    typeof value === 'number' && Number.isFinite(value) ? value : fallback
+  const fontSize = size(node.attrs.fontSize?.value, 14)
+  const family = node.attrs.fontFamily?.value
+  const lineHeight = node.attrs.lineHeight?.value
+  const align = node.attrs.textAlignHorizontal?.value
+  return {
+    left: `${origin.x}px`,
+    top: `${origin.y}px`,
+    minWidth: `${Math.max(drawn.width * zoom, 24)}px`,
+    minHeight: `${Math.max(drawn.height * zoom, fontSize * 1.2 * zoom)}px`,
+    fontSize: `${fontSize * zoom}px`,
+    fontFamily: typeof family === 'string' && !family.startsWith('{') ? family : 'Inter',
+    lineHeight: typeof lineHeight === 'number' ? `${lineHeight * zoom}px` : 'normal',
+    textAlign:
+      align === 'CENTER'
+        ? 'center'
+        : align === 'RIGHT'
+          ? 'right'
+          : align === 'JUSTIFIED'
+            ? 'justify'
+            : 'left',
+  }
+}
+
+function openTextEdit(id: string): void {
+  const built = scene.value
+  if (!built || !current || props.writable === false) return
+  const address = built.addresses.addressOf(id)
+  const node = address === undefined ? undefined : resolve(current.tree, address)
+  if (!address || !node || node.element !== 'Text') return
+  const style = textStyleFor(node, id)
+  if (!style) return
+  const original = node.attrs.characters?.value
+  const words = typeof original === 'string' ? original : ''
+  textEdit.value = { id, address, original: words, draft: words, style }
+  void nextTick(() => {
+    textEditEl.value?.focus()
+    textEditEl.value?.select()
+  })
+}
+
+/** The camera moved: the editor follows the node it sits on. */
+function placeTextEdit(): void {
+  const open = textEdit.value
+  if (!open || !current) return
+  const node = resolve(current.tree, open.address)
+  const style = node ? textStyleFor(node, open.id) : null
+  if (!style) {
+    textEdit.value = null
+    return
+  }
+  open.style = style
+}
+
+function commitTextEdit(): void {
+  const open = textEdit.value
+  if (!open) return
+  textEdit.value = null
+  if (!current) return
+  const node = resolve(current.tree, open.address)
+  if (!node || open.draft === open.original) return
+  emit('patches', [
+    {
+      op: node.attrs.characters === undefined ? 'add' : 'set',
+      address: open.address,
+      prop: 'characters',
+      value: open.draft,
+    },
+  ])
+}
+
+function onTextEditKey(event: KeyboardEvent): void {
+  // The canvas listens on the window; nothing typed here is a shortcut.
+  event.stopPropagation()
+  if (event.key === 'Escape' || (event.key === 'Enter' && (event.metaKey || event.ctrlKey))) {
+    event.preventDefault()
+    commitTextEdit()
+  }
+}
+
+/** The text the tool placed has arrived: open it for typing. */
+function openPendingTextEdit(): void {
+  const address = pendingTextEdit
+  const built = scene.value
+  if (!address || !built) return
+  const id = built.addresses.sceneIdOf(address)
+  if (id === undefined) return
+  pendingTextEdit = null
+  openTextEdit(id)
+}
+
+/**
+ * The container the author has stepped into, by the name the rail shows.
+ * The controller holds a scene id, which a rename or a rebuild can leave
+ * behind: the breadcrumb once kept saying `frame-1` after the frame became
+ * `Card`. Resolved through the file on every read, and dropped with the
+ * descent when the id no longer answers.
+ */
+const enteredName = computed(() => {
+  const id = controls.entered.value
+  const built = scene.value
+  if (!id || !built || !current) return null
+  const address = built.addresses.addressOf(id)
+  const node = address === undefined ? undefined : resolve(current.tree, address)
+  if (!node) return null
+  const name = node.attrs.name?.value
+  return typeof name === 'string' ? name : address!
+})
+
+/** An empty page says what to do next rather than showing a blank canvas. */
+const pageIsEmpty = computed(() => (props.doc?.tree.children.length ?? 1) === 0)
+
+/**
+ * A right-click selects what is under it — Figma's rule, so the menu the
+ * shell opens acts on the thing the pointer named — and hands the shell the
+ * viewport point to draw at.
+ */
+function onContextMenu(event: MouseEvent): void {
+  const built = scene.value
+  const surface = canvasEl.value
+  if (!built || !surface || props.writable === false) return
+  const rect = surface.getBoundingClientRect()
+  const point = editor.screenToCanvas(event.clientX - rect.left, event.clientY - rect.top)
+  const hit = editor.hitTestAtPoint(point.x, point.y, false)
+  const id = hit && hit.id !== built.rootId && isAddressable(hit.id) ? hit.id : null
+  if (id && !editor.state.selectedIds.has(id)) {
+    editor.select([id])
+    const address = built.addresses.addressOf(id)
+    emit('selection', address === undefined ? [] : [address])
+    canvas.renderNow()
+  } else if (!id && editor.state.selectedIds.size) {
+    editor.clearSelection()
+    emit('selection', [])
+    canvas.renderNow()
+  }
+  emit('contextMenu', { x: event.clientX, y: event.clientY })
 }
 
 /**
@@ -782,10 +1071,16 @@ function announceRespelling(id: string): void {
  */
 async function onDrop(event: DragEvent): Promise<void> {
   event.preventDefault()
-  const file = [...(event.dataTransfer?.files ?? [])].find(
+  const files = [...(event.dataTransfer?.files ?? [])]
+  const file = files.find(
     (f) => f.type === 'image/svg+xml' || f.name.toLowerCase().endsWith('.svg'),
   )
-  if (!file) return
+  const raster = files.find((f) => RASTER_FILE.test(f.name))
+  if (!file && raster) return dropRaster(raster, event)
+  if (!file) {
+    if (files.length) emit('notice', `${files[0]!.name} is not an image this canvas can place.`)
+    return
+  }
 
   const built = scene.value
   if (!built || !current) return
@@ -830,6 +1125,85 @@ async function onDrop(event: DragEvent): Promise<void> {
   emit('patches', [{ op: 'insert-node', parent, index: parentNode.children.length, node }])
   emit('selection', [addressOf(parent, name)])
   if (imported.problems.length) emit('notice', problemMessage(file.name, imported.problems))
+}
+
+const RASTER_FILE = /\.(png|jpe?g|gif|webp|avif)$/i
+
+/**
+ * A photo or a bitmap logo: saved into the document's assets folder by the
+ * server, then placed as a rectangle filled with it at its own size (halved
+ * for a 2x export, capped so a camera photo does not cover the page).
+ */
+/** An image chosen in the Insert panel: placed at the middle of what is on screen. */
+function placeImage(file: File): Promise<void> {
+  const el = canvasEl.value
+  const box = el?.getBoundingClientRect()
+  const at = box ? editor.screenToCanvas(box.width / 2, box.height / 2) : { x: 0, y: 0 }
+  return dropRaster(file, at)
+}
+
+async function dropRaster(file: File, point: DragEvent | { x: number; y: number }): Promise<void> {
+  const built = scene.value
+  if (!built || !current) return
+  const at = 'clientX' in point ? toCanvasPoint(point) : point
+  const chain = containerChainAt(built.graph, built.rootId, at, '')
+    .map((id) => built.addresses.addressOf(id))
+    .filter((address): address is string => address !== undefined)
+  const parent = insertTargetFor(current, 'Rectangle', chain)
+  const parentNode = parent === null ? null : resolve(current.tree, parent)
+  const parentSceneId = parent === null ? undefined : built.addresses.sceneIdOf(parent)
+  if (parent === null || !parentNode || parentSceneId === undefined) {
+    emit('notice', `Nowhere here will take an image.`)
+    return
+  }
+  let src: string
+  try {
+    const response = await fetch(`/__uidx/asset/upload?name=${encodeURIComponent(file.name)}`, {
+      method: 'POST',
+      headers: { 'content-type': file.type || 'application/octet-stream' },
+      body: file,
+    })
+    const answer = (await response.json()) as { src?: string; error?: string }
+    if (!response.ok || !answer.src) throw new Error(answer.error ?? 'The server refused it.')
+    src = answer.src
+  } catch (error) {
+    emit('notice', `${file.name}: ${error instanceof Error ? error.message : String(error)}`)
+    return
+  }
+  let width = 200
+  let height = 150
+  try {
+    const bitmap = await createImageBitmap(file)
+    const scale = Math.min(1, 480 / Math.max(bitmap.width, bitmap.height))
+    width = Math.max(1, Math.round(bitmap.width * scale))
+    height = Math.max(1, Math.round(bitmap.height * scale))
+    bitmap.close()
+  } catch {
+    // An undecodable image keeps the placeholder size; the renderer says why.
+  }
+  const wanted = file.name.replace(RASTER_FILE, '').replace(/[#/]/g, '-') || 'image'
+  const name = parentNode.children.some((c) => c.name === wanted)
+    ? autoName('Rectangle', parentNode.children)
+    : wanted
+  const where = localTo(parentSceneId, at)
+  emit('patches', [
+    {
+      op: 'insert-node',
+      parent,
+      index: parentNode.children.length,
+      node: {
+        element: 'Rectangle',
+        attrs: {
+          name,
+          ...(where ? { x: Math.round(where.x), y: Math.round(where.y) } : {}),
+          width,
+          height,
+          fills: [{ type: 'IMAGE', src, scaleMode: 'FILL' }],
+        },
+      },
+    },
+  ])
+  emit('selection', [addressOf(parent, name)])
 }
 
 /** The file's name without its extension, as a node name. */
@@ -883,6 +1257,14 @@ const hasRendered = ref(false)
 
 /** Keep the zoom control in sync with both gestures and programmatic fitting. */
 const cameraZoom = ref(1)
+/** The camera's pan, read with the zoom so pane-space overlays follow a pan. */
+const cameraPan = ref({ x: 0, y: 0 })
+/** Moves whenever the scene is rebuilt or patched, for overlays that read it. */
+const sceneTick = ref(0)
+function readCamera(): void {
+  cameraZoom.value = editor.state.zoom
+  cameraPan.value = { x: editor.state.panX, y: editor.state.panY }
+}
 function fitCanvas(): void {
   editor.zoomToFit()
   scheduleCameraReadout()
@@ -899,13 +1281,13 @@ function chooseZoom(event: Event): void {
 let readoutFrame = 0
 function scheduleCameraReadout(): void {
   if (typeof requestAnimationFrame !== 'function') {
-    cameraZoom.value = editor.state.zoom
+    readCamera()
     return
   }
   if (readoutFrame) return
   readoutFrame = requestAnimationFrame(() => {
     readoutFrame = 0
-    cameraZoom.value = editor.state.zoom
+    readCamera()
   })
 }
 onUnmounted(() => {
@@ -1054,6 +1436,10 @@ function render(doc: UidxDocument | null, rebuild = false): void {
 
   applyingRemote = true
   try {
+    // A frame a preview drew away from the file goes back first, so the diff
+    // below lands on the scene the file drew; `reapplyLocalEdits` draws the
+    // preview again over the new document.
+    wrappedFrame.release()
     // Demands capture the callback when layout asks for a font. Hook before
     // building so even the first cold-load request has a layout refresh.
     watchFontSettle()
@@ -1069,12 +1455,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     ) {
       const changes = diffDocuments(current, doc, resolveAlias, props.sceneTokens)
       if (changes) {
-        const applied = applyChanges(scene.value, changes, {
-          resolveAlias,
-          resolveAsset,
-          resolveComponent,
-          tokens: props.sceneTokens,
-        })
+        const applied = applyChanges(scene.value, changes, sceneOptions())
         // The renderer re-records only the chunks holding these (viewer-at-scale
         // spec §4); an unexplained version bump re-records the whole page.
         markDirty(applied.touched)
@@ -1083,7 +1464,8 @@ function render(doc: UidxDocument | null, rebuild = false): void {
         // same-page definition the diff just pushed into its copies — so the
         // components watch below has nothing further to rebuild for.
         renderedWith = props.components
-        cameraZoom.value = editor.state.zoom
+        readCamera()
+        sceneTick.value += 1
         canvas.renderNow()
         // A rename or a reparent reaches here as a remove plus an insert, and
         // the shell remapped its selection to the new addresses before this
@@ -1092,6 +1474,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
         // only now, which is why this path needs the re-apply even more than
         // the rebuild below does.
         applySelection(props.selection ?? [])
+        openPendingTextEdit()
         return
       }
     }
@@ -1110,12 +1493,7 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // as already drawn, and the rebuild that the definition needed never ran.
     renderedWith = props.components
 
-    const next = toSceneGraph(doc, {
-      resolveAlias,
-      resolveAsset,
-      resolveComponent,
-      tokens: props.sceneTokens,
-    })
+    const next = toSceneGraph(doc, sceneOptions())
     // Text the fonts could not measure yet is a build that will be wrong until
     // it is done again, once the demand this build just raised settles.
     lastBuildEstimated = next.unmeasuredText > 0
@@ -1136,12 +1514,21 @@ function render(doc: UidxDocument | null, rebuild = false): void {
     // Opening another page *is* the author asking to be taken somewhere, and
     // the camera they left on the last page frames nothing on this one.
     if (!hasRendered.value || pageChanged) editor.zoomToFit()
+    readCamera()
+    sceneTick.value += 1
     cameraZoom.value = editor.state.zoom
     canvas.renderNow()
     hasRendered.value = true
     // `replaceGraph` drops the editor's selection, and a rebuild is not the
     // author deselecting anything — the shell still holds what they picked.
     applySelection(props.selection ?? [])
+    openPendingTextEdit()
+  } catch (error) {
+    // A page that cannot be drawn says so and keeps the last frame it drew,
+    // rather than going blank with the reason in a console nobody has open.
+    // The file is still the file; the next edit tries again.
+    const reason = error instanceof Error ? error.message : String(error)
+    emit('notice', `The page could not be drawn (${reason}). The last drawn state is kept.`)
   } finally {
     applyingRemote = false
     // The file's new state is on the canvas — including the file's values for
@@ -1157,8 +1544,17 @@ function render(doc: UidxDocument | null, rebuild = false): void {
  * The panel scrub in flight, so a remote document landing mid-scrub does not
  * leave the canvas showing the file's value while the field shows the author's.
  * The properties pane holds its own copy for the field; this is the canvas half.
+ *
+ * An instance's scrub of its outer box writes no fields of its own: the nodes
+ * it reaches are generated, so its framing finds them again over the new
+ * document. `id` is where the instance is drawn, when that is not its address.
  */
-let panelPreview: { address: string; fields: object } | null = null
+let panelPreview: {
+  address: string
+  id?: string
+  fields: object
+  framing?: InstanceFraming
+} | null = null
 
 /** Re-applies the in-flight gesture and panel scrub over a fresh document. */
 function reapplyLocalEdits(): void {
@@ -1167,8 +1563,13 @@ function reapplyLocalEdits(): void {
   if (!panelPreview) return
   const graph = scene.value?.graph
   const held = panelPreview
-  if (graph?.getNode(held.address)) {
-    graph.runPreviewUpdates(() => editor.updateNode(held.address, held.fields))
+  const id = held.id ?? held.address
+  if (graph?.getNode(id)) {
+    const saved = held.framing && current ? resolve(current.tree, held.address) : null
+    graph.runPreviewUpdates(() => {
+      if (saved && held.framing) wrappedFrame.draw(saved, held.framing, id)
+      if (Object.keys(held.fields).length) editor.updateNode(id, held.fields)
+    })
     canvas.renderNow()
   } else {
     // Nothing left to be editing: the node went with the change.
@@ -1190,12 +1591,30 @@ function reapplyLocalEdits(): void {
  * change; re-selecting the same ids would be harmless but would repaint on
  * every click, and the guard says plainly that this is a one-way sync.
  */
+/**
+ * The scene node an address is drawn as: its own, or — for a base layer of a
+ * derived component, which has none (ADR 0016 §4) — its twin under the
+ * default state. The rail and the panel name the base layer; selection and
+ * edits must land on the twin, or a width typed into the panel goes nowhere.
+ */
+function drawnId(address: string): string | undefined {
+  return scene.value?.addresses.sceneIdOf(address) ?? twinId(address)
+}
+
+/** The default-state twin of a base layer of a derived component, if it has one. */
+function twinId(address: string): string | undefined {
+  const twin = props.doc ? defaultVariantAddress(props.doc, address) : null
+  return twin === null ? undefined : scene.value?.addresses.sceneIdOf(twin)
+}
+
 function applySelection(addresses: readonly string[]): void {
   const graph = scene.value
   if (!graph || !ready.value) return
 
+  // A base layer of a derived component has no node of its own: the default
+  // state draws it (ADR 0016 §4), so the rail's address lands on that twin.
   const ids = addresses
-    .map((address) => graph.addresses.sceneIdOf(address))
+    .map(drawnId)
     .filter((id): id is string => id !== undefined && id !== graph.rootId)
 
   const selected = editor.state.selectedIds
@@ -1310,17 +1729,33 @@ const isMoveOnly = (changes: Record<string, unknown>): boolean => {
 }
 
 /**
+ * The texts an instance's colour reaches in one build (ADR 0018 §4), which
+ * `fromSceneChange` asks before it writes a text's fills. Gathered once per
+ * build, not per event: a layout pass announces every node it moves.
+ */
+const cascadeTargets = new WeakMap<SceneResult, ReadonlySet<string>>()
+function cascadedIn(built: SceneResult): (sceneId: string) => boolean {
+  const texts = cascadeTargets.get(built) ?? new Set([...built.textTargets.values()].flat())
+  cascadeTargets.set(built, texts)
+  return (sceneId) => texts.has(sceneId)
+}
+
+/**
  * Explicit commits must include fields that already equal their preview. The
  * graph suppresses unchanged scalar events, but the file has not seen them.
  */
 function recordSceneWrite(sceneId: string, changes: Record<string, unknown>): void {
   const built = scene.value
   if (applyingRemote || !current || !built) return
+  // The document with its derived variants (ADR 0016 §4): a write to a
+  // state's node resolves there, and the patch it becomes — addressed to
+  // the derived node — is routed to the style row by the shell.
   const patches = fromSceneChange(sceneId, changes, {
-    doc: current,
+    doc: derivedDocument(current),
     graph: built.graph,
     addresses: built.addresses,
     pins: built.pins,
+    cascaded: cascadedIn(built),
     ...(authoredWrite ? { authored: authoredWrite.props, authoredFor: authoredWrite.address } : {}),
   })
   const novel = novelPatches([...pending, ...burst], patches)
@@ -1434,6 +1869,36 @@ function vectorSizeFields(
   return fields
 }
 
+/** The layout of the node a scene node sits in, which says which axis an authored stretch fills. */
+function layoutAbove(node: { parentId: string | null }): SceneNode['layoutMode'] | undefined {
+  return node.parentId ? editor.graph.getNode(node.parentId)?.layoutMode : undefined
+}
+
+/**
+ * The frame a styles table wraps an instance's component in, drawn for the
+ * size or the outer box a preview gives the instance (`wrapped-frame.ts`). A
+ * build was the only thing that put either there, so a resize moved the box
+ * and left the pill at its old size until the file's echo.
+ *
+ * Asked with the root font size the page was built with, as the echo's
+ * `applyChanges` asks, so a length in `rem` previews as it lands.
+ */
+const instanceOptions = () => ({ ...sceneOptions(), rootFontSize: scene.value?.rootFontSize })
+const wrappedFrame = createWrappedFrame({
+  graph: () => editor.graph,
+  scope: instanceOptions,
+  saved: (address) => (current ? resolve(current.tree, address) : null),
+  tree: () => current?.tree ?? null,
+  update: (id, fields) => editor.updateNode(id, fields),
+  textTargets: (id) => scene.value?.textTargets.get(id),
+})
+
+/**
+ * The box a resize started from: its first frame remembers it, because after
+ * that the preview has already moved the node, and its last lets it go.
+ */
+let resizeFrom: { id: string; rect: Rect } | null = null
+
 function resizeNode(
   id: string,
   rect: Rect,
@@ -1442,38 +1907,107 @@ function resizeNode(
 ): void {
   const node = editor.graph.getNode(id)
   const saved = current ? resolve(current.tree, id) : null
+  const from =
+    resizeFrom?.id === id
+      ? resizeFrom.rect
+      : node
+        ? { x: node.x, y: node.y, width: node.width, height: node.height }
+        : rect
+  resizeFrom = mode === 'preview' ? { id, rect: from } : null
   if (!node || !saved || props.writable === false) return
   const geometry = vectorSizeFields(id, rect.width, rect.height)
-  const sizing = authoredSizing(saved)
-  const fields: Record<string, unknown> = {
-    ...resizeWrites(sizing, rect, { widthOnly }),
-    ...geometry,
-  }
+  // An instance states its size and nothing about how it is decided, so the
+  // file takes the box alone, on the axes the handle moved; the flip that
+  // keeps the preview from snapping back to the component's hug stays on the
+  // canvas (`instanceResizeWrites`).
+  const instance = saved.element === 'Instance'
+  const placed = instance ? instanceSizing(saved, sceneOptions(), layoutAbove(node)) : null
+  const sizing = placed ?? authoredSizing(saved)
+  // The controller says when an east or west handle is held; a north or south
+  // one is read off the box, and a cancel puts all of it back.
+  const moved =
+    mode === 'cancel'
+      ? { x: true, y: true, width: true, height: true }
+      : resizedBox(from, rect, widthOnly)
+  // A size dragged onto a dimension the instance fills turns it from Fill to
+  // Fixed (`releasedFills`); a cancel puts the fill back with the modes below.
+  const released =
+    placed && mode !== 'cancel'
+      ? releasedFills(
+          placed.fills,
+          (['width', 'height'] as const).filter((dimension) => moved[dimension]),
+        )
+      : null
+  const fields: Record<string, unknown> = placed
+    ? { ...instanceResizeWrites(sizing, rect, moved), ...released?.fields }
+    : { ...resizeWrites(sizing, rect, { widthOnly }), ...geometry }
+  // The size the file will hold once this lands — what the frame a styles
+  // table wraps the component in is drawn for meanwhile (`wrappedFrame`).
+  const framing: InstanceFraming | null =
+    instance && mode !== 'cancel'
+      ? {
+          size: {
+            ...(moved.width ? { width: rect.width } : {}),
+            ...(moved.height ? { height: rect.height } : {}),
+          },
+          removals: released?.removals ?? [],
+        }
+      : null
   if (mode === 'cancel') {
-    // The preview may have pinned an automatic size. Restore the saved modes
-    // as well as the original box when the browser interrupts the gesture.
-    for (const key of ['primaryAxisSizing', 'counterAxisSizing', 'textAutoResize'] as const) {
-      if (sizing[key] !== undefined) fields[key] = sizing[key]
+    // The preview may have pinned an automatic size, or let an instance's
+    // fill go. Restore the saved modes as well as the original box when the
+    // browser interrupts the gesture.
+    const before: Record<string, unknown> = { ...sizing }
+    for (const key of [
+      'primaryAxisSizing',
+      'counterAxisSizing',
+      'textAutoResize',
+      'layoutGrow',
+      'layoutAlignSelf',
+    ]) {
+      if (before[key] !== undefined) fields[key] = before[key]
     }
   }
   authoredWrite = {
     address: id,
-    props: new Set([
-      'x',
-      'y',
-      'width',
-      'height',
-      'primaryAxisSizingMode',
-      'counterAxisSizingMode',
-      'textAutoResize',
-      ...(geometry ? ['vectorPaths'] : []),
-    ]),
+    props: new Set(
+      instance
+        ? Object.keys(fields).filter((key) => key in rect)
+        : [
+            'x',
+            'y',
+            'width',
+            'height',
+            'primaryAxisSizingMode',
+            'counterAxisSizingMode',
+            'textAutoResize',
+            ...(geometry ? ['vectorPaths'] : []),
+          ],
+    ),
   }
   try {
-    if (mode !== 'commit') editor.graph.runPreviewUpdates(() => editor.updateNode(id, fields))
-    else {
+    if (mode !== 'commit') {
+      editor.graph.runPreviewUpdates(() => {
+        if (instance) wrappedFrame.draw(saved, framing)
+        editor.updateNode(id, fields)
+      })
+    } else {
+      // Drawn for the commit's rounded box, then let go: the echo makes the
+      // same update, so there is nothing left to put back.
+      if (instance) {
+        editor.graph.runPreviewUpdates(() => wrappedFrame.draw(saved, framing))
+        wrappedFrame.settle()
+      }
       editor.updateNode(id, fields)
       recordSceneWrite(id, fields)
+      // In the resize's own envelope, after the scene's write of the same
+      // attribute, so `collapseBurst` folds the two into the removal.
+      if (released?.removals.length) {
+        if (!burst.length) queueMicrotask(flushBurst)
+        burst.push(
+          ...released.removals.map((prop) => ({ op: 'remove' as const, address: id, prop })),
+        )
+      }
     }
   } finally {
     authoredWrite = null
@@ -1508,6 +2042,129 @@ function moveNode(id: string, at: Point): void {
 const rotationReadout = ref<{ x: number; y: number; degrees: number } | null>(null)
 
 const formatDegrees = (degrees: number): string => `${Math.round(degrees * 10) / 10}°`
+
+/**
+ * Column and row headers for every component set on the page, in pane px:
+ * which value each column and row of a derived or authored variant grid is.
+ * Hidden when zoomed out too far to read them.
+ */
+/**
+ * The slots on screen that hold nothing, outlined on the overlay (ADR 0007,
+ * amended): an empty slot draws nothing and has no size, so without this
+ * the hole a designer is meant to fill is invisible. Drawn here rather than
+ * in the scene, which exports and lays out — the outline must not do either.
+ * A repeated slot is outlined once, not once per (equally empty) row.
+ */
+const emptySlots = computed(() => {
+  void sceneTick.value
+  const zoom = cameraZoom.value
+  const pan = cameraPan.value
+  const result = scene.value
+  if (!result || zoom < 0.2) return []
+  const graph = result.graph
+  const out: {
+    key: string
+    name: string
+    x: number
+    y: number
+    width: number
+    height: number
+    select: string | null
+  }[] = []
+  const outlined = new Set<string>()
+  const visit = (id: string): void => {
+    const node = graph.getNode(id)
+    if (!node || node.visible === false) return
+    const name = slotOfSceneNode(node)
+    if (
+      name !== null &&
+      node.childIds.length === 0 &&
+      node.parentId &&
+      !outlined.has(node.parentId)
+    ) {
+      outlined.add(node.parentId)
+      const at = getAbsolutePosition(node, graph)
+      // The nearest layer the file has: a slot inside an instance is generated.
+      let owner: string | null = id
+      let select: string | null = null
+      while (owner) {
+        select = result.addresses.addressOf(owner) ?? null
+        if (select !== undefined && select !== null) break
+        owner = graph.getNode(owner)?.parentId ?? null
+      }
+      out.push({
+        key: id,
+        name,
+        x: at.x * zoom + pan.x,
+        y: at.y * zoom + pan.y,
+        width: Math.max(node.width * zoom, 112),
+        height: Math.max(node.height * zoom, 32),
+        select,
+      })
+    }
+    for (const child of node.childIds) visit(child)
+  }
+  visit(result.rootId)
+  return out
+})
+
+const setHeaders = computed(() => {
+  void sceneTick.value
+  const zoom = cameraZoom.value
+  const pan = cameraPan.value
+  const result = scene.value
+  if (!result || zoom < 0.35) return []
+  const graph = result.graph
+  const page = graph.getNode(result.rootId)
+  if (!page) return []
+  const place = (point: Point): Point => ({ x: point.x * zoom + pan.x, y: point.y * zoom + pan.y })
+  const out: {
+    key: string
+    kind: 'column' | 'row'
+    text: string
+    x: number
+    y: number
+    width?: number
+  }[] = []
+  for (const id of page.childIds) {
+    const set = graph.getNode(id)
+    if (set?.type !== 'COMPONENT_SET') continue
+    const cells: VariantCell[] = []
+    for (const childId of set.childIds) {
+      const child = graph.getNode(childId)
+      if (!child) continue
+      const at = getAbsolutePosition(child, graph)
+      cells.push({ name: child.name, x: at.x, y: at.y, width: child.width, height: child.height })
+    }
+    const headers = variantHeaders(cells)
+    for (const column of headers.columns) {
+      const at = place(column)
+      out.push({
+        key: `${id}:c:${column.text}`,
+        kind: 'column',
+        text: column.text,
+        ...at,
+        ...(column.width === undefined || !Number.isFinite(column.width)
+          ? {}
+          : { width: column.width * zoom }),
+      })
+    }
+    // Rows are named on the right, where the canvas has room; the left edge
+    // sits against the rulers once the page is fitted. The column axis is
+    // named there too, level with the column values.
+    const origin = getAbsolutePosition(set, graph)
+    const firstColumn = headers.columns[0]
+    if (headers.columnAxis && firstColumn) {
+      const at = place({ x: origin.x + set.width, y: firstColumn.y })
+      out.push({ key: `${id}:axis`, kind: 'column', text: `← ${headers.columnAxis}`, ...at })
+    }
+    for (const row of headers.rows) {
+      const at = place({ x: origin.x + set.width, y: row.y })
+      out.push({ key: `${id}:r:${row.text}`, kind: 'row', text: row.text, ...at })
+    }
+  }
+  return out
+})
 
 /** Canvas units to pane px — the camera the SDK's own overlays map through. */
 const toPane = (point: Point): Point => ({
@@ -1556,8 +2213,28 @@ function applyProp(
 ): void {
   if (props.writable === false) return
   const graph = scene.value?.graph
-  if (!graph || !graph.getNode(address)) return
-  const saved = current ? resolve(current.tree, address) : null
+  if (!graph) return
+  // An instance's outer box and its text colour are the `<Instance>`'s to
+  // state, wherever it is drawn (`restyleInstance`), so this asks the file
+  // before anything below reads the address as a node to write.
+  const layer = current ? resolve(current.tree, address) : null
+  if (layer?.element === 'Instance' && restyles(prop)) {
+    restyleInstance(layer, prop, value, mode)
+    return
+  }
+  // The panel names a base layer of a derived component — or the component
+  // itself — when the rail chose it. The canvas draws it as its default-state
+  // twin (the component as that variant's root, not the set around the
+  // variants), and an edit there is what writes the base.
+  const twin = twinId(address)
+  if (twin !== undefined && twin !== address) {
+    if (graph.getNode(twin)) applyProp(twin, prop, value, mode)
+    return
+  }
+  if (!graph.getNode(address)) return
+  // A state's twin has no node in the file; its base, with the state's own
+  // cells laid over, is what the edit helpers read (derived-edits.ts).
+  const saved = current ? (resolve(current.tree, address) ?? drawnNode(current, address)) : null
   const stroke = saved
     ? strokeEdit(saved, prop, value, resolveAlias, rootFontSizeOf(current))
     : null
@@ -1591,9 +2268,23 @@ function applyProp(
    */
   const node = graph.getNode(address)
   const docNode = current ? resolve(current.tree, address) : null
+  // An instance's sizing is its component's until it states a size, so it is
+  // asked the way the build answers it; the flip it gets is the canvas's alone
+  // (see `resizeNode`), which is why it is never vouched below.
+  const instance = docNode?.element === 'Instance'
+  const placed =
+    docNode && instance && node ? instanceSizing(docNode, sceneOptions(), layoutAbove(node)) : null
+  // A size typed onto a dimension the instance fills turns it from Fill to
+  // Fixed, as a drag does (`releasedFills`); the fill leaves with `removals`.
+  const released =
+    placed && (prop === 'width' || prop === 'height') ? releasedFills(placed.fills, [prop]) : null
   let sized =
     docNode && (prop === 'width' || prop === 'height')
-      ? { ...fields, ...sizingFlipFor(authoredSizing(docNode), prop) }
+      ? {
+          ...fields,
+          ...sizingFlipFor(placed ?? authoredSizing(docNode), prop),
+          ...released?.fields,
+        }
       : fields
 
   /*
@@ -1602,7 +2293,7 @@ function applyProp(
    * land at 0,0 on the next load; AUTO hands position back to the layout and
    * takes the pinned numbers out of the file with it (`position-writes.ts`).
    */
-  let removals: ('x' | 'y')[] = []
+  let removals: string[] = released?.removals ?? []
   if (node && prop === 'layoutPositioning' && (value === 'ABSOLUTE' || value === 'AUTO')) {
     const writes = positioningWrites({ x: node.x, y: node.y }, value, docNode)
     sized = writes.fields
@@ -1629,11 +2320,22 @@ function applyProp(
       prop,
       ...(vectorGeometry ? ['vectorPaths'] : []),
       ...Object.keys(sized)
-        .filter((key) => key.endsWith('Sizing'))
+        .filter((key) => key.endsWith('Sizing') && !instance)
         .map((key) => `${key}Mode`),
       ...(prop === 'layoutPositioning' ? ['x', 'y'] : []),
     ]),
   }
+  // A size typed onto an instance is drawn on the frame its component wraps
+  // too, as a drag's is (`wrappedFrame`). It accrues with the scrub.
+  const held = panelPreview?.address === address ? panelPreview : null
+  const size = prop === 'width' || prop === 'height' ? sized[prop] : undefined
+  const framing: InstanceFraming | undefined =
+    instance && typeof size === 'number'
+      ? {
+          size: { ...held?.framing?.size, [prop]: size },
+          removals: [...(held?.framing?.removals ?? []), ...(released?.removals ?? [])],
+        }
+      : undefined
   // Remembered so a remote document landing mid-scrub can be re-covered by the
   // value under the author's finger; a commit ends the scrub and lets go. A
   // compound control previews several props per step, so the fields accrue.
@@ -1641,12 +2343,21 @@ function applyProp(
     mode === 'preview'
       ? {
           address,
-          fields: panelPreview?.address === address ? { ...panelPreview.fields, ...sized } : sized,
+          fields: held ? { ...held.fields, ...sized } : sized,
+          framing: framing ?? held?.framing,
         }
       : null
   try {
-    if (mode === 'preview') graph.runPreviewUpdates(() => editor.updateNode(address, sized))
-    else {
+    if (mode === 'preview') {
+      graph.runPreviewUpdates(() => {
+        if (docNode && framing) wrappedFrame.draw(docNode, framing)
+        editor.updateNode(address, sized)
+      })
+    } else if (docNode && framing) {
+      graph.runPreviewUpdates(() => wrappedFrame.draw(docNode, framing))
+      wrappedFrame.settle()
+    }
+    if (mode === 'commit') {
       editor.updateNode(address, sized)
       recordSceneWrite(address, sized)
     }
@@ -1668,13 +2379,76 @@ function applyProp(
   canvas.renderNow()
 }
 
+/** Whether a row restyles an instance from outside: its outer box or its text colour (ADR 0018 §1). */
+function restyles(prop: string): boolean {
+  const role = instanceRole(prop)
+  return role === 'box' || role === 'cascade'
+}
+
+/**
+ * A row of an instance's outer box, or its text colour, from the panel (ADR
+ * 0018 §7).
+ *
+ * The node that draws it is generated — the frame a styles table wraps the
+ * component in, the texts inside — and the instance's own node is only the
+ * wrapper around it. Written to the scene, a fill painted that wrapper, a
+ * square box behind the pill, and the commit's patch went through it too. So
+ * the scrub is drawn as a resize is (`wrappedFrame`), from the build's own
+ * functions with the instance as the edit would leave the file, and the
+ * commit is a patch on the `<Instance>`: in the burst, so the rows a compound
+ * control commits travel as one envelope.
+ *
+ * The panel sends the release here as well as the scrub, because this is
+ * where the scrub is held: kept past it, the hold is drawn again over every
+ * document that lands, ↺, Reset all and undo among them. A release lets it
+ * go whatever the file then says, and writes its patch even for a use drawn
+ * nowhere, since the file is what it is for.
+ */
+function restyleInstance(
+  instance: UidxNode,
+  prop: string,
+  value: JsonValue,
+  mode: 'preview' | 'commit',
+): void {
+  if (!current) return
+  const id = drawnId(instance.address)
+  const drawn = id !== undefined && editor.graph.getNode(id) !== undefined
+  if (!drawn && mode === 'preview') return
+  // A compound control previews several rows per step — the padding axis
+  // both its sides — so they accrue, as a scrub's fields do.
+  const held = panelPreview?.address === instance.address ? panelPreview : null
+  const framing: InstanceFraming = {
+    size: {},
+    removals: [],
+    box: { ...held?.framing?.box, [prop]: value },
+  }
+  panelPreview = mode === 'preview' ? { address: instance.address, id, fields: {}, framing } : null
+  if (drawn) {
+    editor.graph.runPreviewUpdates(() => wrappedFrame.draw(instance, framing, id))
+    // Drawn for the commit, then let go: the echo makes the same update.
+    if (mode === 'commit') wrappedFrame.settle()
+  }
+  if (mode === 'commit') {
+    // The edit is asked for its patch alone; what it draws is drawn above.
+    const edit = instanceBoxEdit(current, instance.address, prop, value, { scope: sceneOptions() })
+    if (edit?.patches.length) {
+      if (!burst.length) queueMicrotask(flushBurst)
+      burst.push(...edit.patches)
+    }
+  }
+  canvas.renderNow()
+}
+
 /**
  * The panel's cursor, drawn on the canvas. Figma answers a hovered padding
  * field by tinting that band on the frame; the SDK already draws every one of
- * these overlays, so this only has to say which one and on what.
+ * these overlays, so this only has to say which one and on what — for a row
+ * of an instance's outer box, the node that draws it (`hoverNodeFor`).
  */
 function applyHover(address: string, prop: string | null): void {
-  const id = scene.value?.addresses.sceneIdOf(address)
+  const drawn = drawnId(address)
+  const layer = current ? resolve(current.tree, address) : null
+  const id = drawn && prop ? hoverNodeFor(prop, drawn, layer, instanceOptions()) : drawn
   const target = prop ? hoverTargetFor(prop) : null
   if (!id || !target) {
     editor.setAutoLayoutHover(null)
@@ -1798,6 +2572,7 @@ function invalidateAsset(src: string): void {
 }
 
 defineExpose({
+  placeImage,
   editVector,
   vectorAction: (action: VectorAction) => controls.vectorAction(action),
   finishDrawing,
@@ -1856,10 +2631,34 @@ watch(
   },
 )
 
+/** A model's samples draw every repeat of it (ADR 0015 §2); a change anywhere redraws. */
+watch(
+  () => props.models,
+  () => {
+    void renderWithAssets(props.doc, true)
+  },
+)
+
+/** Previewing another sample row redraws every item component outside a repeat. */
+watch(
+  () => props.previewSample,
+  () => {
+    void renderWithAssets(props.doc, true)
+  },
+)
+
 /** Importing a face changes text metrics even when the document did not change. */
 watch(fontGeneration, () => {
   void renderWithAssets(props.doc, true)
 })
+
+/*
+ * The bundled faces load in the background, and a page drawn before they land
+ * measured its text without them: every label zero wide, a component's
+ * variants collapsed onto one another and their words clipped, until a zoom
+ * happened to lay the page out again. Once they are in, lay it out again.
+ */
+void seedFonts().then(() => renderWithAssets(props.doc, true))
 
 const unrenderable = computed<{ address: string; characters: string[] }[]>(() => {
   void fontGeneration.value
@@ -1996,8 +2795,8 @@ onUnmounted(() => unwatchGraph?.())
         </option>
       </select>
     </div>
-    <div v-if="controls.entered.value" class="entered-context">
-      <span :title="controls.entered.value">{{ controls.entered.value }}</span
+    <div v-if="enteredName" class="entered-context">
+      <span :title="enteredName">Inside {{ enteredName }}</span
       ><kbd>Esc to exit</kbd>
     </div>
     <div class="canvas-dock">
@@ -2019,7 +2818,71 @@ onUnmounted(() => unwatchGraph?.())
       </button>
     </div>
     <canvas ref="sceneEl" class="surface" aria-hidden="true" />
-    <canvas ref="canvasEl" class="surface" @dragover.prevent @drop="onDrop" />
+    <canvas
+      ref="canvasEl"
+      class="surface"
+      @dragover.prevent
+      @drop="onDrop"
+      @contextmenu.prevent="onContextMenu"
+    />
+
+    <!--
+      The words of a text, edited where they are drawn. Escape or ⌘Enter
+      keeps them; so does clicking away. Enter is a new line, as in a text.
+    -->
+    <textarea
+      v-if="textEdit"
+      ref="textEditEl"
+      v-model="textEdit.draft"
+      class="text-editor"
+      aria-label="Edit text"
+      spellcheck="false"
+      :style="textEdit.style"
+      @keydown="onTextEditKey"
+      @blur="commitTextEdit"
+      @pointerdown.stop
+    />
+
+    <!-- An empty page says what to do next; a blank canvas says nothing. -->
+    <div v-if="pageIsEmpty && ready && !diagnostics.length" class="empty-page" role="status">
+      <p class="empty-title">This page is empty</p>
+      <p class="empty-hint">
+        Press <kbd>F</kbd> and drag to draw a frame, <kbd>T</kbd> to place text, or <kbd>R</kbd> for
+        a rectangle. Right-click a layer for more.
+      </p>
+    </div>
+
+    <div
+      v-for="header in setHeaders"
+      :key="header.key"
+      class="set-header"
+      :data-kind="header.kind"
+      :style="{
+        left: `${header.x}px`,
+        top: `${header.y}px`,
+        ...(header.width === undefined ? {} : { maxWidth: `${Math.max(header.width, 14)}px` }),
+      }"
+      :title="header.text"
+    >
+      {{ header.text }}
+    </div>
+
+    <button
+      v-for="hole in emptySlots"
+      :key="hole.key"
+      type="button"
+      class="empty-slot"
+      :style="{
+        left: `${hole.x}px`,
+        top: `${hole.y}px`,
+        width: `${hole.width}px`,
+        height: `${hole.height}px`,
+      }"
+      :title="`Empty slot “${hole.name}” — select to choose what fills it`"
+      @click="hole.select !== null && emit('selection', [hole.select])"
+    >
+      <span class="empty-slot-label">+ {{ hole.name }}</span>
+    </button>
 
     <div
       v-if="rotationReadout"
@@ -2032,7 +2895,15 @@ onUnmounted(() => unwatchGraph?.())
 
     <!-- Dimmed over the last good render, never instead of it (spec §11). -->
     <div v-if="diagnostics.length" class="overlay">
-      <h3>{{ diagnostics.length }} problem{{ diagnostics.length === 1 ? '' : 's' }}</h3>
+      <h3>
+        The file has {{ diagnostics.length }} problem{{ diagnostics.length === 1 ? '' : 's' }} the
+        canvas cannot draw
+      </h3>
+      <p class="hint lead">
+        {{ hasRendered ? 'This is the last good version.' : 'Nothing has been drawn yet.' }}
+        Fix the file where it says below — or undo the last change to it — and the canvas recovers
+        on its own.
+      </p>
       <ul>
         <li v-for="(d, i) in diagnostics" :key="i">
           <span class="where">{{ d.line }}:{{ d.column }}</span>
@@ -2040,10 +2911,6 @@ onUnmounted(() => unwatchGraph?.())
           {{ d.message }}
         </li>
       </ul>
-      <p class="hint">
-        {{ hasRendered ? 'showing the last valid render' : 'nothing has rendered yet' }} — fix the
-        file and it recovers on its own
-      </p>
     </div>
 
     <!--
@@ -2118,6 +2985,47 @@ onUnmounted(() => unwatchGraph?.())
   left: 32px;
   z-index: 1;
   color: var(--text-dim);
+}
+.set-header {
+  position: absolute;
+  z-index: 3;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--component, #9747ff);
+  font-size: 10px;
+  line-height: 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.set-header[data-kind='column'] {
+  transform: translateY(calc(-100% - 3px));
+}
+.set-header[data-kind='row'] {
+  transform: translate(8px, -50%);
+}
+.empty-slot {
+  position: absolute;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  border: 1px dashed var(--component, #9747ff);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--component, #9747ff) 8%, transparent);
+  color: var(--component, #9747ff);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.empty-slot:hover {
+  background: color-mix(in srgb, var(--component, #9747ff) 16%, transparent);
+}
+.empty-slot-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .rotation-readout {
   position: absolute;
@@ -2243,6 +3151,60 @@ onUnmounted(() => unwatchGraph?.())
   background: var(--panel);
   color: var(--bound);
   pointer-events: none;
+}
+.text-editor {
+  position: absolute;
+  z-index: 4;
+  box-sizing: content-box;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--accent);
+  border-radius: 2px;
+  outline: none;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  resize: none;
+  overflow: hidden;
+  white-space: pre-wrap;
+  field-sizing: content;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 25%, transparent);
+}
+/* Drawn on the canvas, which is light whatever the chrome is: its own greys. */
+.empty-page {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: grid;
+  place-content: center;
+  text-align: center;
+  pointer-events: none;
+  color: #6f6f6f;
+}
+.empty-page p {
+  margin: 0;
+}
+.empty-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #2b2b2b;
+}
+.empty-hint {
+  margin-top: 6px !important;
+  max-width: 34ch;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.empty-hint kbd {
+  display: inline-block;
+  min-width: 1.4em;
+  padding: 0 4px;
+  border: 1px solid #c9c9c9;
+  border-radius: 4px;
+  background: #fff;
+  font: inherit;
+  font-size: 11px;
+  text-align: center;
+  color: #2b2b2b;
 }
 .entered-context span {
   overflow: hidden;

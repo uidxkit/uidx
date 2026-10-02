@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { onListKeys } from './list-keys'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import type { JsonValue } from '@uidx/format'
 import { FieldIcon, type IconName } from './field-icons'
@@ -13,7 +14,8 @@ import type { VariableCandidate } from './variable-binding'
  */
 const props = defineProps<{
   /** Same-type properties, or null to hide the group (outside a component). */
-  candidates: { name: string; declaration: { type: string; default: JsonValue } }[] | null
+  candidates:
+    { name: string; label?: string; declaration: { type: string; default: JsonValue } }[] | null
   componentName: string | null
   /** Already type-filtered by the host. */
   variables: VariableCandidate[]
@@ -80,7 +82,14 @@ function positionPopup(): void {
 const matches = (name: string): boolean =>
   name.toLowerCase().includes(query.value.trim().toLowerCase())
 
-const properties = computed(() => (props.candidates ?? []).filter((c) => matches(c.name)))
+/** A repeat's item and its fields (`item.name`) are not properties of the component: listed apart. */
+const isItem = (name: string): boolean => name.includes('.')
+const properties = computed(() =>
+  (props.candidates ?? []).filter((c) => matches(c.name) && !isItem(c.name)),
+)
+const itemFields = computed(() =>
+  (props.candidates ?? []).filter((c) => matches(c.name) && isItem(c.name)),
+)
 
 /** Collection name -> its matching variables, in declaration order. */
 const collections = computed(() => {
@@ -103,6 +112,9 @@ function onKey(event: KeyboardEvent): void {
   if (query.value) query.value = ''
   else emit('close')
 }
+
+/** The list keys (list-keys.ts): arrows walk the rows, Enter in the search picks the first. */
+const onListKey = (event: KeyboardEvent): void => onListKeys(event, root.value, search.value)
 /**
  * Outside pointerdown closes the popup — except this instance's own trigger,
  * which owns the open/close toggle and must not close-then-reopen in one
@@ -151,7 +163,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="root" class="assign-popup" :style="placement">
+  <div ref="root" class="assign-popup" :style="placement" @keydown="onListKey">
     <div class="popup-search">
       <FieldIcon name="search" />
       <input ref="search" v-model="query" placeholder="Search" aria-label="search bindings" />
@@ -159,6 +171,26 @@ onBeforeUnmount(() => {
         <FieldIcon name="close" />
       </button>
     </div>
+
+    <template v-if="itemFields.length">
+      <p class="popup-heading">From each row</p>
+      <div
+        v-for="option in itemFields"
+        :key="option.name"
+        role="button"
+        tabindex="0"
+        class="popup-row"
+        :class="{ current: option.name === boundTo }"
+        :aria-label="option.name"
+        :data-item-field="option.name"
+        @click="emit('property', option.name)"
+        @keydown.enter="emit('property', option.name)"
+      >
+        <span class="item-glyph" aria-hidden="true">{ }</span>
+        <span class="row-name">{{ option.label ?? option.name }}</span>
+        <span class="row-preview">{{ previewOf(option.declaration.default) }}</span>
+      </div>
+    </template>
 
     <template v-if="candidates">
       <p class="popup-heading">Properties in {{ componentName ?? 'this component' }}</p>
@@ -323,6 +355,11 @@ onBeforeUnmount(() => {
 }
 .popup-row.current {
   background: color-mix(in srgb, var(--accent) 25%, transparent);
+}
+.item-glyph {
+  color: var(--bound);
+  font-family: ui-monospace, monospace;
+  font-size: 9px;
 }
 .prop-glyph {
   color: var(--bound);

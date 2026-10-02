@@ -18,6 +18,15 @@ import { applyFmt, fmt, renderFmt } from './commands/fmt.js'
 import { runMigrateTokens } from './commands/migrate-tokens.js'
 import { runMcp } from './commands/mcp.js'
 import { runInit } from './commands/init.js'
+import { runContract } from './commands/contract.js'
+import { runCodegen } from './commands/codegen.js'
+import { runTokens } from './commands/tokens.js'
+import { runAdopt } from './commands/adopt.js'
+import { runComponent, runComponents } from './commands/components.js'
+import { runLint } from './commands/lint.js'
+import { runDiff } from './commands/diff.js'
+import { runExport } from './commands/export.js'
+import { runShare } from './commands/share.js'
 import { projectFiles } from './project.js'
 import { version } from '../package.json'
 import { BootError, open } from './commands/open.js'
@@ -32,6 +41,27 @@ Usage:
   uidx mcp [--root dir]  connect MCP tools to this project and its viewer
   uidx check <glob...>    parse and validate; exit 1 on any error
   uidx fmt <glob...>      rewrite files in canonical style
+  uidx contract <page...> print a page's contract, behaviour, models and styles as JSON
+  uidx codegen <glob...> --out <dir>
+                          render HTML/CSS, React and contract JSON from the pages
+  uidx share [--out dir]  a static read-only site: page pictures, component docs, tokens
+  uidx export design-md [--out DESIGN.md]
+                          tokens and component words as a DESIGN.md for agents
+  uidx export fig [--out dir]
+                          one Figma file per page, drawn as the canvas draws it
+  uidx diff [--base ref] [--fail-on-breaking]
+                          design-system changes since a git ref, breaking ones marked
+  uidx lint [path...]     app code against the design system: token literals, raw elements
+  uidx components [--json]   the design system's components, one line each
+  uidx component <Name>   one component's contract, import line and usage
+  uidx tokens list [--mode collection=mode]
+                          every token resolved, with its CSS variable
+  uidx adopt <custom-elements.json> [--tags a,b] [--out .uidx]
+                          a draft identity per element a headless library ships
+  uidx tokens import <file.json...> [--out tokens.uidx] [--modes a,b]
+                          Design Tokens (DTCG 2025.10) files or a resolver as a <Tokens> page
+  uidx tokens export [glob...] --out <dir>
+                          the document's tokens as DTCG files, modes via resolver.json
   uidx migrate tokens <file...>
                           write the type every <Variable> now declares
 
@@ -67,6 +97,8 @@ root defaults to the current project, or select one with --root <dir>.
 Options for init:
   --script <name>         run script name (default: uidx)
   --port <n>              save the shared viewer/MCP port in .uidx/config.json
+  --design-system         start with a design system: tiered tokens and a Button
+  --ci                    add a pull-request workflow: check, lint, diff posted on the PR
 
 Options for dev / open:
   --port <n>              override config.json port (default: 4400, auto-increments)
@@ -139,6 +171,26 @@ export async function run(argv: string[], io: Io = processIo): Promise<number> {
         return runMcp(rest, io)
       case 'init':
         return runInit(rest, io)
+      case 'contract':
+        return await runContract(rest, io)
+      case 'codegen':
+        return await runCodegen(rest, io)
+      case 'tokens':
+        return await runTokens(rest, io)
+      case 'adopt':
+        return await runAdopt(rest, io)
+      case 'components':
+        return await runComponents(rest, io)
+      case 'lint':
+        return await runLint(rest, io)
+      case 'diff':
+        return await runDiff(rest, io)
+      case 'export':
+        return await runExport(rest, io)
+      case 'share':
+        return await runShare(rest, io)
+      case 'component':
+        return await runComponent(rest, io)
       case 'dev':
         return runOpen(rest, io)
       case 'audit':

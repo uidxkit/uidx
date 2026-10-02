@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { applyPatches } from '@uidx/format'
 import { parseOrThrow } from '@uidx/format'
 
-import { dropTargetFor, insertTargetFor, reparentTo } from '../src/drop-target'
+import { authoredContainer, dropTargetFor, insertTargetFor, reparentTo } from '../src/drop-target'
 
 /**
  * `container` holds a leaf, a text and an empty frame; `loose` is a second
@@ -218,5 +218,37 @@ describe('reparentTo, for a pinned node', () => {
       })
       expect(() => applyPatches(source, target!.patches), parent).not.toThrow()
     }
+  })
+})
+
+describe('drawing inside a component with states', () => {
+  const states = parseOrThrow(`---
+id: switch
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="draft" layoutMode="HORIZONTAL">
+    <Frame name="control" layoutMode="HORIZONTAL" width={36} height={20} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="checked" type="boolean" default={false} visual>On.</Prop>
+</Props>
+`)
+
+  it('draws into the base layer a default-state twin stands for, never into another state', () => {
+    expect(authoredContainer(states, 'Switch#state=default/root/control')).toBe('Switch#control')
+    expect(authoredContainer(states, 'Switch#state=default/root')).toBe('Switch')
+    expect(authoredContainer(states, 'Switch#state=checked/root/control')).toBeUndefined()
+    expect(authoredContainer(states, 'Switch#control')).toBe('Switch#control')
+    const chain = ['Switch#state=default/root/control', 'Switch#state=default/root', 'Switch']
+      .map((address) => authoredContainer(states, address))
+      .filter((address): address is string => address !== undefined)
+    expect(insertTargetFor(states, 'Frame', chain)).toBe('Switch#control')
   })
 })

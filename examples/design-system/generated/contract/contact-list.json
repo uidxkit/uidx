@@ -1,0 +1,203 @@
+{
+  "id": "contact-list",
+  "components": [
+    {
+      "name": "ContactList",
+      "implements": "hwc-radio-group",
+      "status": "stable",
+      "boundParts": [],
+      "treeSlots": [
+        "option",
+        "empty"
+      ],
+      "axes": {
+        "state": [
+          "default",
+          "disabled",
+          "empty"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "root"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "items",
+        "type": "Contact[]",
+        "controllable": false,
+        "visual": false,
+        "description": "The people to choose from, in order."
+      },
+      {
+        "name": "name",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "Form field name shared by every option."
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Every option inert.",
+        "default": false
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [
+      {
+        "name": "option",
+        "description": "One option per element of `items`.",
+        "accepts": "hwc-radio"
+      },
+      {
+        "name": "empty",
+        "description": "Shown instead of the options while `items` is empty."
+      }
+    ],
+    "composes": [
+      "ContactOption",
+      "Field"
+    ],
+    "accessibility": {
+      "role": "radiogroup",
+      "keyboard": "Arrow keys move the choice"
+    }
+  },
+  "behavior": [
+    {
+      "id": "one-choice",
+      "text": "exactly one option is chosen at a time; choosing one unchooses the rest."
+    },
+    {
+      "id": "keyboard",
+      "text": "arrow keys move the choice through the options; Tab leaves the group."
+    },
+    {
+      "id": "empty",
+      "text": "with no items the `empty` slot shows and nothing is chosen."
+    }
+  ],
+  "examples": [
+    {
+      "name": "second-chosen",
+      "sets": [
+        {
+          "slot": "option",
+          "count": 3
+        },
+        {
+          "at": "option[1]",
+          "state": "checked"
+        }
+      ]
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "empty"
+      },
+      "values": {
+        "empty": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

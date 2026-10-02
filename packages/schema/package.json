@@ -14,6 +14,51 @@
       "development": "./src/known-props.ts",
       "types": "./dist/known-props.d.ts",
       "default": "./dist/known-props.js"
+    },
+    "./instance-box": {
+      "development": "./src/instance-box.ts",
+      "types": "./dist/instance-box.d.ts",
+      "default": "./dist/instance-box.js"
+    },
+    "./design-system": {
+      "development": "./src/design-system.ts",
+      "types": "./dist/design-system.d.ts",
+      "default": "./dist/design-system.js"
+    },
+    "./design-system-audit": {
+      "development": "./src/design-system-audit.ts",
+      "types": "./dist/design-system-audit.d.ts",
+      "default": "./dist/design-system-audit.js"
+    },
+    "./instance-box-audit": {
+      "development": "./src/instance-box-audit.ts",
+      "types": "./dist/instance-box-audit.d.ts",
+      "default": "./dist/instance-box-audit.js"
+    },
+    "./dtcg": {
+      "development": "./src/dtcg.ts",
+      "types": "./dist/dtcg.d.ts",
+      "default": "./dist/dtcg.js"
+    },
+    "./token-index": {
+      "development": "./src/token-index.ts",
+      "types": "./dist/token-index.d.ts",
+      "default": "./dist/token-index.js"
+    },
+    "./headless": {
+      "development": "./src/headless.ts",
+      "types": "./dist/headless.d.ts",
+      "default": "./dist/headless.js"
+    },
+    "./adopt": {
+      "development": "./src/adopt.ts",
+      "types": "./dist/adopt.d.ts",
+      "default": "./dist/adopt.js"
+    },
+    "./design-diff": {
+      "development": "./src/design-diff.ts",
+      "types": "./dist/design-diff.d.ts",
+      "default": "./dist/design-diff.js"
     }
   },
   "files": [

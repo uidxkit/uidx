@@ -1,4 +1,5 @@
 import {
+  enumValues,
   componentProps,
   componentVariants,
   instanceProps,
@@ -9,6 +10,7 @@ import {
   type UidxDocument,
   type UidxNode,
   type UidxPatch,
+  aliasTarget,
 } from '@uidx/format'
 
 /**
@@ -91,10 +93,18 @@ export function instancePropRows(
   const axes = [...componentVariants(definition).axes].map(([name, domain]) =>
     row(name, { type: 'TEXT' as const, default: domain[0] ?? '' }, domain),
   )
+  // A contract prop typed as a union of words (`'info' | 'warning'`) has a
+  // domain as surely as an axis does, so it gets the same picker.
   const declared = [...componentProps(definition).declared].map(([name, declaration]) =>
-    row(name, declaration),
+    row(name, declaration, contractDomain(definition, name)),
   )
   return [...axes, ...declared]
+}
+
+/** The values a contract prop may take, when its type is a union of words. */
+function contractDomain(definition: UidxNode, name: string): readonly string[] | undefined {
+  const prop = definition.spec?.contract?.props.find((entry) => entry.name === name)
+  return enumValues(prop?.type) ?? undefined
 }
 
 /** The `<Instance>` at this address, or null for anything else. */
@@ -133,6 +143,8 @@ export function setInstanceProp(
   } else {
     const declaration = componentProps(definition).declared.get(name)
     if (!declaration || !matchesType(declaration.type, value)) return null
+    const words = contractDomain(definition, name)
+    if (words && (typeof value !== 'string' || !words.includes(value))) return null
   }
 
   const values = instanceProps(instance).values
@@ -220,6 +232,9 @@ export function unusedInstanceProps(
       }
       continue
     }
+    // `{item.expanded}` is a binding to the enclosing item (ADR 0017 §2), not
+    // a value of the wrong type: the Contract tab shows what it receives.
+    if (typeof value === 'string' && aliasTarget(value) !== null) continue
     const declaration = declared.get(name)
     if (!declaration) out.push({ name, reason: 'undeclared', value })
     else if (!matchesType(declaration.type, value)) out.push({ name, reason: 'mistyped', value })

@@ -123,6 +123,34 @@ export async function evalDocument(
           void list.push({ kind: 'move_node', address, newParent, index }),
         rename: (address: string, name: string) =>
           void list.push({ kind: 'rename', address, name }),
+        style: (keys: unknown, target: string, prop: string, value?: unknown) =>
+          void list.push({
+            kind: 'set_style',
+            keys,
+            target,
+            prop,
+            ...(value === undefined ? {} : { value }),
+          }),
+        declare: (contractKind: string, name: string, description: string, attrs?: unknown) =>
+          void list.push({
+            kind: 'declare',
+            contractKind,
+            name,
+            description,
+            ...(attrs === undefined ? {} : { attrs }),
+          }),
+        undeclare: (contractKind: string, name: string) =>
+          void list.push({ kind: 'declare', contractKind, name, remove: true }),
+        model: (name: string, description: string) =>
+          void list.push({ kind: 'set_model', name, description }),
+        field: (model: string, name: string, description: string, attrs?: unknown) =>
+          void list.push({
+            kind: 'set_field',
+            model,
+            name,
+            description,
+            ...(attrs === undefined ? {} : { attrs }),
+          }),
       }
     },
     console: {

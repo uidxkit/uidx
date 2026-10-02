@@ -28,6 +28,13 @@ export const STRUCTURAL_PROPS: readonly string[] = [
   'props',
   'modes',
   'rootFontSize',
+  // ADR 0013 §3: the headless root a component implements, and the part a
+  // node binds. ADR 0017 §2: what an element repeats over and what it calls
+  // the item. Bindings to the contract, never scene fields.
+  'implements',
+  'part',
+  'repeat',
+  'as',
 ]
 
 /**
@@ -43,6 +50,18 @@ export const STRUCTURAL_PROPS: readonly string[] = [
  * no reflow can announce one back at the file.
  */
 export const PIN_PROPS: readonly string[] = ['right', 'bottom', 'centerX', 'centerY']
+
+/**
+ * What an `<Instance>` hands down to everything its component draws instead of
+ * setting on a node (ADR 0018 §4). `textFills` recolours every text inside, the
+ * way CSS `color` inherits, and takes exactly a `fills` value.
+ *
+ * Absent from `PROP_TABLE` on purpose, exactly as `STRUCTURAL_PROPS` is: no
+ * scene node has the field, and the renderer passes the value to the texts it
+ * reaches. The rest of the instance roles live in `instance-box.ts`, which
+ * re-exports this one; it sits here so `KNOWN_PROPS` stays import-free.
+ */
+export const INSTANCE_CASCADE_PROPS: readonly string[] = ['textFills']
 
 export const KNOWN_PROPS: readonly string[] = [
   // identity & geometry
@@ -65,6 +84,7 @@ export const KNOWN_PROPS: readonly string[] = [
   'blendMode',
   'clipsContent',
   'fills',
+  ...INSTANCE_CASCADE_PROPS,
   'strokes',
   'effects',
   'cornerRadius',

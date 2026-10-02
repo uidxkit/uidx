@@ -34,7 +34,8 @@
     "tinyglobby": "^0.2.10",
     "yaml": "^2.7.0",
     "@uidx/agent": "workspace:*",
-    "@modelcontextprotocol/sdk": "^1.30.0"
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@uidx/codegen": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^26.5.1",

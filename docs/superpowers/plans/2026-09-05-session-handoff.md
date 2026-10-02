@@ -246,7 +246,10 @@ That is the one measurement still owed.
 - `uidx apply` gates each op against the document *as it stands*, not against
   earlier ops in the same batch: a component instanced by another must land in
   an earlier batch.
-- An `<Instance>` cannot override its component's width; size must be an axis.
+- ~~An `<Instance>` cannot override its component's width; size must be an axis.~~
+  Superseded 2026-10-01: an `<Instance>` that states `width`/`height` is Fixed
+  on that axis (only the dimensions are written, never sizing modes); one that
+  states none follows its component, and an authored stretch/grow still wins.
   A slot fill inside an instance carries no layout props (UIDX131). `status`
   cannot be an axis name (UIDX109).
 - `uidx audit --page tokens.uidx` reports false faults; audit the whole root.

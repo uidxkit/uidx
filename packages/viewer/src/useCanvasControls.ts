@@ -319,6 +319,12 @@ export function createCanvasController(
      */
     isAddressable?: (id: string) => boolean
     onEnteredChange?: (id: string | null) => void
+    /**
+     * A double-click that landed on a leaf — a node with nothing to step
+     * into. The host decides what activating it means: for a `<Text>` it is
+     * editing the words in place, the way every canvas tool does.
+     */
+    onActivate?: (id: string) => void
 
     /**
      * The container a drop at this point would reparent into, or null for
@@ -1532,6 +1538,7 @@ export function createCanvasController(
     else {
       editor.exitContainer()
       editor.select([outer.id])
+      options.onActivate?.(outer.id)
     }
     emitSelection()
     notify()
@@ -1777,6 +1784,8 @@ export function useCanvasControls(
   hooks: {
     onChange?: () => void
     isAddressable?: (id: string) => boolean
+    /** A double-click on a leaf: the host decides what activating it means. */
+    onActivate?: (id: string) => void
     dropTargetFor?: (draggedId: string, point: Point) => string | null
     onReparent?: (draggedId: string, parentId: string) => void
 

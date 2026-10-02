@@ -1,0 +1,63 @@
+---
+id: contact-option
+---
+
+One selectable person in a list of contacts: a radio whose row shows the
+person. The row is the design system's; the person is the consumer's, as a
+Contact.
+
+## Visual Contract
+
+<Page>
+  <Component name="ContactOption" status="stable" implements="hwc-radio"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    itemSpacing="{space#sm}" counterAxisAlignItems="CENTER"
+    paddingLeft="{space#sm}" paddingRight="{space#sm}" paddingTop="{space#xs}" paddingBottom="{space#xs}"
+    cornerRadius="{radius#md}" fills="{surface#control}">
+    <Frame name="ring" width={16} height={16} cornerRadius="{radius#full}"
+      strokes="{border#default}" strokeWeight={1} fills="{surface#control}"
+      layoutMode="HORIZONTAL" primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER">
+      <Vector name="dot" part="checked-indicator" visible={false} width={8} height={8} fills="{surface#accent}"
+        vectorPaths={[{ windingRule: 'NONZERO', data: 'M4 0a4 4 0 110 8 4 4 0 010-8z' }]} />
+    </Frame>
+    <Frame name="who" layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+      <Text name="name" characters="{item.name}" fontSize={14} fills="{text#default}" />
+      <Text name="email" characters="{item.email}" fontSize={12} fills="{text#muted}" />
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" ring:strokes="{surface#accent}" checked-indicator:visible={true} />
+  <Style state="hover" root:fills="{surface#raised}" />
+  <Style state="focus" ring:strokes="{border#focus}" />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="item" type="Contact">The person this option stands for. Display-ready; nothing is derived here.</Prop>
+  <Prop name="checked" type="boolean" default={false} controllable visual>Whether this option is the chosen one.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Inert and dimmed.</Prop>
+  <Prop name="value" type="string">Submitted when chosen; normally the contact's id.</Prop>
+  <Prop name="name" type="string">Form field name, shared with the group.</Prop>
+</Props>
+<Events>
+  <Event name="change" detail="{ checked: boolean }">Fires when this option becomes the chosen one.</Event>
+</Events>
+<Composes with="ContactList" />
+
+## Models
+
+<Model name="Contact">
+  One person as a row shows them. Every value is display-ready; the adapter that builds it does any formatting.
+  <Field name="id" type="string" key sample={['ada', 'grace', 'linus']}>Stable identity, used for keys and as the submitted value.</Field>
+  <Field name="name" type="string" sample={['Ada Lovelace', 'Grace Hopper', 'Linus Torvalds']}>Full display name.</Field>
+  <Field name="email" type="string" optional sample={['ada@example.com', null, 'linus@example.com']}>Omitted when unknown; the row hides the line.</Field>
+</Model>
+
+## Behavior
+
+- choose: click, or arrow keys within the group, makes this the chosen option and unchooses the others.
+- form: the group submits the chosen option's `value` under the shared `name`.

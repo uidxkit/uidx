@@ -196,7 +196,7 @@ export async function applyGated(
   const narrowed = narrowOps(raw as never)
   if (!narrowed.ok) return { ok: false, message: `not applied — ${narrowed.message}` }
   const index = buildIndexOf(opened)
-  const refusal = refuseBadOps(narrowed.value, index)
+  const refusal = refuseBadOps(narrowed.value, index, opened.workspace.docOf(file))
   if (refusal) return { ok: false, message: `not applied — ${refusal}` }
   const result = await applyOps(opened.apply, file, narrowed.value)
   if (!result.ok) return { ok: false, message: `not applied — ${result.error}` }
@@ -220,6 +220,11 @@ export { gateArchitecture } from '../tools/architect.js'
 export { refuseBadOps }
 export { buildIndex } from '../index/build.js'
 export { viewerSelection } from './viewer.js'
+export { describeComponent, listComponents, listTokens } from './design-system.js'
+export type { ComponentDetail, ComponentSummary, TokenRow } from './design-system.js'
+export { appLintContext, lintAppSource } from './app-lint.js'
+export { exportFig } from './fig.js'
+export type { AppFinding, AppLintContext } from './app-lint.js'
 export type { ViewerSelection, ViewerSelectionResult } from './viewer.js'
 
 export { readProjectConfig, validatePort } from '../workspace/config.js'

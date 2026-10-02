@@ -3,7 +3,7 @@ import { CREATABLE_ELEMENTS, type CreatableElement } from '@uidx/schema'
 import { nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { GRAPHICS_TOOLS, type DrawingTool } from './graphics-tools'
 
-import { LAYER_ICONS, STROKE_ICONS } from './layer-icons'
+import { LAYER_ICONS, REPEAT_ICON, STROKE_ICONS } from './layer-icons'
 
 /**
  * The creation tools and delete (stories D1 and D2).
@@ -46,16 +46,31 @@ const props = defineProps<{
    * is often unavailable, and says so rather than failing on press.
    */
   canAddSlot: boolean
+  /**
+   * Whether the selection is a layer that could repeat (ADR 0017 §2): one
+   * layer inside a component, not repeating yet, with a list the contract
+   * can place. Optional, unlike the slot's: an older shell that never offers
+   * the tool simply does not show it enabled.
+   */
+  canAddRepeat?: boolean
+  /** Whether the selection is siblings a new frame could wrap (⌘⌥G). Optional like the repeat's. */
+  canFrameSelection?: boolean
   /** False while the socket is down: nothing here can reach the file. */
   writable: boolean
+  /** Whether the floating Insert panel is open above the bar. */
+  insertOpen?: boolean
 }>()
 
 const emit = defineEmits<{
   tool: [tool: DrawingTool | null]
   remove: []
   makeComponent: []
+  frameSelection: []
   placeInstance: []
   addSlot: []
+  addRepeat: []
+  /** Open or close the floating Insert panel. */
+  insert: []
 }>()
 
 /** Figma's letters, echoed in the tooltip so the shortcut is discoverable. */
@@ -166,6 +181,22 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
       </svg>
     </button>
 
+    <button
+      type="button"
+      class="tool insert-tool"
+      :data-armed="insertOpen ? 'true' : 'false'"
+      :aria-pressed="insertOpen === true"
+      :disabled="!writable"
+      title="Insert — blocks, images and components"
+      aria-label="Insert"
+      data-action="insert"
+      @click="emit('insert')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <path d="M6 1.5v9M1.5 6h9" fill="none" stroke="currentColor" stroke-width="1.4" />
+      </svg>
+    </button>
+
     <span class="divider" />
 
     <button
@@ -256,6 +287,19 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
     <button
       type="button"
       class="tool"
+      :disabled="!writable || !canFrameSelection"
+      title="Frame selection — ⌘/ctrl+alt+G"
+      aria-label="Frame selection"
+      @click="emit('frameSelection')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <rect x="1" y="1" width="10" height="10" rx="1.5" fill="none" stroke="currentColor" />
+        <rect x="3.5" y="3.5" width="5" height="5" fill="currentColor" opacity="0.6" />
+      </svg>
+    </button>
+    <button
+      type="button"
+      class="tool"
       :disabled="!writable || !canMakeComponent"
       title="Make component — ⌘/ctrl+alt+K"
       aria-label="Make component"
@@ -282,6 +326,24 @@ onUnmounted(() => document.removeEventListener('pointerdown', closeOutside))
     >
       <svg viewBox="0 0 12 12" aria-hidden="true">
         <path :d="LAYER_ICONS.Slot" fill="none" stroke="currentColor" />
+      </svg>
+    </button>
+
+    <!--
+      A repeat rides on the selected layer (ADR 0017 §2): the canvas then draws
+      it once per sample of the list's model. Beside the slot tool because it
+      is the other half of the same idea — a hole, and what fills it many times.
+    -->
+    <button
+      type="button"
+      class="tool"
+      :disabled="!writable || !canAddRepeat"
+      title="Repeat the layer over a list of the contract"
+      aria-label="Repeat"
+      @click="emit('addRepeat')"
+    >
+      <svg viewBox="0 0 12 12" aria-hidden="true">
+        <path :d="REPEAT_ICON" fill="none" stroke="currentColor" />
       </svg>
     </button>
 

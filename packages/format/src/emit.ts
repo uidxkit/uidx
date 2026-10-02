@@ -70,8 +70,23 @@ export function emitDocument(doc: UidxDocument): string {
   // so `uidx fmt` performs that half of the migration by construction.
   const contract = emitTree(toSpec(doc.tree, false))
   const intent = doc.intent.raw.replace(/^\n+/, '').replace(/\n+$/, '')
+  // The styles table and the spec regions (ADR 0012) are printed back as
+  // written: this emitter reformats the tree and nothing else, and a region
+  // it does not understand must survive a `uidx fmt` byte for byte.
+  const styles = doc.spec?.styles?.length ? `\n${stylesSource(doc)}\n` : ''
+  const trailing = doc.trailing ? `\n${doc.trailing.raw.replace(/\n+$/, '')}\n` : ''
 
-  return `---\n${frontmatter}\n---\n\n${intent}\n\n## Visual Contract\n\n${contract}\n`
+  return `---\n${frontmatter}\n---\n\n${intent}\n\n## Visual Contract\n\n${contract}\n${styles}${trailing}`
+}
+
+/** The `<Styles>` element's own source text, found by its first row's span. */
+function stylesSource(doc: UidxDocument): string {
+  const rows = doc.spec?.styles ?? []
+  const first = rows[0]!.loc.start
+  const open = doc.source.lastIndexOf('<Styles', first)
+  const close = doc.source.indexOf('</Styles>', rows[rows.length - 1]!.loc.end)
+  if (open === -1 || close === -1) return ''
+  return doc.source.slice(open, close + '</Styles>'.length)
 }
 
 /** Auto-name per spec §3.4: `<element>-<n>`, bumped until siblings are unique. */

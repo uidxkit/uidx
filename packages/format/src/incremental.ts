@@ -109,11 +109,33 @@ export function applyPatchesIncremental(
     if (current === doc) return { doc, changed: [], fellBack: false }
     const out: UidxDocument = { ...current, sourceHash: fnv1a(current.source) }
     delete (out as { predicted?: true }).predicted
-    return { doc: out, changed, fellBack: false }
+    return { doc: withComponentSpecs(out), changed, fellBack: false }
   }
   if (current !== doc) current = { ...current, sourceHash: fnv1a(current.source) }
   const relowered = relowerBatch(current, rest)
-  return { ...relowered, changed: [...changed, ...relowered.changed] }
+  return {
+    ...relowered,
+    doc: withComponentSpecs(relowered.doc),
+    changed: [...changed, ...relowered.changed],
+  }
+}
+
+/**
+ * The spec rides on every `<Component>` of the page as well as on the
+ * document (ADR 0013), so an instance expanded elsewhere can read it. A
+ * re-lowered component is a fresh node without it, and the Contract tab then
+ * sees a component with no props until a full parse happens to run. Put back
+ * here, on the one path that builds nodes without the parser's last step.
+ */
+function withComponentSpecs(doc: UidxDocument): UidxDocument {
+  if (!doc.spec) return doc
+  let touched = false
+  const children = doc.tree.children.map((child) => {
+    if (child.element !== 'Component' || child.spec === doc.spec) return child
+    touched = true
+    return { ...child, spec: doc.spec }
+  })
+  return touched ? { ...doc, tree: { ...doc.tree, children } } : doc
 }
 
 type PlainAttributePatch = Extract<UidxPatch, { op: 'set' | 'add' | 'remove' }>
@@ -198,7 +220,38 @@ function takeAttribute(doc: UidxDocument, patch: PlainAttributePatch): UidxDocum
     if (a.loc.start >= from) attrs[k] = shiftAttr(a, delta)
   }
   const tree = moveAfter(doc.tree, from, delta, node.address, attrs)
-  return { ...doc, tree, source }
+  return { ...doc, ...movedTail(doc, delta), tree, source }
+}
+
+const RANGE_KEYS = new Set(['loc', 'valueLoc', 'openTagLoc'])
+
+/** Every span inside a spec value, moved by `by`. */
+function movedSpans<T>(value: T, by: number): T {
+  if (Array.isArray(value)) return value.map((item) => movedSpans(item, by)) as T
+  if (!value || typeof value !== 'object') return value
+  const out: Record<string, unknown> = {}
+  for (const [key, child] of Object.entries(value)) {
+    const range = child as Range
+    out[key] =
+      RANGE_KEYS.has(key) && typeof range?.start === 'number' && typeof range.end === 'number'
+        ? { start: range.start + by, end: range.end + by }
+        : movedSpans(child, by)
+  }
+  return out as T
+}
+
+/**
+ * The regions after the tree — the contract, behaviour, models, styles — and
+ * their verbatim text sit wholly after any edit inside the tree, so a change
+ * of `by` characters moves every one of their spans. Left stale, the next
+ * contract op splices at the old offsets and writes into the middle of a tag.
+ */
+function movedTail(doc: UidxDocument, by: number): Pick<UidxDocument, 'spec' | 'trailing'> {
+  if (by === 0) return { spec: doc.spec, trailing: doc.trailing }
+  return {
+    spec: doc.spec && movedSpans(doc.spec, by),
+    trailing: doc.trailing && { ...doc.trailing, loc: moveRange(doc.trailing.loc, 0, by) },
+  }
 }
 
 /** A range after `from` moves; one spanning it grows at the end. */
@@ -234,6 +287,29 @@ function moveAfter(
 function relowerBatch(doc: UidxDocument, patches: readonly UidxPatch[]): IncrementalResult {
   const spliced = applyPatches(doc.source, patches, { document: doc, validate: false })
   if (spliced.source === doc.source) return { doc, changed: [], fellBack: false }
+
+  // A style op edits the table beside the tree, which no node's span holds,
+  // and the derived variants it changes are rebuilt from the spec — so the
+  // whole document is re-read rather than one node re-lowered.
+  if (
+    patches.some((p) =>
+      ['style', 'contract', 'model', 'field', 'region', 'intent', 'contract-element'].includes(
+        p.op,
+      ),
+    )
+  ) {
+    const { doc: full, diagnostics } = parse(spliced.source)
+    if (!full) {
+      const detail = diagnostics
+        .filter((d) => d.severity === 'error')
+        .map((d) => `${d.line}:${d.column} ${d.code}: ${d.message}`)
+        .join('; ')
+      throw new PatchError(
+        `the patch would produce an invalid document and was rejected — ${detail}`,
+      )
+    }
+    return { doc: full, changed: [], fellBack: true }
+  }
 
   const reshape = patches.some(
     (p) =>
@@ -469,6 +545,7 @@ function relower(
   const tree = rebuild(0)
   const next: UidxDocument = {
     ...doc,
+    ...movedTail(doc, delta),
     tree,
     source: nextSource,
     sourceHash: fnv1a(nextSource),

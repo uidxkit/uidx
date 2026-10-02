@@ -105,3 +105,29 @@ describe('inversePatches (spec §5)', () => {
     ).toThrow(/name/)
   })
 })
+
+describe('inverting a rename', () => {
+  it('names the node at its new address, at the top level and inside an entity', () => {
+    const source = `---
+id: t
+---
+
+## Visual Contract
+
+<Tokens>
+  <Collection name="color">
+    <Variable name="accent" type="FLOAT" value={1} />
+  </Collection>
+</Tokens>
+`
+    for (const [address, value] of [
+      ['color', 'colour'],
+      ['color#accent', 'brand'],
+    ] as const) {
+      const patch = { op: 'set', address, prop: 'name', value } as const
+      const renamed = applyPatches(source, [patch]).source
+      const back = inversePatches(parseOrThrow(source), [patch])
+      expect(applyPatches(renamed, back).source).toBe(source)
+    }
+  })
+})

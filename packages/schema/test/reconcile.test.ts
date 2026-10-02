@@ -21,7 +21,106 @@ const BASE = `<Component name="demo" status="draft">
   </Frame>
 </Component>`
 
+const REPEATED = (body: string) =>
+  parseOrThrow(`---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft">
+${body}
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Item[]">Rows.</Prop>
+</Props>
+
+## Models
+
+<Model name="Item">
+  A row.
+  <Field name="id" type="string" key sample={['a', 'b']}>Identity.</Field>
+  <Field name="name" type="string" sample={['Ada', 'Grace']}>Name.</Field>
+</Model>
+`)
+
+const ROWS = `    <Frame name="row" repeat="{items}" width={10} height={10}>
+      <Text name="name" characters="{item.name}" />
+    </Frame>
+    <Text name="footer" characters="end" />`
+
 describe('diffDocuments', () => {
+  it('rebuilds for a repeat that changes, and for anything a repeat draws (ADR 0017 §2)', () => {
+    const before = REPEATED(ROWS)
+    // The echoes are generated at ids the diff cannot address, so the
+    // item's name, the list, and the rows' own look all rebuild.
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(ROWS.replace('repeat="{items}"', 'repeat="{items}" as="person"')),
+      ),
+    ).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('repeat="{items}"', '')))).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('width={10}', 'width={20}')))).toBeNull()
+    expect(diffDocuments(before, REPEATED(ROWS.replace('{item.name}', '{item.id}')))).toBeNull()
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(
+          ROWS.replace(
+            '    <Text name="name"',
+            '    <Text name="extra" characters="x" />\n    <Text name="name"',
+          ),
+        ),
+      ),
+    ).toBeNull()
+    expect(
+      diffDocuments(
+        before,
+        REPEATED(ROWS.replace('      <Text name="name" characters="{item.name}" />\n', '')),
+      ),
+    ).toBeNull()
+    // Beside the repeat, the incremental path still serves.
+    expect(
+      diffDocuments(before, REPEATED(ROWS.replace('characters="end"', 'characters="fin"'))),
+    ).toEqual([{ kind: 'update', address: 'List#footer', props: { text: 'fin' } }])
+  })
+
+  it('rebuilds when a node keeps its address but becomes another element', () => {
+    const before = doc(`<Page>
+  <Component name="Chip" status="draft" width={10} height={10} />
+  <Instance name="a" component="Chip" />
+</Page>`)
+    const after = doc(`<Page>
+  <Component name="Chip" status="draft" width={10} height={10} />
+  <Frame name="a" width={10} height={10} />
+</Page>`)
+    expect(diffDocuments(before, after)).toBeNull()
+  })
+
+  // Rebinding a text from one model field to another changed nothing on the
+  // canvas: both aliases read as unbound without the component's scope.
+  it('rebuilds when a binding to the contract changes, which only a full build resolves', () => {
+    const page = (field: string) =>
+      doc(`<Page>
+  <Component name="Row" status="draft">
+    <Text name="role" characters="{item.${field}}" />
+  </Component>
+</Page>`)
+    expect(diffDocuments(page('role'), page('id'))).toBeNull()
+    // A token alias still updates in place.
+    const tinted = (token: string) =>
+      doc(`<Page>
+  <Frame name="box" fills="{color#${token}}" />
+</Page>`)
+    expect(diffDocuments(tinted('a'), tinted('b'))).not.toBeNull()
+  })
+
   it('sees nothing when the document is unchanged', () => {
     expect(diffDocuments(doc(BASE), doc(BASE))).toEqual([])
   })
@@ -639,9 +738,37 @@ describe('an instance’s own attributes, and a definition root’s, update with
     const sized = doc(LIB(' width={200}'))
     const live = scene(plain)
     applyChanges(live, diffDocuments(plain, sized)!, optionsFor(sized))
-    same(live, scene(sized), ['doc#one'])
+    // The frame the component wraps is drawn at the instance's size too, so
+    // it is compared as well — comparing the instance alone passed while both
+    // sides dropped the 200.
+    expect(live.graph.getNode('doc#one/root')!.width).toBe(200)
+    same(live, scene(sized), ['doc#one', 'doc#one/root', 'doc#two/root'])
     applyChanges(live, diffDocuments(sized, plain)!, optionsFor(plain))
-    same(live, scene(plain), ['doc#one'])
+    expect(live.graph.getNode('doc#one/root')!.width).toBe(80)
+    same(live, scene(plain), ['doc#one', 'doc#one/root', 'doc#two/root'])
+  })
+
+  it('a size on an instance of a component with states lands where a rebuild would', () => {
+    const STATES = (extra = '') => `<Page>
+<Component name="Pill" status="draft" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO" paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8}>
+  <Text name="label" characters="Go" />
+</Component>
+<Instance name="one" component="Pill"${extra} />
+</Page>
+
+<Styles>
+  <Style state="hover" root:opacity={0.5} />
+</Styles>`
+    const plain = doc(STATES())
+    const sized = doc(STATES(' width={150} height={44}'))
+    const live = scene(plain)
+    const changes = diffDocuments(plain, sized)
+    expect(changes).not.toBeNull()
+    applyChanges(live, changes!, optionsFor(sized))
+    expect(live.graph.getNode('one#root')!.width).toBe(150)
+    same(live, scene(sized), ['one', 'one#root'])
+    applyChanges(live, diffDocuments(sized, plain)!, optionsFor(plain))
+    same(live, scene(plain), ['one', 'one#root'])
   })
 
   it('an attribute on the component itself reaches every instance root', () => {
@@ -668,5 +795,29 @@ describe('an instance’s own attributes, and a definition root’s, update with
         ),
       ),
     ).toBeNull()
+  })
+})
+
+describe('a component turning into a set of states', () => {
+  const button = (styles: string) =>
+    parseOrThrow(`---
+id: button
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Button" status="draft" layoutMode="HORIZONTAL">
+    <Text name="label" characters="Go" />
+  </Component>
+</Page>
+${styles}`)
+
+  it('rebuilds when the first state is added, and when the last is removed', () => {
+    const plain = button('')
+    const hover = button('\n<Styles>\n  <Style state="hover" />\n</Styles>\n')
+    // Default and hover side by side is another scene shape, not a moved child.
+    expect(diffDocuments(plain, hover)).toBeNull()
+    expect(diffDocuments(hover, plain)).toBeNull()
   })
 })

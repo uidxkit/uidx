@@ -128,6 +128,11 @@ describe('LayersPane', () => {
     const w = mount(LayersPane, { props: { doc: DOC, selection: [] } })
     await w.get('[data-address="Button/Primary#container"] .label').trigger('click')
     expect(w.emitted('select')?.[0]).toEqual(['Button/Primary#container'])
+    // A modified click gathers rows (for Frame selection) instead of replacing.
+    await w
+      .get('[data-address="Button/Primary#container"] .label')
+      .trigger('click', { shiftKey: true })
+    expect(w.emitted('select')?.[1]).toEqual(['Button/Primary#container', true])
   })
 
   it('marks the selected row', () => {

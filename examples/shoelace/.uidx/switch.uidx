@@ -1,0 +1,59 @@
+---
+id: switch
+---
+
+A setting that takes effect at once. Shoelace's `sl-switch` supplies
+toggling, keyboard and form behaviour; this identity draws the track and thumb.
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="stable" implements="sl-switch"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+    <Frame name="base" part="base" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+      counterAxisAlignItems="CENTER" itemSpacing="{space#sm}">
+      <Frame name="control" part="control" width={36} height={20} cornerRadius="{radius#full}"
+        layoutMode="HORIZONTAL" primaryAxisAlignItems="MIN" counterAxisAlignItems="CENTER"
+        paddingLeft={2} paddingRight={2} fills="{color#border}">
+        <Frame name="thumb" part="thumb" width={16} height={16} cornerRadius="{radius#full}" fills="{palette#white}" />
+      </Frame>
+      <Frame name="label" part="label" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO">
+        <Slot name="default">
+          <Text name="text" characters="{label}" fontSize="{type#md}" fills="{color#text}" />
+        </Slot>
+      </Frame>
+    </Frame>
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="checked" control:fills="{color#accent}" control:primaryAxisAlignItems="MAX" />
+  <Style state="focus" control:strokes="{color#text}" control:strokeWeight={2} />
+  <Style state="disabled" root:opacity="{opacity#disabled}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Dark mode">The setting, given as its content.</Prop>
+  <Prop name="checked" type="boolean" default={false} visual>On.</Prop>
+  <Prop name="disabled" type="boolean" default={false} visual>Not changeable, dimmed.</Prop>
+</Props>
+<Events>
+  <Event name="change">Fires once per toggle.</Event>
+</Events>
+<Slots>
+  <Slot name="default">The label.</Slot>
+</Slots>
+<Parts>
+  <Part name="base">The track and label in a row.</Part>
+  <Part name="control">The track.</Part>
+  <Part name="thumb">The thumb.</Part>
+  <Part name="label">The label's container.</Part>
+</Parts>
+<Form participates submits="on while checked" />
+<Accessibility role="switch" keyboard="Space toggles" />
+
+## Behavior
+
+- toggle: click or Space flips `checked` and fires `change` once.

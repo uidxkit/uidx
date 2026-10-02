@@ -18,6 +18,8 @@ const props = defineProps<{
   /** The name to start from — the node's own, which is usually most of it. */
   suggested: string
   taken: ReadonlySet<string>
+  /** A component already on this page: the new one would share its contract (ADR 0013). */
+  sharesWith?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -77,6 +79,10 @@ function confirm(): void {
       -->
       <p class="hint" :data-problem="problem !== null">
         {{ problem ?? 'Global to the document. Group with “/”, as in Icon/Check.' }}
+      </p>
+      <p v-if="sharesWith && problem === null" class="hint" data-shares="true">
+        This page already has “{{ sharesWith }}”. Components on one page share its contract, so for
+        props of its own, make this one on a new page.
       </p>
       <div class="actions">
         <button type="button" class="ghost" @click="emit('close')">Cancel</button>

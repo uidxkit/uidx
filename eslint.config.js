@@ -22,6 +22,10 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      // Rendered from .uidx identities and a vendored third-party build:
+      // neither is written here, so neither is linted here.
+      'examples/*/generated/**',
+      'examples/*/vendor/**',
       '**/.build/**',
       '**/node_modules/**',
       'packages/viewer/public/**',

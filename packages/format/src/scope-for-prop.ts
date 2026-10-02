@@ -55,6 +55,9 @@ export const SCOPE_FOR_PROP: Readonly<Record<string, readonly VariableScope[]>> 
   strokes: ['STROKE_COLOR'],
   effects: ['EFFECT_COLOR'],
   textRangeFills: ['TEXT_FILL', 'ALL_FILLS'],
+  // An instance's text colour (ADR 0018 §4) becomes the fills of the texts it
+  // reaches, so it takes the tokens a text's fills take.
+  textFills: ['TEXT_FILL', 'ALL_FILLS'],
 }
 
 /**

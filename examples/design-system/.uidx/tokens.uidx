@@ -1,0 +1,43 @@
+---
+id: tokens
+---
+
+The theme: every colour, radius and space the components reference. One mode
+for now; theming beyond modes is a future task (ADR 0012 §4).
+
+## Visual Contract
+
+<Tokens>
+  <Collection name="surface">
+    <Variable name="control" type="COLOR" value={{ r: 1, g: 1, b: 1, a: 1 }} />
+    <Variable name="raised" type="COLOR" value={{ r: 0.957, g: 0.957, b: 0.965, a: 1 }} />
+    <Variable name="accent" type="COLOR" value={{ r: 0.051, g: 0.6, b: 1, a: 1 }} />
+    <Variable name="accentHover" type="COLOR" value={{ r: 0.02, g: 0.5, b: 0.9, a: 1 }} />
+    <Variable name="danger" type="COLOR" value={{ r: 0.863, g: 0.149, b: 0.149, a: 1 }} />
+  </Collection>
+  <Collection name="text">
+    <Variable name="default" type="COLOR" value={{ r: 0.094, g: 0.094, b: 0.106, a: 1 }} />
+    <Variable name="muted" type="COLOR" value={{ r: 0.443, g: 0.443, b: 0.478, a: 1 }} />
+    <Variable name="onAccent" type="COLOR" value={{ r: 1, g: 1, b: 1, a: 1 }} />
+    <Variable name="danger" type="COLOR" value={{ r: 0.863, g: 0.149, b: 0.149, a: 1 }} />
+  </Collection>
+  <Collection name="border">
+    <Variable name="default" type="COLOR" value={{ r: 0.831, g: 0.831, b: 0.847, a: 1 }} />
+    <Variable name="hover" type="COLOR" value={{ r: 0.631, g: 0.631, b: 0.667, a: 1 }} />
+    <Variable name="focus" type="COLOR" value={{ r: 0.051, g: 0.6, b: 1, a: 1 }} />
+  </Collection>
+  <Collection name="radius">
+    <Variable name="sm" type="FLOAT" value={4} />
+    <Variable name="md" type="FLOAT" value={6} />
+    <Variable name="full" type="FLOAT" value={999} />
+  </Collection>
+  <Collection name="space">
+    <Variable name="xs" type="FLOAT" value={4} />
+    <Variable name="sm" type="FLOAT" value={8} />
+    <Variable name="md" type="FLOAT" value={12} />
+    <Variable name="lg" type="FLOAT" value={16} />
+  </Collection>
+  <Collection name="opacity">
+    <Variable name="disabled" type="FLOAT" value={0.45} />
+  </Collection>
+</Tokens>

@@ -1,0 +1,22 @@
+:root {
+  --border-default: rgb(212 212 216);
+  --border-focus: rgb(13 153 255);
+  --border-hover: rgb(161 161 170);
+  --opacity-disabled: 0.45;
+  --radius-full: 999;
+  --radius-md: 6;
+  --radius-sm: 4;
+  --space-lg: 16;
+  --space-md: 12;
+  --space-sm: 8;
+  --space-xs: 4;
+  --surface-accent: rgb(13 153 255);
+  --surface-accentHover: rgb(5 128 230);
+  --surface-control: rgb(255 255 255);
+  --surface-danger: rgb(220 38 38);
+  --surface-raised: rgb(244 244 246);
+  --text-danger: rgb(220 38 38);
+  --text-default: rgb(24 24 27);
+  --text-muted: rgb(113 113 122);
+  --text-onAccent: rgb(255 255 255);
+}

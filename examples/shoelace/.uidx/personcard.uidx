@@ -1,0 +1,31 @@
+---
+id: "personcard"
+---
+
+A roomy card for one person, with the role under the name. For lists that need more breathing room.
+
+## Visual Contract
+
+<Page>
+  <Component name="PersonCard" status="draft"
+    layoutMode="VERTICAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="MIN" counterAxisAlignItems="MIN"
+    paddingLeft={16} paddingRight={16} paddingTop={16} paddingBottom={16} cornerRadius={6}
+    fills={[{ type: 'SOLID', color: '{color#surface-raised}' }]}
+    itemSpacing="{space#xs}">
+    <Text name="name" characters="{person.name}" fontSize="{type#lg}" fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#text}' }]} />
+    <Text
+      name="role"
+      characters="{person.role}"
+      textAutoResize="WIDTH_AND_HEIGHT"
+      fills={[{ opacity: 1, visible: true, type: 'SOLID', color: '{color#accent}' }]}
+      fontSize="{type#sm}"
+    />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="person" type="Person">The person this card shows.</Prop>
+</Props>

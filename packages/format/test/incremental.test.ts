@@ -91,6 +91,46 @@ function agrees(source: string, patches: UidxPatch[], expectFast = true): void {
   expect(shape(doc.tree)).toEqual(shape(parseOrThrow(source).tree))
 }
 
+describe('a re-lowered component keeps its spec (ADR 0013)', () => {
+  const WITH_CONTRACT = `---
+id: list
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="List" status="draft" layoutMode="VERTICAL">
+    <Frame name="row" width={10} height={10} />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="items" type="Item[]">Rows.</Prop>
+</Props>
+`
+  it('after a structural edit inside it, and after an attribute edit on it', () => {
+    const doc = parseOrThrow(WITH_CONTRACT)
+    const inserted = applyPatchesIncremental(doc, [
+      {
+        op: 'insert-node',
+        parent: 'List',
+        index: 1,
+        node: { element: 'Slot', attrs: { name: 'item' } },
+      },
+    ])
+    expect(inserted.fellBack).toBe(false)
+    const component = inserted.doc.tree.children[0]!
+    expect(component.spec?.contract?.props.map((p) => p.name)).toEqual(['items'])
+    expect(component.spec).toBe(inserted.doc.spec)
+    const renamed = applyPatchesIncremental(inserted.doc, [
+      { op: 'set', address: 'List', prop: 'layoutMode', value: 'HORIZONTAL' },
+    ])
+    expect(renamed.doc.tree.children[0]!.spec).toBe(renamed.doc.spec)
+  })
+})
+
 describe('applyPatchesIncremental agrees with a full parse (spec §1)', () => {
   it('set on an inner node', () => {
     agrees(PAGE, [{ op: 'set', address: 'doc#section/cover', prop: 'visible', value: false }])
@@ -196,6 +236,57 @@ describe('the attribute fast path (no parse at all)', () => {
     agrees(MULTI, [{ op: 'add', address: 'doc#section/cover', prop: 'opacity', value: 0.5 }])
     agrees(MULTI, [{ op: 'remove', address: 'doc#section/cover', prop: 'visible' }])
     agrees(MULTI, [{ op: 'set', address: 'doc#section/cover', prop: 'visible', value: false }])
+  })
+})
+
+describe('the regions after the tree', () => {
+  const SPECCED = `---
+id: switch
+---
+
+## Visual Contract
+
+<Page>
+  <Component name="Switch" status="draft">
+    <Text name="label" characters="{label}" />
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string">The words.</Prop>
+</Props>
+`
+  const spans = (doc: ReturnType<typeof parseOrThrow>) =>
+    JSON.stringify([doc.spec, doc.trailing?.loc])
+
+  // Connecting an element (an attribute on the tree) then filling the contract
+  // from the library: the contract op must splice where the region now is.
+  it('move with an edit inside the tree, so a contract op after it lands in place', () => {
+    const edits: UidxPatch[][] = [
+      [{ op: 'add', address: 'Switch', prop: 'implements', value: 'sl-switch' }],
+      [
+        {
+          op: 'insert-node',
+          parent: 'Switch',
+          index: 0,
+          node: { element: 'Frame', attrs: { name: 'base' } },
+        },
+      ],
+    ]
+    for (const patches of edits) {
+      const first = applyPatchesIncremental(parseOrThrow(SPECCED), patches).doc
+      expect(spans(first)).toBe(spans(parseOrThrow(first.source)))
+      const declare: UidxPatch = {
+        op: 'contract',
+        kind: 'prop',
+        name: 'checked',
+        declaration: { attrs: { type: 'boolean' }, description: 'On.' },
+      }
+      const next = applyPatchesIncremental(first, [declare]).doc
+      expect(next.spec!.contract!.props.map((prop) => prop.name)).toEqual(['label', 'checked'])
+    }
   })
 })
 

@@ -42,6 +42,54 @@ const uses = (props: string, component = 'Button') =>
 const report = (...pages: { file: string; doc: ReturnType<typeof parseOrThrow> }[]) =>
   buildSymbolTable(pages).diagnostics
 
+const CONTRACTED = {
+  file: 'field.uidx',
+  doc: parseOrThrow(
+    `${page(
+      'field',
+      `  <Component name="Field" status="draft" implements="x-field">
+    <Text name="label" part="label" characters="{label}" />
+  </Component>`,
+    )}
+<Styles>
+  <Style state="error" root:opacity={0.5} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Email">The name.</Prop>
+  <Prop name="error" type="boolean" default={false} visual>Error state.</Prop>
+  <Prop name="size" type="'sm' | 'md'" default="md" visual>Size.</Prop>
+</Props>
+`,
+  ),
+}
+
+describe('a component declared by its contract (ADR 0013 §5)', () => {
+  it('accepts values for contract props, and an axis the styles table derives', () => {
+    expect(report(uses(`{ label: 'Name', error: true }`, 'Field'), CONTRACTED)).toEqual([])
+    expect(report(uses(`{ size: 'sm', state: 'error' }`, 'Field'), CONTRACTED)).toEqual([])
+    expect(report(uses(`{ nope: 'x' }`, 'Field'), CONTRACTED).map((d) => d.code)).toEqual([
+      WORKSPACE_CODES.UNDECLARED_PROPERTY_VALUE,
+    ])
+    expect(report(uses(`{ error: 'yes' }`, 'Field'), CONTRACTED).map((d) => d.code)).toEqual([
+      WORKSPACE_CODES.PROPERTY_VALUE_MISMATCH,
+    ])
+  })
+
+  it("lets a use pass its own prop through as '{label}' without judging the value", () => {
+    const outer = src(
+      'outer.uidx',
+      'outer',
+      `  <Component name="Outer" status="draft">
+    <Instance name="f" component="Field" props={{ label: '{label}', error: '{error}' }} />
+  </Component>`,
+    )
+    expect(report(outer, CONTRACTED)).toEqual([])
+  })
+})
+
 describe('an instance filling in its properties', () => {
   it('says nothing when every value is declared and typed right', () => {
     expect(report(BUTTON, uses(`{ label: 'Save', showIcon: false }`))).toEqual([])

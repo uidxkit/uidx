@@ -23,6 +23,19 @@ import {
  * path maps name → id and the file never sees one.
  */
 
+/** The panel-editable type a contract prop's type string maps to, or null. */
+function contractPropertyType(type: string): PropertyType | null {
+  if (type === 'boolean') return 'BOOLEAN'
+  if (
+    type === 'string' ||
+    type === 'image' ||
+    type === 'date' ||
+    /^'[^']*'(\s*\|\s*'[^']*')*$/.test(type)
+  )
+    return 'TEXT'
+  return null
+}
+
 /** A `{name}` binding with no `#` in it. Reading it is the whole discriminator. */
 export function propertyBinding(target: string): string | null {
   return target.includes(ENTITY_SEP) ? null : target
@@ -57,6 +70,18 @@ export function componentProps(node: UidxNode): {
 } {
   const declared = new Map<string, PropertyDeclaration>()
   const problems: PropertyProblem[] = []
+  // A `## Contract` declares props too (ADR 0013 §5), in the same map, so a
+  // use fills them in and a `{label}` resolves exactly as with `props={{}}`.
+  // Only the shapes the panel can edit: a boolean, or text (a string, an
+  // enum, an image or a date). A model or a list is the code render's.
+  for (const prop of node.spec?.contract?.props ?? []) {
+    const type = contractPropertyType(prop.type)
+    if (!type) continue
+    const shown = prop.sample ?? prop.default
+    const fallback =
+      shown !== undefined && matchesType(type, shown) ? shown : type === 'BOOLEAN' ? false : ''
+    declared.set(prop.name, { type, default: fallback })
+  }
   const value = node.attrs.props?.value
   if (value === undefined) return { declared, problems }
 

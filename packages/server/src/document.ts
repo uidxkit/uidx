@@ -20,6 +20,41 @@ export interface Manifest {
    * document that never referenced an image should not have to say so.
    */
   assets: string[]
+  /**
+   * The headless library (ADR 0013 §3). Optional: a document with no code
+   * render has none. Written as a path to its `custom-elements.json` or as an
+   * object that also says how the library spells things; normalised to the
+   * object here. When present the viewer offers its elements and parts as
+   * choices in the Contract tab, and `uidx codegen` reads it by default.
+   */
+  headless?: HeadlessConfig
+  /**
+   * Where `uidx codegen` and the viewer's Generate button write the code
+   * targets, relative to `uidx.json` (ADR 0017 §3), and which targets.
+   * Optional: a document with no code render has none.
+   */
+  codegen?: CodegenConfig
+}
+
+export interface CodegenConfig {
+  out: string
+  targets?: string[]
+  /** Components rendered onto an existing React library (codegen `react-adapter`). */
+  react?: Record<string, unknown>
+}
+
+/**
+ * How a design binds to one library without the design changing (ADR 0013
+ * §3). `manifest` is the `custom-elements.json`, relative to `uidx.json`.
+ * `profile` says how the library exposes props, parts and its own states;
+ * `bindings` translates the identity's names to the library's, per
+ * component. Both are optional and default to the conventions the example
+ * library follows; their shapes are validated where they are read.
+ */
+export interface HeadlessConfig {
+  manifest: string
+  profile?: Record<string, string>
+  bindings?: Record<string, unknown>
 }
 
 export interface FoundManifest {
@@ -108,6 +143,89 @@ export async function readManifest(path: string): Promise<Manifest> {
     }
   }
 
+  let headless: HeadlessConfig | undefined
+  const declared = record.headless
+  if (typeof declared === 'string' && declared !== '') headless = { manifest: declared }
+  else if (declared !== undefined) {
+    const config =
+      typeof declared === 'object' && declared !== null && !Array.isArray(declared)
+        ? (declared as Record<string, unknown>)
+        : undefined
+    const manifest = config?.manifest
+    if (typeof manifest !== 'string' || manifest === '') {
+      problems.push(
+        `${path}: "headless" must be a path to a custom-elements.json, or { "manifest": path, "profile"?, "bindings"? }`,
+      )
+    } else {
+      headless = { manifest }
+      const profile = config!.profile
+      if (profile !== undefined) {
+        if (
+          typeof profile !== 'object' ||
+          profile === null ||
+          Array.isArray(profile) ||
+          Object.values(profile).some((value) => typeof value !== 'string')
+        )
+          problems.push(`${path}: "headless.profile" must be an object of strings`)
+        else headless.profile = profile as Record<string, string>
+      }
+      const bindings = config!.bindings
+      if (bindings !== undefined) {
+        if (typeof bindings !== 'object' || bindings === null || Array.isArray(bindings))
+          problems.push(`${path}: "headless.bindings" must be an object keyed by component name`)
+        else headless.bindings = bindings as Record<string, unknown>
+      }
+    }
+  }
+
+  let codegen: CodegenConfig | undefined
+  const generation = record.codegen
+  if (generation !== undefined) {
+    const config =
+      typeof generation === 'object' && generation !== null && !Array.isArray(generation)
+        ? (generation as Record<string, unknown>)
+        : undefined
+    const out = config?.out
+    if (typeof out !== 'string' || out === '') {
+      problems.push(
+        `${path}: "codegen" must be { "out": path, "targets"?: ["html", "react", "contract"] }`,
+      )
+    } else {
+      codegen = { out }
+      const targets = config!.targets
+      if (targets !== undefined) {
+        if (
+          !Array.isArray(targets) ||
+          targets.some(
+            (target) => !['html', 'react', 'contract', 'stories', 'cem'].includes(target as string),
+          )
+        )
+          problems.push(
+            `${path}: "codegen.targets" may hold html, react, contract, stories and cem`,
+          )
+        else codegen.targets = targets as string[]
+      }
+      const react = config!.react
+      if (react !== undefined) {
+        if (
+          typeof react !== 'object' ||
+          react === null ||
+          Array.isArray(react) ||
+          Object.values(react).some(
+            (entry) =>
+              typeof entry !== 'object' ||
+              entry === null ||
+              typeof (entry as Record<string, unknown>).from !== 'string',
+          )
+        )
+          problems.push(
+            `${path}: "codegen.react" must map component names to { "from": module, "export"?, "props"?, "values"?, "events"?, "children"?, "omit"? }`,
+          )
+        else codegen.react = react as Record<string, unknown>
+      }
+    }
+  }
+
   if (problems.length) throw new ManifestError(problems)
   return {
     id: id as string,
@@ -115,6 +233,8 @@ export async function readManifest(path: string): Promise<Manifest> {
     // Absent means the conventional folders, all of them. An empty array is a
     // different statement — "this document has no assets" — and is honoured.
     assets: assets === undefined ? [...DEFAULT_ASSET_GLOBS] : (assets as string[]),
+    ...(headless === undefined ? {} : { headless }),
+    ...(codegen === undefined ? {} : { codegen }),
   }
 }
 

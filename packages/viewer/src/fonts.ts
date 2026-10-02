@@ -74,6 +74,18 @@ function refuseNetworkFonts(): void {
 export function seedFonts(): Promise<SeededFonts> {
   seeded ??= (async () => {
     refuseNetworkFonts()
+    // Before the first await: the canvas mounts while the faces below are
+    // still downloading and asks for Inter Regular at once. With no host
+    // loader yet, the SDK falls back to its own bundled URL, which this server
+    // does not serve — and caches the 404 body as the face, so CanvasKit logs
+    // "failed to open <0> as a font" and the real face becomes a supplement.
+    fontManager.setHostFontLoader(async (family, style = 'Regular') => {
+      if (family === 'Inter') {
+        const file = Object.keys(FACES).find((key) => FACES[key] === style)
+        if (file) return fetchFace(file)
+      }
+      return projectFontBytes(family, style)
+    })
 
     const styles: string[] = []
     const coverages: GlyphCoverage[] = []
@@ -88,14 +100,6 @@ export function seedFonts(): Promise<SeededFonts> {
       fontManager.markLoaded('Inter', style, bytes)
       styles.push(style)
     }
-
-    fontManager.setHostFontLoader(async (family, style = 'Regular') => {
-      if (family === 'Inter') {
-        const file = Object.keys(FACES).find((key) => FACES[key] === style)
-        if (file) return fetchFace(file)
-      }
-      return projectFontBytes(family, style)
-    })
 
     await initializeFontLibrary()
 

@@ -11,9 +11,20 @@ export {
   findOpenTagEnd,
   STATUSES,
 } from './parse.js'
-export { applyPatch, applyPatches, PatchError, type PatchResult } from './patch.js'
+export {
+  applyPatch,
+  applyPatches,
+  CONTRACT_LISTS,
+  PatchError,
+  printContractItem,
+  printModel,
+  printField,
+  fieldDeclarationOf,
+  type PatchResult,
+} from './patch.js'
 export { predictDocument } from './predict.js'
-export { inversePatches, toNodeSpec } from './inverse.js'
+export { declarationOf, inversePatches, toNodeSpec } from './inverse.js'
+export { regionBody, type WholeRegion } from './region-patch.js'
 export { diffToPatches } from './diff-patches.js'
 export { applyPatchesIncremental, type IncrementalResult } from './incremental.js'
 export {
@@ -103,6 +114,36 @@ export {
   type UidxNode,
   type UidxNodeSpec,
   type UidxPatch,
+  type BehaviorRule,
+  type ContractSpec,
+  type ContractKind,
+  type ContractDeclaration,
+  type ModelDeclaration,
+  type DocumentSpec,
+  type EventSpec,
+  type ExampleSet,
+  type ExampleSpec,
+  type FieldSpec,
+  type ModelSpec,
+  type PropSpec,
+  type SlotSpec,
+  type SpecNode,
+  type StateSpec,
+  type PartSpec,
+  type StyleRow,
 } from './types.js'
+export { buildSpec, REGION_NAMES, SpecLowerer, type Region, type RegionName } from './spec.js'
 export { SCOPE_FOR_PROP, scopesForProp } from './scope-for-prop.js'
 export * from './lengths.js'
+export {
+  axesOf,
+  DEFAULT_STATE,
+  EMPTY_STATE,
+  enumValues,
+  INTERACTION_STATES,
+  listProps,
+  STATE_AXIS,
+  stateAxis,
+  stateKind,
+  visualAxes,
+} from './contract.js'

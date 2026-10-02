@@ -11,7 +11,7 @@
     "postinstall": "node scripts/setup-assets.mjs",
     "setup:assets": "node scripts/setup-assets.mjs",
     "viewer": "pnpm dev",
-    "build": "pnpm -r --filter \"@uidx/format\" --filter \"@uidx/schema\" --filter \"@uidx/server\" build",
+    "build": "pnpm -r --filter \"@uidx/format\" --filter \"@uidx/schema\" --filter \"@uidx/server\" --filter \"@uidx/codegen\" build",
     "build:cli": "pnpm build && pnpm --filter @uidx/agent build && pnpm --filter @uidx/viewer build && pnpm --filter @uidxkit/uidx build",
     "test": "pnpm -r --workspace-concurrency=1 test",
     "typecheck": "pnpm -r typecheck",
@@ -28,7 +28,8 @@
     "audit:release": "node scripts/audit-release.mjs",
     "test:security": "node scripts/check-dependency-fixes.mjs",
     "test:release": "node --test scripts/test-release.mjs",
-    "test:canvas": "node scripts/canvas-canary.mjs"
+    "test:canvas": "node scripts/canvas-canary.mjs",
+    "test:journeys": "node scripts/journeys.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9",

@@ -1,0 +1,399 @@
+{
+  "id": "button",
+  "components": [
+    {
+      "name": "Button",
+      "implements": "hwc-button",
+      "status": "stable",
+      "boundParts": [
+        "leading-icon",
+        "label"
+      ],
+      "treeSlots": [],
+      "axes": {
+        "variant": [
+          "primary",
+          "secondary",
+          "outline",
+          "ghost",
+          "destructive",
+          "link"
+        ],
+        "size": [
+          "medium",
+          "small",
+          "large"
+        ],
+        "state": [
+          "default",
+          "disabled",
+          "hover",
+          "focus"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "root"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The button's text.",
+        "sample": "Save changes"
+      },
+      {
+        "name": "variant",
+        "type": "'primary' | 'secondary' | 'outline' | 'ghost' | 'destructive' | 'link'",
+        "controllable": false,
+        "visual": true,
+        "description": "Emphasis.",
+        "default": "primary"
+      },
+      {
+        "name": "size",
+        "type": "'small' | 'medium' | 'large'",
+        "controllable": false,
+        "visual": true,
+        "description": "Padding and type scale.",
+        "default": "medium"
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "default": false
+      },
+      {
+        "name": "type",
+        "type": "'button' | 'submit' | 'reset'",
+        "controllable": false,
+        "visual": false,
+        "description": "What activation does to the enclosing form.",
+        "default": "button"
+      }
+    ],
+    "events": [],
+    "states": [],
+    "parts": [],
+    "slots": [],
+    "composes": [],
+    "form": {
+      "participates": false,
+      "submits": "nothing of its own; type=submit calls the form's requestSubmit, type=reset resets it"
+    },
+    "accessibility": {
+      "role": "button",
+      "keyboard": "Enter and Space activate"
+    }
+  },
+  "behavior": [
+    {
+      "id": "activation",
+      "text": "click, Enter or Space activates; `type=\"submit\"` calls `requestSubmit` on the enclosing form, `type=\"reset\"` resets it, `type=\"button\"` does nothing to the form."
+    },
+    {
+      "id": "disabled",
+      "text": "no activation and no events while `disabled`."
+    },
+    {
+      "id": "icon",
+      "text": "the leading icon is hidden unless the design turns it on; it never carries the accessible name, the label does."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "variant": "secondary"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}",
+          "strokes": "{border#default}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "outline"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{border#default}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "ghost"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{text#default}"
+        },
+        "leading-icon": {
+          "fills": "{text#default}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "destructive"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#danger}",
+          "strokes": "{surface#danger}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "link"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{surface#accent}"
+        },
+        "leading-icon": {
+          "fills": "{surface#accent}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "small"
+      },
+      "values": {
+        "root": {
+          "paddingLeft": "{space#sm}",
+          "paddingRight": "{space#sm}",
+          "paddingTop": "{space#xs}",
+          "paddingBottom": "{space#xs}"
+        },
+        "label": {
+          "fontSize": 12
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "large"
+      },
+      "values": {
+        "root": {
+          "paddingLeft": "{space#lg}",
+          "paddingRight": "{space#lg}",
+          "paddingTop": "{space#md}",
+          "paddingBottom": "{space#md}"
+        },
+        "label": {
+          "fontSize": 16
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#accentHover}",
+          "strokes": "{surface#accentHover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "secondary"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}",
+          "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "outline"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{border#hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "ghost"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#raised}",
+          "strokes": "{surface#raised}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "destructive"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#danger}",
+          "strokes": "{surface#danger}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "link"
+      },
+      "values": {
+        "root": {
+          "fills": "{surface#control}",
+          "strokes": "{surface#control}"
+        },
+        "label": {
+          "fills": "{surface#accentHover}"
+        },
+        "leading-icon": {
+          "fills": "{surface#accentHover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "root": {
+          "strokes": "{border#focus}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

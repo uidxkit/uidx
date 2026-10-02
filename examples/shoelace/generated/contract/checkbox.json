@@ -1,0 +1,220 @@
+{
+  "id": "checkbox",
+  "components": [
+    {
+      "name": "Checkbox",
+      "implements": "sl-checkbox",
+      "status": "stable",
+      "boundParts": [
+        "base",
+        "control",
+        "checked-icon",
+        "label"
+      ],
+      "treeSlots": [
+        "default"
+      ],
+      "axes": {
+        "state": [
+          "default",
+          "checked",
+          "disabled",
+          "focus"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "base",
+        "part": "base"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The choice, given as its content.",
+        "sample": "Email me updates"
+      },
+      {
+        "name": "checked",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Chosen.",
+        "default": false
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Not changeable, dimmed.",
+        "default": false
+      }
+    ],
+    "events": [
+      {
+        "name": "change",
+        "description": "Fires once per toggle."
+      }
+    ],
+    "states": [],
+    "parts": [
+      {
+        "name": "base",
+        "description": "The control and label in a row."
+      },
+      {
+        "name": "control",
+        "description": "The box."
+      },
+      {
+        "name": "checked-icon",
+        "description": "The check mark."
+      },
+      {
+        "name": "label",
+        "description": "The label's container."
+      }
+    ],
+    "slots": [
+      {
+        "name": "default",
+        "description": "The label."
+      }
+    ],
+    "composes": [],
+    "form": {
+      "participates": true,
+      "submits": "value while checked, nothing otherwise"
+    },
+    "accessibility": {
+      "role": "checkbox",
+      "keyboard": "Space toggles"
+    }
+  },
+  "behavior": [
+    {
+      "id": "toggle",
+      "text": "click or Space flips `checked` and fires `change` once."
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "state": "checked"
+      },
+      "values": {
+        "control": {
+          "fills": "{color#accent}",
+          "strokes": "{color#accent}"
+        },
+        "check": {
+          "visible": true
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "control": {
+          "strokes": "{color#text}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

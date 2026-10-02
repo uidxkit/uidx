@@ -1,4 +1,12 @@
-import { defaultFor, isIdentityProp, mappingFor, NODE_TYPE } from '@uidx/schema'
+import {
+  defaultFor,
+  instanceFills,
+  instanceSceneProps,
+  isIdentityProp,
+  mappingFor,
+  NODE_TYPE,
+  type InstanceFills,
+} from '@uidx/schema'
 import type { JsonValue, SceneElement, UidxNode } from '@uidx/format'
 import type { Rect } from './gesture-model'
 
@@ -128,6 +136,144 @@ export function authoredSizing(node: UidxNode): SizingNode {
     counterAxisSizing: sceneValue('counterAxisSizingMode'),
     textAutoResize: sceneValue('textAutoResize'),
   }
+}
+
+/** What `instanceSizing` resolves a component with — the scene build's own resolvers. */
+export type InstanceScope = Parameters<typeof instanceSceneProps>[1]
+
+/** `SizingNode` for an `<Instance>`, with what it fills and the values a cancel puts back. */
+export interface InstanceSizing extends SizingNode {
+  layoutGrow?: number
+  layoutAlignSelf?: string
+  /** The dimensions the instance tells its parent to compute (`releasedFills`). */
+  fills: InstanceFills
+}
+
+/**
+ * The sizing facts for an `<Instance>`, which states none of them itself.
+ *
+ * `authoredSizing` asks the file, and on an instance the file is silent: the
+ * layout and both modes come from the component — for one with a styles
+ * table, from the derived variant that wraps it — and `defaultFor` has no
+ * answer for an element the sizing rows do not apply to. So it answered
+ * "nothing hugs", a resize flipped nothing, and the preview was laid out
+ * against the component's hug and snapped back on every frame.
+ *
+ * Asked here the way the build answers it, from the same document — never from
+ * the scene node, for `authoredSizing`'s reason. `parentLayout` is the layout
+ * the instance sits in, which says which axis an authored stretch fills.
+ */
+export function instanceSizing(
+  node: UidxNode,
+  scope: InstanceScope,
+  parentLayout?: Parameters<typeof instanceSceneProps>[2],
+): InstanceSizing {
+  const placed = instanceSceneProps(node, scope, parentLayout)
+  return {
+    type: NODE_TYPE.Instance,
+    layoutMode: placed.layoutMode,
+    primaryAxisSizing: placed.primaryAxisSizing,
+    counterAxisSizing: placed.counterAxisSizing,
+    layoutGrow: placed.layoutGrow,
+    layoutAlignSelf: placed.layoutAlignSelf,
+    fills: instanceFills(node, parentLayout),
+  }
+}
+
+/** Which of the box's four numbers a resize changed. */
+export interface ResizedBox {
+  x: boolean
+  y: boolean
+  width: boolean
+  height: boolean
+}
+
+/**
+ * What a resize changed, measured against the box it started from.
+ *
+ * `widthOnly` is the controller's word for an east or west handle. A north or
+ * south handle has no word of its own, but needs none: it leaves the width
+ * exactly where it was. The origin is its own question — on a rotated box a
+ * side handle moves both `x` and `y` to hold the far edge still, and a top
+ * handle moves `x` — so it never decides which dimension was resized.
+ *
+ * Up to half a pixel is no change: a commit rounds the box its previews did
+ * not, and rounding moves a number by at most that — an instance centred in
+ * a column sits at x 89.5 and commits at 90.
+ */
+export function resizedBox(from: Rect, rect: Rect, widthOnly: boolean): ResizedBox {
+  const moved = (a: number, b: number): boolean => Math.abs(a - b) > 0.5
+  return {
+    x: moved(from.x, rect.x),
+    y: moved(from.y, rect.y),
+    width: widthOnly || moved(from.width, rect.width),
+    height: !widthOnly && moved(from.height, rect.height),
+  }
+}
+
+/**
+ * What a resize writes on an `<Instance>`: the dimensions the handle moved,
+ * the origin if it moved, and nothing at all on the dimension it left.
+ *
+ * A frame's resize sends the whole rect, because a frame states its own modes
+ * and the flip says what the rect means. An instance states only its size — a
+ * stated width *is* Fixed — so a height written by an east-handle drag would
+ * fix an axis nobody touched, at whatever the hug happened to measure. That is
+ * Figma's rule too: resizing an instance switches only the axis you dragged.
+ *
+ * The flips ride along for the canvas, which lays the preview out against
+ * them; they never reach the file (`fromSceneChange` keeps them off an
+ * `<Instance>`).
+ */
+export function instanceResizeWrites(
+  node: SizingNode,
+  rect: Rect,
+  moved: ResizedBox,
+): Partial<Rect> & Pick<ResizeWrites, 'primaryAxisSizing' | 'counterAxisSizing'> {
+  const flip = (dimension: 'width' | 'height') => {
+    const { primaryAxisSizing, counterAxisSizing } = sizingFlipFor(node, dimension)
+    return {
+      ...(primaryAxisSizing ? { primaryAxisSizing } : {}),
+      ...(counterAxisSizing ? { counterAxisSizing } : {}),
+    }
+  }
+  return {
+    ...(moved.x ? { x: rect.x } : {}),
+    ...(moved.y ? { y: rect.y } : {}),
+    ...(moved.width ? { width: rect.width, ...flip('width') } : {}),
+    ...(moved.height ? { height: rect.height, ...flip('height') } : {}),
+  }
+}
+
+/** What letting go of an instance's fills takes: the canvas's fields and the file's removals. */
+export interface FillRelease {
+  fields: { layoutGrow?: number; layoutAlignSelf?: 'AUTO' }
+  removals: Array<'layoutGrow' | 'layoutAlign'>
+}
+
+/**
+ * The fills an instance gives up on the dimensions a size is chosen for.
+ *
+ * The build lets a fill the instance authors outrank a size it states — a
+ * width left over from before a stretch must not undo the stretch — so a
+ * size chosen by hand on a filled dimension drew while the gesture lasted and
+ * was gone once the file came back. Figma turns Fill into Fixed when its
+ * handle is dragged, and so does this: the fill leaves the file in the same
+ * commit (`fields` keeps the preview honest meanwhile).
+ */
+export function releasedFills(
+  fills: InstanceFills,
+  dimensions: ReadonlyArray<'width' | 'height'>,
+): FillRelease {
+  const release: FillRelease = { fields: {}, removals: [] }
+  for (const dimension of dimensions) {
+    const fill = fills[dimension]
+    if (fill === 'layoutGrow') release.fields.layoutGrow = 0
+    else if (fill === 'layoutAlign') release.fields.layoutAlignSelf = 'AUTO'
+    else continue
+    release.removals.push(fill)
+  }
+  return release
 }
 
 export function resizeWrites(

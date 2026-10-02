@@ -1,0 +1,323 @@
+{
+  "id": "button",
+  "components": [
+    {
+      "name": "Button",
+      "implements": "sl-button",
+      "status": "stable",
+      "boundParts": [
+        "base",
+        "label"
+      ],
+      "treeSlots": [
+        "prefix",
+        "default",
+        "suffix"
+      ],
+      "axes": {
+        "variant": [
+          "primary",
+          "neutral",
+          "danger"
+        ],
+        "size": [
+          "medium",
+          "small",
+          "large"
+        ],
+        "state": [
+          "default",
+          "disabled",
+          "hover",
+          "focus"
+        ]
+      },
+      "box": {
+        "target": "frame",
+        "node": "base",
+        "part": "base"
+      },
+      "laysOut": true
+    }
+  ],
+  "contract": {
+    "props": [
+      {
+        "name": "label",
+        "type": "string",
+        "controllable": false,
+        "visual": false,
+        "description": "The words on the button, given as its content.",
+        "sample": "Save changes"
+      },
+      {
+        "name": "variant",
+        "type": "'primary' | 'neutral' | 'danger'",
+        "controllable": false,
+        "visual": true,
+        "description": "How loudly it asks.",
+        "default": "primary"
+      },
+      {
+        "name": "size",
+        "type": "'medium' | 'small' | 'large'",
+        "controllable": false,
+        "visual": true,
+        "description": "Padding and type scale.",
+        "default": "medium"
+      },
+      {
+        "name": "disabled",
+        "type": "boolean",
+        "controllable": false,
+        "visual": true,
+        "description": "Inert and dimmed.",
+        "default": false
+      }
+    ],
+    "events": [
+      {
+        "name": "press",
+        "description": "Fires once per activation, never while disabled."
+      }
+    ],
+    "states": [],
+    "parts": [
+      {
+        "name": "base",
+        "description": "The button's box: its fill, border and padding."
+      },
+      {
+        "name": "label",
+        "description": "The label's container."
+      }
+    ],
+    "slots": [
+      {
+        "name": "prefix",
+        "description": "An icon before the label."
+      },
+      {
+        "name": "default",
+        "description": "The label."
+      },
+      {
+        "name": "suffix",
+        "description": "An icon after the label."
+      }
+    ],
+    "composes": [],
+    "accessibility": {
+      "role": "button",
+      "keyboard": "Enter and Space activate"
+    }
+  },
+  "behavior": [
+    {
+      "id": "activation",
+      "text": "click, Enter or Space fires `press` once."
+    },
+    {
+      "id": "disabled",
+      "text": "no activation and no events while `disabled`; still announced as a disabled button."
+    }
+  ],
+  "examples": [
+    {
+      "name": "neutral",
+      "sets": [
+        {
+          "at": "variant",
+          "value": "neutral"
+        }
+      ]
+    },
+    {
+      "name": "danger",
+      "sets": [
+        {
+          "at": "variant",
+          "value": "danger"
+        }
+      ]
+    }
+  ],
+  "styles": [
+    {
+      "keys": {
+        "variant": "neutral"
+      },
+      "values": {
+        "base": {
+          "fills": "{color#surface-raised}",
+          "strokes": "{color#border}"
+        },
+        "text": {
+          "fills": "{color#text}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "variant": "danger"
+      },
+      "values": {
+        "base": {
+          "fills": "{color#danger}",
+          "strokes": "{color#danger}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "small"
+      },
+      "values": {
+        "base": {
+          "paddingLeft": "{space#md}",
+          "paddingRight": "{space#md}",
+          "paddingTop": "{space#xs}",
+          "paddingBottom": "{space#xs}"
+        },
+        "text": {
+          "fontSize": "{type#sm}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "size": "large"
+      },
+      "values": {
+        "base": {
+          "paddingLeft": "{space#lg}",
+          "paddingRight": "{space#lg}",
+          "paddingTop": "{space#md}",
+          "paddingBottom": "{space#md}"
+        },
+        "text": {
+          "fontSize": "{type#lg}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover"
+      },
+      "values": {
+        "base": {
+          "fills": "{color#accent-hover}",
+          "strokes": "{color#accent-hover}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "hover",
+        "variant": "neutral"
+      },
+      "values": {
+        "base": {
+          "fills": "{color#surface}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "focus"
+      },
+      "values": {
+        "base": {
+          "strokes": "{color#text}"
+        }
+      }
+    },
+    {
+      "keys": {
+        "state": "disabled"
+      },
+      "values": {
+        "root": {
+          "opacity": "{opacity#disabled}"
+        }
+      }
+    }
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
+}

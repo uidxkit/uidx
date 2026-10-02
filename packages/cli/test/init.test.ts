@@ -94,6 +94,7 @@ describe('project setup', () => {
       expect(await readdir(join(dir, folder))).toEqual([
         'uidx-authoring',
         'uidx-component-docs',
+        'uidx-design-system',
         'uidx-eval-api',
         'uidx-project',
       ])
@@ -215,5 +216,108 @@ describe('project setup', () => {
       code: 1,
       err: expect.stringContaining('package.json'),
     })
+  })
+})
+
+describe('init --design-system', () => {
+  it('writes a starter system that checks clean, beside existing pages', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-starter-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'starter', private: true }))
+      await initProject(dir)
+      await initProject(dir, 'uidx', { designSystem: true })
+      const files = (await readdir(join(dir, '.uidx'))).filter((f) => f.endsWith('.uidx')).sort()
+      expect(files).toEqual(['button.uidx', 'tokens.uidx', 'welcome.uidx'])
+      const { parse } = await import('@uidx/format')
+      for (const file of files) {
+        const { doc, diagnostics } = parse(await readFile(join(dir, '.uidx', file), 'utf8'))
+        expect(doc, `${file}: ${diagnostics.map((d) => d.message).join('; ')}`).not.toBeNull()
+      }
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('the agent guide', () => {
+  it('is written into AGENTS.md once, and CLAUDE.md when there is one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-guide-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'guide', private: true }))
+      await writeFile(join(dir, 'CLAUDE.md'), '# Project\n\nOur rules.\n')
+      await initProject(dir)
+      await initProject(dir)
+      const agents = await readFile(join(dir, 'AGENTS.md'), 'utf8')
+      const claude = await readFile(join(dir, 'CLAUDE.md'), 'utf8')
+      expect(agents.match(/uidx:start/g)).toHaveLength(1)
+      expect(agents).toContain('uidx_components')
+      expect(claude.startsWith('# Project\n\nOur rules.\n\n<!-- uidx:start -->')).toBe(true)
+      expect(claude.match(/uidx:start/g)).toHaveLength(1)
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('init --ci', () => {
+  it('writes the pull-request workflow once and keeps an edited one', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-ci-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'ci', private: true }))
+      await initProject(dir, 'uidx', { ci: true })
+      const path = join(dir, '.github/workflows/uidx.yml')
+      const workflow = await readFile(path, 'utf8')
+      expect(workflow).toContain('uidx diff --base origin/${{ github.base_ref }}')
+      expect(workflow).toContain('uidx lint src')
+      await writeFile(path, 'edited\n')
+      await initProject(dir, 'uidx', { ci: true })
+      expect(await readFile(path, 'utf8')).toBe('edited\n')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('uidx share', () => {
+  it('writes a static site with every component and token', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-share-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'share', private: true }))
+      await initProject(dir, 'uidx', { designSystem: true })
+      const out: string[] = []
+      const code = await run(['share', '--out', 'site'], {
+        cwd: join(dir, '.uidx'),
+        out: (text: string) => out.push(text),
+        err: () => {},
+      } as never)
+      expect(code).toBe(0)
+      const html = await readFile(join(dir, '.uidx/site/index.html'), 'utf8')
+      expect(html).toContain('id="button"')
+      expect(html).toContain('var(--color-accent)')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
+  })
+})
+
+describe('uidx export design-md', () => {
+  it('writes tokens and components as DESIGN.md front matter', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'uidx-designmd-'))
+    try {
+      await writeFile(join(dir, 'package.json'), JSON.stringify({ name: 'dm', private: true }))
+      await initProject(dir, 'uidx', { designSystem: true })
+      const code = await run(['export', 'design-md', '--out', 'DESIGN.md'], {
+        cwd: join(dir, '.uidx'),
+        out: () => {},
+        err: () => {},
+      } as never)
+      expect(code).toBe(0)
+      const text = await readFile(join(dir, '.uidx/DESIGN.md'), 'utf8')
+      expect(text.startsWith('---\nversion: alpha\n')).toBe(true)
+      expect(text).toContain('backgroundColor: "{colors.color-accent}"')
+      expect(text).toContain('## Components')
+    } finally {
+      await rm(dir, { recursive: true, force: true })
+    }
   })
 })

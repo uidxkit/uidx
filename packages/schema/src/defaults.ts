@@ -26,9 +26,10 @@ import { toSceneGraph } from './to-scene.js'
  * `Variant` is deliberately absent, and the type says so rather than the table
  * carrying a fixture nobody probes: a `<Variant>` has no geometry of its own at
  * all (ADR 0005 §5, and D4's predicate that follows from it), so there is no
- * unset row for the inspector to show dimmed. Excluding it by type keeps the
- * exhaustiveness that makes this table honest for every element that *does*
- * have one.
+ * unset row for the inspector to show dimmed. It is absent for the same
+ * reason (ADR 0017 §2): it is expanded, never constructed. Excluding both by
+ * type keeps the exhaustiveness that makes this table honest for every element
+ * that *does* have one.
  */
 const BARE: Record<Exclude<SceneElement, 'Variant'>, string> = {
   Page: '<Page />',

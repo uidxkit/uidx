@@ -1,0 +1,30 @@
+---
+id: "button1"
+---
+
+A test copy of the pill button placed on examples/design-system's page1: a
+hugging row with padding, a solid fill, one bound label and one hover row.
+The instance-box tests (ADR 0018) need a component of exactly this shape — a
+styles table, so its box is the derived `root` one level down.
+
+## Visual Contract
+
+<Page>
+  <Component name="Button1" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"
+    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={999}
+    fills={[{ opacity: 1, visible: true, type: 'SOLID', color: { r: 0, g: 0.3333, b: 1, a: 1 } }]}>
+    <Text name="label" characters="{label}" fontSize={14} />
+  </Component>
+</Page>
+
+<Styles>
+  <Style state="hover" root:fills={[{ opacity: 1, visible: true, type: 'SOLID', color: { r: 0.3678, g: 0.5744, b: 0.9875, a: 1 } }]} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Button1">The words it shows.</Prop>
+</Props>

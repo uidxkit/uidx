@@ -212,7 +212,12 @@ onUnmounted(stopObserving)
     <div class="caption">
       <span class="label">{{ card.label }}</span>
       <span v-if="card.errors > 0" class="badge" data-kind="error">{{ card.errors }}</span>
-      <span v-else-if="card.revision !== null" class="rev">rev {{ card.revision }}</span>
+      <span
+        v-else-if="card.revision !== null"
+        class="rev"
+        :title="`Saved ${card.revision} time${card.revision === 1 ? '' : 's'}`"
+        >v{{ card.revision }}</span
+      >
     </div>
 
     <!--
@@ -232,15 +237,20 @@ onUnmounted(stopObserving)
 .tile {
   display: flex;
   flex-direction: column;
-  gap: var(--gap-sm);
-  padding: var(--gap);
+  gap: 8px;
+  padding: 8px 8px 12px;
   border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
+  border-radius: 12px;
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
   cursor: pointer;
+  transition:
+    box-shadow 120ms,
+    transform 120ms;
 }
 .tile:hover {
-  background: var(--raised);
+  box-shadow: var(--shadow-float);
+  transform: translateY(-1px);
 }
 .tile[aria-selected='true'] {
   border-color: var(--accent);
@@ -255,7 +265,7 @@ onUnmounted(stopObserving)
   justify-content: center;
   /* The canvas ground, so a tile reads as a window onto the page. */
   background: var(--canvas-bg);
-  border-radius: var(--radius);
+  border-radius: 8px;
   aspect-ratio: 16 / 10;
   overflow: hidden;
 }
@@ -274,6 +284,9 @@ onUnmounted(stopObserving)
   display: flex;
   align-items: center;
   gap: var(--gap-sm);
+  padding: 0 4px;
+  font-size: 12px;
+  font-weight: 500;
 }
 .label {
   flex: 1;
