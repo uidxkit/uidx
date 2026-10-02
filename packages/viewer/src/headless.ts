@@ -30,6 +30,12 @@ export const headlessError = shallowRef('')
  * raw `headlessError` stays for the app bar and the error banner.
  */
 export const headlessFailure = shallowRef<Failure | null>(null)
+/**
+ * Why the last library the reader chose was refused, for the Library path
+ * field; null when none. A refused choice is a typo to fix, not a library
+ * that stopped loading: the one already loaded stays, and so do its checks.
+ */
+export const headlessChoiceError = shallowRef<Failure | null>(null)
 /** Libraries the project's dependencies ship, while the document names none. */
 export const headlessCandidates = shallowRef<HeadlessCandidate[]>([])
 
@@ -98,7 +104,17 @@ function adopt(data: HeadlessPayload): void {
   headlessLibrary.value =
     data.path === null ? null : parseHeadless(data.path, data.library, data.bindings ?? {})
   headlessCandidates.value = data.candidates ?? []
-  codegenState.value = { ...codegenState.value, out: data.codegen?.out ?? null }
+  setOut(data.codegen?.out ?? null)
+}
+
+/**
+ * Where generated code goes, as `uidx.json` says now. The last Write code
+ * result was about the folder it wrote to: once the folder changes it no
+ * longer applies, a failure above all, so it is dropped with it.
+ */
+function setOut(out: string | null): void {
+  if (out === codegenState.value.out) return
+  codegenState.value = { ...codegenState.value, out, result: null }
 }
 
 /**
@@ -149,8 +165,7 @@ export async function generateCode(): Promise<void> {
  * `uidx.json`.
  */
 export async function chooseHeadless(path: string): Promise<void> {
-  headlessError.value = ''
-  headlessFailure.value = null
+  headlessChoiceError.value = null
   try {
     const response = await fetch('/__uidx/headless', {
       method: 'PUT',
@@ -162,11 +177,16 @@ export async function chooseHeadless(path: string): Promise<void> {
     const data = (await response.json()) as HeadlessPayload
     if (!response.ok) throw failure(data, 'Could not choose the headless library.')
     adopt(data)
+    headlessError.value = ''
+    headlessFailure.value = null
     void loadConnection()
     connectionGeneration.value += 1
   } catch (error) {
-    headlessError.value = error instanceof Error ? error.message : String(error)
-    headlessFailure.value = classifyFailure(error)
+    headlessChoiceError.value = classifyFailure(error)
+    // The server refuses a path it cannot read before writing it, so the
+    // library loaded before stays; but a file that reads and does not parse
+    // is already in uidx.json. Re-read what is configured now, not guess.
+    await refreshHeadless()
   }
 }
 
@@ -176,16 +196,19 @@ export async function chooseHeadless(path: string): Promise<void> {
  * Called on every `document:opened`, which is also every reconnect, so a
  * library re-synced while the viewer was open shows up on the next reload of
  * the page without a restart.
+ *
+ * A failure stands until a read succeeds: cleared up front, the status line
+ * would blink out and back, and be announced again, on every save.
  */
 export async function refreshHeadless(): Promise<void> {
-  headlessError.value = ''
-  headlessFailure.value = null
   try {
     const response = await fetch('/__uidx/headless', { signal: AbortSignal.timeout(15_000) })
     unavailable(response)
     const data = (await response.json()) as HeadlessPayload
     if (!response.ok) throw failure(data, 'Could not read the headless library.')
     adopt(data)
+    headlessError.value = ''
+    headlessFailure.value = null
   } catch (error) {
     headlessLibrary.value = null
     headlessCandidates.value = []
@@ -246,21 +269,22 @@ export const connectionError = shallowRef('')
  */
 export const connectionErrorKey = shallowRef<ConfigChange['key'] | null>(null)
 
+/** Like the library's, a load error stands until a load succeeds, so it does not blink. */
 export async function loadConnection(): Promise<void> {
-  connectionError.value = ''
-  connectionErrorKey.value = null
   try {
     const response = await fetch('/__uidx/config', { signal: AbortSignal.timeout(15_000) })
     unavailable(response)
     const data = (await response.json()) as ConnectionConfig & { error?: string }
     if (!response.ok) throw new Error(data.error ?? 'Could not read the code connection.')
     connection.value = { headless: data.headless, codegen: data.codegen }
-    // `adopt` sets the output folder from the library route; when that route
-    // failed, uidx.json is the only source left.
-    if (codegenState.value.out === null && data.codegen?.out)
-      codegenState.value = { ...codegenState.value, out: data.codegen.out }
+    connectionError.value = ''
+    connectionErrorKey.value = null
+    // Both routes read uidx.json; mirrored here too, the output folder stays
+    // current when the library route fails and `adopt` does not run.
+    setOut(data.codegen?.out ?? null)
   } catch (error) {
     connectionError.value = error instanceof Error ? error.message : String(error)
+    connectionErrorKey.value = null
   }
 }
 

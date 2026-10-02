@@ -48,8 +48,11 @@ import {
   INFO,
   SLOT_OUTSIDE,
   instanceEmpty,
+  slotFill,
+  type EmptyCopy,
   type MessageAction,
 } from './inspector-messages'
+import { parentOf } from './layer-moves'
 import InspectorEmpty from './InspectorEmpty.vue'
 import InspectorSection from './InspectorSection.vue'
 import SlotSettingsSection from './SlotSettingsSection.vue'
@@ -74,10 +77,11 @@ import RepeatSection from './RepeatSection.vue'
  * against what it binds to.
  *
  * The tab declares and binds; it does not configure. Which library the
- * project uses is Connect's, and writing code is Code's, so this tab links to
- * them (`act`) rather than carrying a second chooser or a second Write. A
- * library that cannot be read is said once, in the shell's status line; here
- * the checks that need it say they are paused.
+ * project uses is Connect's, and writing code is Code's: the tab links to
+ * Connect (`act`) when no library is set rather than carrying a second
+ * chooser, and leaves Write to the Code tab beside it. A library that cannot
+ * be read is said once, in the shell's status line; here the checks that
+ * need it say they are paused.
  */
 const props = defineProps<{
   doc: UidxDocument | null
@@ -152,11 +156,27 @@ const boundCount = computed(() =>
   view.value.kind === 'component' ? view.value.parts.filter((row) => row.boundTo).length : 0,
 )
 
+/**
+ * Every part is a shadow part, as in any custom-elements.json library: a pill
+ * on each row would say nothing and cost the name its room, so the rows say
+ * it in their title and the pill is kept for a list that mixes kinds.
+ */
+const allShadow = computed(
+  () =>
+    view.value.kind === 'component' &&
+    view.value.parts.length > 0 &&
+    view.value.parts.every((row) => row.kind === 'shadow'),
+)
+
 const contract = computed(() =>
   view.value.kind === 'component' ? (view.value.component.spec?.contract ?? null) : null,
 )
 
-/** Everything the contract declares, for the Properties count and its empty hint. */
+/**
+ * Everything the contract declares, for the empty hint. The section's count
+ * is its props alone: events, slots, states and parts each count under their
+ * own subhead, so "Properties 10" never means four properties.
+ */
 const declCount = computed(() => {
   const c = contract.value
   return c
@@ -187,13 +207,9 @@ const members = computed(() => {
   }
 })
 
-/** An Element option's text: the tag, marked when the library lacks it or cannot be read. */
+/** A Headless element option's text: the tag, marked when the library lacks it. */
 const elementLabel = (option: { tag: string; known: boolean }): string =>
-  option.known
-    ? option.tag
-    : paused.value
-      ? COPY.libraryUnavailable(option.tag)
-      : COPY.notInLibrary(option.tag)
+  option.known ? option.tag : COPY.notInLibrary(option.tag)
 
 /** `N` slots, and how many of them no Slot layer draws yet. */
 const slotsMeta = computed(() => {
@@ -217,9 +233,33 @@ const partTag = computed(() => {
 /** The empty states' one way forward, when the shell says the selection can become a component. */
 const makeComponent = computed(() => (props.canMakeComponent ? ACTION.makeComponent : undefined))
 
+/**
+ * The component whose slot the selected `<Slot>` fills. A fill sits in an
+ * instance, not a component (ADR 0007 §2), so it has no contract here; it
+ * is not "outside a component" either, and making its frame one cannot work.
+ */
+const fillOf = computed(() => {
+  if (view.value.kind !== 'slot' || view.value.component || !props.doc) return null
+  const owner = parentOf(props.doc, view.value.node.address)
+  const name = owner?.element === 'Instance' ? owner.attrs.component?.value : null
+  return typeof name === 'string' && name ? name : null
+})
+
+/**
+ * A fill's empty state: whose slot it fills, and a way there when that
+ * component is defined in the project.
+ */
+const fillEmpty = computed((): (EmptyCopy & { action?: MessageAction }) | null => {
+  const component = fillOf.value
+  if (!component || view.value.kind !== 'slot') return null
+  const { action, ...copy } = slotFill(component, view.value.node.name)
+  return { ...copy, ...(!props.components || props.components.has(component) ? { action } : {}) }
+})
+
 /* ------------------------------------------------ focus from the shell */
 
 const root = ref<HTMLElement | null>(null)
+const bindingSection = ref<InstanceType<typeof InspectorSection> | null>(null)
 /** Code binding opened on request; otherwise it is open while an element is set. */
 const bindingOpen = ref(false)
 
@@ -234,9 +274,9 @@ async function reveal(focus: { target: 'parts'; n: number } | null | undefined):
   served = focus.n
   bindingOpen.value = true
   await nextTick()
-  const binding = root.value?.querySelector<HTMLDetailsElement>('[data-field="code-binding"]')
   // Opened by hand and closed again, the prop alone would not reopen it.
-  if (binding) binding.open = true
+  bindingSection.value?.show()
+  const binding = root.value?.querySelector<HTMLElement>('[data-field="code-binding"]')
   const target = binding ?? root.value?.querySelector('.issue')
   target?.scrollIntoView?.({ block: 'start' })
 }
@@ -643,7 +683,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       <InspectorSection
         title="Properties"
         label="Properties"
-        :meta="declCount ? String(declCount) : undefined"
+        :meta="contract?.props.length ? String(contract.props.length) : undefined"
         :info="INFO.properties"
       >
         <template #actions>
@@ -659,55 +699,52 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             Fill from library
           </button>
         </template>
-        <section v-if="offering" class="offers" aria-label="What the library offers">
-          <template v-if="offering.length">
-            <p class="offers-bar">
-              {{ ticked.size }} of {{ offering.length }} selected ·
-              <button type="button" class="link-button" @click="tickAll(true)">All</button>
-              ·
-              <button type="button" class="link-button" @click="tickAll(false)">None</button>
-            </p>
-            <template v-for="group in OFFER_GROUPS" :key="group.kind">
-              <template v-if="offering.some((offer) => offer.kind === group.kind)">
-                <p class="offers-heading">{{ group.label }}</p>
-                <label
-                  v-for="offer in offering.filter((entry) => entry.kind === group.kind)"
-                  :key="offerKey(offer)"
-                  class="offer"
-                  :title="offerTitle(offer)"
-                >
-                  <input
-                    type="checkbox"
-                    :checked="ticked.has(offerKey(offer))"
-                    @change="tick(offer, ($event.target as HTMLInputElement).checked)"
-                  />
-                  <span class="offer-name">{{ offer.name }}</span>
-                  <span v-if="offer.type" class="offer-type" :title="offer.type">{{
-                    offer.type
-                  }}</span>
-                </label>
-              </template>
-            </template>
-            <div class="offers-actions">
-              <button type="button" class="btn" @click="offering = null">Cancel</button>
-              <button
-                type="button"
-                class="btn primary"
-                :disabled="!writable || ticked.size === 0"
-                @click="addOffers"
+        <section v-if="offering?.length" class="offers" aria-label="What the library offers">
+          <p class="offers-bar">
+            {{ ticked.size }} of {{ offering.length }} selected ·
+            <button type="button" class="link-button" @click="tickAll(true)">All</button>
+            ·
+            <button type="button" class="link-button" @click="tickAll(false)">None</button>
+          </p>
+          <template v-for="group in OFFER_GROUPS" :key="group.kind">
+            <template v-if="offering.some((offer) => offer.kind === group.kind)">
+              <p class="offers-heading">{{ group.label }}</p>
+              <label
+                v-for="offer in offering.filter((entry) => entry.kind === group.kind)"
+                :key="offerKey(offer)"
+                class="offer"
+                :title="offerTitle(offer)"
               >
-                Add {{ ticked.size }}
-              </button>
-            </div>
+                <input
+                  type="checkbox"
+                  :checked="ticked.has(offerKey(offer))"
+                  @change="tick(offer, ($event.target as HTMLInputElement).checked)"
+                />
+                <span class="offer-name">{{ offer.name }}</span>
+                <span v-if="offer.type" class="offer-type" :title="offer.type">{{
+                  offer.type
+                }}</span>
+              </label>
+            </template>
           </template>
-          <template v-else>
-            <p class="offers-bar">Nothing new in {{ view.element?.tag }}</p>
-            <div class="offers-actions">
-              <button type="button" class="btn" @click="offering = null">Close</button>
-            </div>
-          </template>
+          <div class="offers-actions">
+            <button type="button" class="btn" @click="offering = null">Cancel</button>
+            <button
+              type="button"
+              class="btn primary"
+              :disabled="!writable || ticked.size === 0"
+              @click="addOffers"
+            >
+              {{ ticked.size ? `Add ${ticked.size}` : 'Add' }}
+            </button>
+          </div>
         </section>
-        <p v-if="!declCount" class="hint">
+        <!-- Nothing left to offer is one faint line, not an empty well with a lone button. -->
+        <p v-else-if="offering" class="hint" data-field="offers-none">
+          Nothing new in {{ view.element?.tag }} ·
+          <button type="button" class="link-button" @click="offering = null">Close</button>
+        </p>
+        <p v-if="!declCount && offering === null" class="hint">
           No properties yet. Add one below{{ view.element ? ', or fill from the library' : '' }}.
         </p>
 
@@ -866,7 +903,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           </div>
         </template>
 
-        <!-- Events -->
+        <!-- Events: the subhead says what they are, so the rows carry only the name. -->
+        <header v-if="contract?.events.length" class="subhead">
+          <span class="title">Events</span>
+          <span class="of">{{ contract.events.length }}</span>
+        </header>
         <template v-for="event in contract?.events ?? []" :key="`event:${event.name}`">
           <div
             class="row read"
@@ -880,12 +921,12 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               :title="event.description"
               @click="toggle(`event:${event.name}`)"
             >
-              <span class="name-text">on {{ event.name }}</span>
+              <span class="name-text">{{ event.name }}</span>
               <span v-if="isPlaceholder(event.description)" class="flag" title="Needs a description"
                 >?</span
               >
             </button>
-            <span class="type" :title="event.detail ?? 'event'">{{ event.detail ?? 'event' }}</span>
+            <span class="type" :title="event.detail">{{ event.detail ?? '' }}</span>
             <button
               type="button"
               class="reset"
@@ -930,7 +971,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
           </div>
         </template>
 
-        <!-- Declared slots -->
+        <!-- Declared slots; the Slots section below says which the tree draws. -->
+        <header v-if="contract?.slots.length" class="subhead">
+          <span class="title">Slots</span>
+          <span class="of">{{ contract.slots.length }}</span>
+        </header>
         <template v-for="slot in contract?.slots ?? []" :key="`slot:${slot.name}`">
           <div
             class="row read"
@@ -944,13 +989,13 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               :title="slot.description"
               @click="toggle(`slot:${slot.name}`)"
             >
-              <span class="name-text">slot {{ slot.name }}</span>
+              <span class="name-text">{{ slot.name }}</span>
               <span v-if="isPlaceholder(slot.description)" class="flag" title="Needs a description"
                 >?</span
               >
             </button>
-            <span class="type" :title="slot.accepts ? `accepts ${slot.accepts}` : 'slot'">{{
-              slot.accepts ? `accepts ${slot.accepts}` : 'slot'
+            <span class="type" :title="slot.accepts ? `accepts ${slot.accepts}` : undefined">{{
+              slot.accepts ? `accepts ${slot.accepts}` : ''
             }}</span>
             <button
               type="button"
@@ -977,28 +1022,30 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
                 "
               />
             </label>
-            <div class="pair">
-              <label class="field">
-                <span>Accepts (element)</span>
-                <input
-                  class="text"
-                  :value="slot.accepts ?? ''"
-                  :disabled="!writable"
-                  placeholder="hwc-radio"
-                  @change="
-                    redeclare('slot', slot.name, {
-                      attrs: {
-                        accepts: ($event.target as HTMLInputElement).value.trim() || undefined,
-                      },
-                    })
-                  "
-                />
-              </label>
-            </div>
+            <label class="field">
+              <span>Accepts (element)</span>
+              <input
+                class="text"
+                :value="slot.accepts ?? ''"
+                :disabled="!writable"
+                placeholder="hwc-radio"
+                @change="
+                  redeclare('slot', slot.name, {
+                    attrs: {
+                      accepts: ($event.target as HTMLInputElement).value.trim() || undefined,
+                    },
+                  })
+                "
+              />
+            </label>
           </div>
         </template>
 
-        <!-- Element states and described parts -->
+        <!-- Element states and described parts, each under its own subhead. -->
+        <header v-if="contract?.states.length" class="subhead">
+          <span class="title">Element states</span>
+          <span class="of">{{ contract.states.length }}</span>
+        </header>
         <template v-for="state in contract?.states ?? []" :key="`state:${state.name}`">
           <div
             class="row read"
@@ -1019,7 +1066,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
                 >element</span
               >
             </button>
-            <span class="type">state</span>
+            <span class="type" />
             <button
               type="button"
               class="reset"
@@ -1047,6 +1094,10 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             </label>
           </div>
         </template>
+        <header v-if="contract?.parts.length" class="subhead">
+          <span class="title">Parts</span>
+          <span class="of">{{ contract.parts.length }}</span>
+        </header>
         <template v-for="part in contract?.parts ?? []" :key="`part:${part.name}`">
           <div
             class="row read"
@@ -1057,15 +1108,15 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               type="button"
               class="name open"
               :aria-expanded="open === `part:${part.name}`"
-              :title="part.description"
+              :title="`${part.name} · ${part.description}`"
               @click="toggle(`part:${part.name}`)"
             >
-              <span class="name-text">part {{ part.name }}</span>
+              <span class="name-text">{{ part.name }}</span>
               <span v-if="isPlaceholder(part.description)" class="flag" title="Needs a description"
                 >?</span
               >
             </button>
-            <span class="type">part</span>
+            <span class="type" />
             <button
               type="button"
               class="reset"
@@ -1255,30 +1306,29 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         <div
           v-for="stray in view.straySlots"
           :key="`stray:${stray.address}`"
-          class="row pick-row stray"
+          class="row pick-row"
           :data-stray-slot="stray.name"
           data-bound="false"
         >
+          <!--
+            A fault, not a binding: a status like "Not drawn" on the shared
+            grid, never the purple layer chip, and declared from the + where
+            every other row keeps its action.
+          -->
           <span class="name">
             <span class="tone-dot" data-tone="warn" />
             <span class="name-text" :title="stray.name">{{ stray.name }}</span>
           </span>
+          <span class="status">Not declared</span>
           <button
             type="button"
-            class="layer"
-            title="Select the slot"
-            @click="emit('select', stray.address)"
-          >
-            <span class="layer-name">Not declared</span>
-          </button>
-          <button
-            type="button"
-            class="link-button"
+            class="reset"
             :disabled="!writable"
+            :aria-label="`Declare slot ${stray.name}`"
             :title="`Declare slot ${stray.name} in the contract`"
             @click="declareSlot(stray.name)"
           >
-            Declare
+            +
           </button>
         </div>
         <div
@@ -1301,7 +1351,9 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             v-if="slot.provided"
             type="button"
             class="layer"
-            title="Select the slot"
+            :title="
+              slot.provided.repeat ? 'Select the slot, filled once per item' : 'Select the slot'
+            "
             @click="emit('select', slot.provided.address)"
           >
             <svg class="icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
@@ -1313,7 +1365,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               />
             </svg>
             <span class="layer-name">
-              {{ slot.provided.repeat ? 'Slot, one per item' : 'Slot in tree' }}
+              {{ slot.provided.repeat ? 'Per item' : 'Slot in tree' }}
             </span>
           </button>
           <span v-else class="status">{{ COPY.notDrawn }}</span>
@@ -1406,6 +1458,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         default so the tab leads with what instances can change.
       -->
       <InspectorSection
+        ref="bindingSection"
         collapsible
         field="code-binding"
         title="Code binding"
@@ -1414,16 +1467,18 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         :info="INFO.codeBinding"
       >
         <div class="row stacked" data-field="implements" :data-set="view.implementsValue !== null">
+          <!-- Named as Connect names it: one value, one name in both tabs. -->
           <span class="name" title="The headless element this component is a render of">
-            Element
+            Headless element
           </span>
-          <!-- A select whenever a library is configured, readable or not: the control never changes type. -->
+          <!-- A select over the library's elements; a typed tag without one, or
+               while it cannot be read, so the tag can still be changed. -->
           <select
-            v-if="library || paused"
+            v-if="library"
             class="pick"
             :value="view.implementsValue ?? ''"
             :disabled="!writable"
-            aria-label="Element"
+            aria-label="Headless element"
             @change="chooseElement(($event.target as HTMLSelectElement).value)"
           >
             <option value="">None</option>
@@ -1436,7 +1491,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             class="text"
             :value="view.implementsValue ?? ''"
             :disabled="!writable"
-            aria-label="Element"
+            aria-label="Headless element"
             placeholder="e.g. hwc-button"
             @change="chooseElement(($event.target as HTMLInputElement).value.trim())"
           />
@@ -1445,7 +1500,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             type="button"
             class="reset"
             :disabled="!writable"
-            aria-label="Clear element"
+            aria-label="Clear headless element"
             title="Implement nothing"
             @click="chooseElement('')"
           >
@@ -1484,7 +1539,8 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         <p v-if="paused" class="hint">{{ COPY.partsPaused }}</p>
         <template v-else-if="!view.parts.length">
           <p v-if="view.implementsValue === null" class="hint">{{ COPY.chooseElement }}</p>
-          <p v-else-if="!library" class="hint">{{ COPY.noLibrary }}</p>
+          <!-- The missing library is said once, above; without one, parts are the contract's. -->
+          <p v-else-if="!library" class="hint">{{ COPY.contractNoParts }}</p>
           <div v-else-if="!view.element" class="issue" role="status">
             <span class="tone-dot" data-tone="warn" />
             <span>{{ COPY.tagMissing(view.implementsValue) }}</span>
@@ -1511,7 +1567,8 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
                 ? 'declared by the library and the contract'
                 : row.declaredBy === 'library'
                   ? 'declared by the library'
-                  : 'declared by the contract; the library does not know it')
+                  : 'declared by the contract; the library does not know it') +
+              (row.kind === 'shadow' ? ' · a shadow part, drawn by the library' : '')
             "
           >
             <span class="name-text">{{ row.name }}</span>
@@ -1522,7 +1579,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
               >?</span
             >
             <span
-              v-if="row.kind === 'shadow'"
+              v-if="row.kind === 'shadow' && !allShadow"
               class="pill"
               title="A shadow part: styled through ::part() and drawn by the library. What the bound layer holds stays design-only."
               >shadow</span
@@ -1551,11 +1608,16 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             value=""
             :disabled="!writable || !view.candidates.length"
             :aria-label="`Bind ${row.name}`"
-            :title="view.candidates.length ? undefined : 'No unbound layer is left to draw it'"
+            :title="
+              view.candidates.length
+                ? `Bind a layer to draw ${row.name}`
+                : 'No unbound layer is left to draw it'
+            "
             @change="bind(row.name, ($event.target as HTMLSelectElement).value)"
           >
+            <!-- Short enough for the narrowest pane: a native select cannot ellipsise. -->
             <option value="" disabled>
-              {{ view.candidates.length ? 'Bind a layer…' : 'No layer to bind' }}
+              {{ view.candidates.length ? 'Bind…' : 'None left' }}
             </option>
             <option v-for="c in view.candidates" :key="c.address" :value="c.address">
               {{ indent(c.depth) }}{{ c.name }}
@@ -1592,8 +1654,14 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       :meta="`of ${view.component.name}`"
     >
       <template #actions>
-        <button type="button" class="link-button" @click="emit('select', view.component.address)">
-          Select {{ view.component.name }}
+        <button
+          type="button"
+          class="link-button"
+          :title="`Select ${view.component.name}`"
+          :aria-label="`Select ${view.component.name}`"
+          @click="emit('select', view.component.address)"
+        >
+          Select component
         </button>
       </template>
       <p v-if="view.undeclared" class="hint">{{ COPY.noImplements(view.component.name) }}</p>
@@ -1660,6 +1728,12 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         />
       </div>
       <InspectorEmpty
+        v-else-if="fillEmpty"
+        kind="slot-fill"
+        v-bind="fillEmpty"
+        @act="emit('act', $event)"
+      />
+      <InspectorEmpty
         v-else
         kind="slot-outside"
         v-bind="SLOT_OUTSIDE"
@@ -1705,9 +1779,10 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
             type="button"
             class="link-button"
             :title="`Select ${view.definition.name} to change what it declares`"
+            :aria-label="`Select ${view.definition.name}`"
             @click="emit('select', view.definition.address)"
           >
-            Select {{ view.definition.name }}
+            Select component
           </button>
         </template>
         <div
@@ -1844,12 +1919,27 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 .row.pick-row {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 24px;
 }
-.row.stray {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
-}
+/*
+ * Rows that open an editor: a tint under the pointer that stays on the open
+ * row. Neutral, never --bound; the margin and padding cancel, so the columns
+ * stay on the grid and the tint reaches 6px into the gutter.
+ */
 .row.read {
   min-height: var(--row-h);
-  padding: 2px 0;
+  margin: 0 -6px;
+  padding: 2px 6px;
+  border-radius: var(--radius-lg);
+}
+.row.read:has(> .name.open:hover),
+.row.read:has(> .name.open[aria-expanded='true']) {
+  background: color-mix(in srgb, var(--raised) 50%, transparent);
+}
+/* A row with no type to show (an element state, a described part) gives its name the room. */
+.row.read > .type:empty {
+  display: none;
+}
+.row.read:has(> .type:empty) > .name {
+  grid-column: 1 / 3;
 }
 .name {
   display: flex;
@@ -1869,7 +1959,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 .row[data-bound='true'] .name {
   color: var(--text);
 }
-/* A caption over a full-width control: Element, Draws. */
+/* A caption over a full-width control: Headless element, Draws. */
 .row.stacked {
   grid-template-columns: minmax(0, 1fr) 24px;
   row-gap: 4px;
@@ -1884,6 +1974,21 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/*
+ * A part name breaks at its hyphens rather than ellipsing to the same prefix
+ * as its siblings ('form-control-label', 'form-control-input'…).
+ */
+.row.pick-row[data-part] .name {
+  white-space: normal;
+}
+.row.pick-row[data-part] .name-text {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-height: 16px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .name.open {
   padding: 0;
@@ -2001,7 +2106,7 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
 .hint {
   margin: 0 0 6px;
   padding-top: 0;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: var(--ui-size-sm);
   line-height: 16px;
 }
@@ -2119,7 +2224,7 @@ code {
   color: var(--text);
   cursor: pointer;
 }
-/* Fill from library: a checklist in a well, its buttons pinned while it scrolls. */
+/* Fill from library: a checklist in a well, its count and buttons pinned while it scrolls. */
 .offers {
   margin: 0 0 10px;
   padding: 0 8px;
@@ -2130,8 +2235,13 @@ code {
   overflow-y: auto;
 }
 .offers-bar {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   margin: 0;
-  padding: 8px 0 4px;
+  padding: 8px 0 6px;
+  background: var(--bg);
+  border-bottom: 1px solid var(--line);
   color: var(--text-faint);
   font-size: var(--ui-size-sm);
 }

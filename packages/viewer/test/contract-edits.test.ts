@@ -440,7 +440,10 @@ describe('a shadow part in the tab', () => {
     const section = mount(ContractSection, {
       props: { doc, node: resolve(doc.tree, 'Glyph'), library: LIBRARY, writable: true },
     })
-    expect(section.find('[data-part="glyph"] .pill').text()).toBe('shadow')
+    // Every part is a shadow part, so a pill on each row would say nothing:
+    // the row's title says it, and the name keeps the room.
+    expect(section.find('[data-part="glyph"] .name').attributes('title')).toContain('shadow part')
+    expect(section.find('[data-part="glyph"] .pill').exists()).toBe(false)
     const layer = mount(ContractSection, {
       props: { doc, node: resolve(doc.tree, 'Glyph#mark'), library: LIBRARY, writable: true },
     })
@@ -450,6 +453,30 @@ describe('a shadow part in the tab', () => {
         .findAll('option')
         .map((o) => o.text().trim()),
     ).toEqual(['Nothing — design only', 'glyph · shadow'])
+  })
+
+  it('keeps the shadow pill where the list mixes kinds', () => {
+    const mixed = parseHeadless('lib.json', {
+      modules: [
+        {
+          declarations: [
+            { tagName: 'x-badge', cssParts: [{ name: 'glyph' }] },
+            { tagName: 'x-badge-mark' },
+          ],
+        },
+      ],
+    })
+    const doc = parseOrThrow(
+      page(
+        'badge',
+        `  <Component name="Badge" status="draft" implements="x-badge" width={8} height={8} />`,
+      ),
+    )
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Badge'), library: mixed, writable: true },
+    })
+    expect(section.find('[data-part="glyph"] .pill').text()).toBe('shadow')
+    expect(section.find('[data-part="mark"] .pill').exists()).toBe(false)
   })
 })
 
@@ -570,13 +597,15 @@ describe('the Contract section', () => {
       'Plain',
     )
     expect(fresh.find('.head .title').text()).toBe('Properties')
-    const folded = fresh.find('details[data-field="code-binding"]')
+    const folded = fresh.find('[data-field="code-binding"] .section-toggle')
     expect(folded.exists()).toBe(true)
-    expect(folded.attributes('open')).toBeUndefined()
+    expect(folded.attributes('aria-expanded')).toBe('false')
     expect(folded.text()).toContain('for developers')
 
     const bound = mountFor(CHECKBOX, 'Checkbox')
-    expect(bound.find('details[data-field="code-binding"]').attributes('open')).toBeDefined()
+    expect(
+      bound.find('[data-field="code-binding"] .section-toggle').attributes('aria-expanded'),
+    ).toBe('true')
   })
 
   it('adds a choice prop as a visual enum, refusing fewer than two choices', async () => {
@@ -695,8 +724,8 @@ describe('the Contract section', () => {
 `,
     )
     const section = mountFor(source, 'Chip')
-    const details = section.find('details[data-field="accessibility"]')
-    expect(details.attributes('open')).toBeDefined()
+    const details = section.find('[data-field="accessibility"]')
+    expect(details.find('.section-toggle').attributes('aria-expanded')).toBe('true')
     expect((details.find('[aria-label="Role"]').element as HTMLInputElement).value).toBe('switch')
     await details.find('[aria-label="Keyboard"]').setValue('Space toggles')
     await details.find('[aria-label="Role"]').setValue('')
@@ -761,11 +790,7 @@ describe('the Contract section', () => {
     expect(section.emitted('select')).toEqual([['Checkbox#check']])
 
     const unbound = section.find('[data-part="indeterminate-indicator"] select')
-    expect(unbound.findAll('option').map((o) => o.text().trim())).toEqual([
-      'Bind a layer…',
-      'dash',
-      'ring',
-    ])
+    expect(unbound.findAll('option').map((o) => o.text().trim())).toEqual(['Bind…', 'dash', 'ring'])
     await unbound.setValue('Checkbox#dash')
     expect(section.emitted('patches')).toEqual([
       [[{ op: 'add', address: 'Checkbox#dash', prop: 'part', value: 'indeterminate-indicator' }]],
@@ -841,6 +866,67 @@ describe('the Contract section', () => {
     expect(mountFor(LIST, 'List#option/row').text()).toContain('no component called “Row”')
   })
 
+  it('says whose slot a fill fills, not that it is outside a component', async () => {
+    // A <Slot> in an instance fills the slot its component declares (ADR 0007 §2):
+    // making its frame a component is no way forward, opening that component is.
+    const filled = page(
+      'filled',
+      `  <Instance name="list-2" component="List">
+    <Slot name="option">
+      <Text name="label" characters="Hi" />
+    </Slot>
+  </Instance>`,
+    )
+    const section = mountFor(filled, 'list-2#option')
+    const empty = section.find('[data-empty="slot-fill"]')
+    expect(empty.text()).toContain("Fills List's option slot")
+    expect(section.find('[data-empty="slot-outside"]').exists()).toBe(false)
+    await empty.find('button').trigger('click')
+    expect(section.emitted('act')).toEqual([
+      [{ label: 'Open List', run: 'open-component', arg: 'List' }],
+    ])
+  })
+
+  it('counts props alone in the Properties head and groups the other kinds under subheads', () => {
+    const section = mountFor(CHECKBOX, 'Checkbox')
+    // One prop, one event, two parts: the head says 1, not 4.
+    expect(section.find('.head .section-meta').text()).toBe('1')
+    expect(section.findAll('.subhead .title').map((title) => title.text())).toEqual([
+      'Events',
+      'Parts',
+      'Parts',
+    ])
+    // The subhead says the kind, so the rows carry only the name.
+    expect(section.find('[data-event="change"] .name-text').text()).toBe('change')
+    expect(section.find('[data-described-part="checked-indicator"] .name-text').text()).toBe(
+      'checked-indicator',
+    )
+  })
+
+  it('marks a slot the tree draws but the contract lacks as a status, declared from its +', async () => {
+    const section = mountFor(TREE, 'Tree')
+    const row = section.find('[data-stray-slot="node"]')
+    expect(row.find('.status').text()).toBe('Not declared')
+    expect(row.find('.layer').exists()).toBe(false)
+    await row.find('[aria-label="Declare slot node"]').trigger('click')
+    expect(section.emitted('patches')![0]![0]).toMatchObject([
+      { op: 'contract', kind: 'slot', name: 'node' },
+    ])
+  })
+
+  it('says the missing library once: under Parts, only that the contract declares none', () => {
+    const section = mountFor(
+      CHECKBOX.replace(/<Parts>[\s\S]*?<\/Parts>\n/, ''),
+      'Checkbox',
+      true,
+      null,
+    )
+    const binding = section.find('[data-field="code-binding"]')
+    expect(binding.text()).toContain('Connect a component library')
+    expect(binding.text()).toContain('The contract declares no parts.')
+    expect(binding.text()).not.toContain('No library connected')
+  })
+
   it('names a binding nothing declares, and shows its layer', async () => {
     const section = mountFor(STRAY, 'Checkbox')
     const issue = section.find('[data-field="code-binding"] .issue')
@@ -855,7 +941,7 @@ describe('the Contract section', () => {
     )
   })
 
-  it('pauses the part checks while the library cannot be read, and keeps the Element select', () => {
+  it('pauses the part checks while the library cannot be read, and keeps the tag editable', async () => {
     // The fault itself is the shell's status line; here only what waits on it.
     const doc = parseOrThrow(STRAY)
     const section = mount(ContractSection, {
@@ -870,9 +956,12 @@ describe('the Contract section', () => {
     expect(section.text()).toContain('Not checked while the library is unavailable.')
     expect(section.find('.issue').exists()).toBe(false)
     expect(section.find('[data-field="choose-library"]').exists()).toBe(false)
-    expect(
-      section.findAll('[data-field="implements"] select option').map((o) => o.text().trim()),
-    ).toEqual(['None', 'hwc-checkbox · library unavailable'])
+    // No list to pick from: the tag is typed, as Connect's is, so it can still change.
+    expect(section.find('[data-field="implements"] select').exists()).toBe(false)
+    const tag = section.find('[data-field="implements"] input')
+    expect((tag.element as HTMLInputElement).value).toBe('hwc-checkbox')
+    await tag.setValue('hwc-switch')
+    expect(section.emitted('patches')).toHaveLength(1)
   })
 
   it('opens Code binding when the shell asks to show the parts, once per request', async () => {
@@ -881,17 +970,25 @@ describe('the Contract section', () => {
       `  <Component name="Plain" status="draft" width={10} height={10} />`,
     )
     const section = mountFor(fresh, 'Plain')
-    const folded = section.find('details[data-field="code-binding"]')
-    expect(folded.attributes('open')).toBeUndefined()
+    const folded = section.find('[data-field="code-binding"] .section-toggle')
+    expect(folded.attributes('aria-expanded')).toBe('false')
     await section.setProps({ focus: { target: 'parts', n: 42 } })
     await flushPromises()
-    expect((folded.element as HTMLDetailsElement).open).toBe(true)
+    expect(folded.attributes('aria-expanded')).toBe('true')
+    // Closed by hand, the next request opens it again.
+    await folded.trigger('click')
+    expect(folded.attributes('aria-expanded')).toBe('false')
+    await section.setProps({ focus: { target: 'parts', n: 43 } })
+    await flushPromises()
+    expect(folded.attributes('aria-expanded')).toBe('true')
     // Back on the tab later, the same request is not served again.
     const again = mount(ContractSection, {
-      props: { ...section.props(), focus: { target: 'parts', n: 42 } },
+      props: { ...section.props(), focus: { target: 'parts', n: 43 } },
     })
     await flushPromises()
-    expect(again.find('details[data-field="code-binding"]').attributes('open')).toBeUndefined()
+    expect(
+      again.find('[data-field="code-binding"] .section-toggle').attributes('aria-expanded'),
+    ).toBe('false')
   })
 })
 
@@ -1056,6 +1153,38 @@ describe('editing the contract from the tab (ADR 0013 §2)', () => {
     const sent = section.emitted('patches')![0]![0] as { kind: string; name: string }[]
     expect(sent.map((p) => `${p.kind}:${p.name}`)).toEqual(['part:checked-indicator'])
     expect(section.find('.offers').exists()).toBe(false)
+  })
+
+  it('keeps the open checklist the only thing said, and says nothing new in one line', async () => {
+    const empty = parseOrThrow(
+      page(
+        'blank',
+        `  <Component name="Blank" status="draft" implements="hwc-checkbox" width={10} height={10} />`,
+      ),
+    )
+    const section = mount(ContractSection, {
+      props: { doc: empty, node: resolve(empty.tree, 'Blank'), library: LIBRARY, writable: true },
+    })
+    expect(section.text()).toContain('No properties yet')
+    await section.find('.fill').trigger('click')
+    // The empty hint would sit under the open list, telling the reader to fill from it.
+    expect(section.text()).not.toContain('No properties yet')
+    await section.findAll('.offers-bar button')[1]!.trigger('click')
+    const add = section.find('.offers-actions .primary')
+    expect(add.text()).toBe('Add')
+    expect(add.attributes('disabled')).toBeDefined()
+
+    // A fully declared contract: one faint line and a Close, not an empty well.
+    const full = parseOrThrow(CHECKBOX)
+    const done = mount(ContractSection, {
+      props: { doc: full, node: resolve(full.tree, 'Checkbox'), library: LIBRARY, writable: true },
+    })
+    await done.find('.fill').trigger('click')
+    expect(done.find('.offers').exists()).toBe(false)
+    const none = done.find('[data-field="offers-none"]')
+    expect(none.text()).toContain('Nothing new in hwc-checkbox')
+    await none.find('button').trigger('click')
+    expect(done.find('[data-field="offers-none"]').exists()).toBe(false)
   })
 })
 

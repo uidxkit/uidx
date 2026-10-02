@@ -1,4 +1,4 @@
-import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
+import { enableAutoUnmount, flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { applyPatches, parseOrThrow, type JsonValue, type UidxPatch } from '@uidx/format'
 import PropertiesPane from '../src/PropertiesPane.vue'
@@ -6,7 +6,12 @@ import CodeSection from '../src/CodeSection.vue'
 import ConnectSection from '../src/ConnectSection.vue'
 import ContractSection from '../src/ContractSection.vue'
 import { connection, connectionError, connectionErrorKey, headlessFailure } from '../src/headless'
+import { classifyFailure } from '../src/inspector-messages'
 import type { CodegenState } from '../src/headless'
+
+// Every mounted pane is torn down after its test, so the shared state its
+// watchers read cannot keep the last test's panes working.
+enableAutoUnmount(afterEach)
 
 const DOC = parseOrThrow(`---
 id: fields
@@ -146,6 +151,15 @@ describe('properties pane', () => {
     expect(status.attributes('data-meta')).toBe('status')
     expect(status.attributes('data-value')).toBe('stable')
     expect((status.element as HTMLSelectElement).value).toBe('stable')
+  })
+
+  it('keeps the status in one place, editable or read-only: first after the name', () => {
+    const order = (writable: boolean) =>
+      pane(['Card'], writable)
+        .findAll('.node-head .meta')
+        .map((chip) => chip.attributes('data-meta'))
+    expect(order(true)).toEqual(['status', 'version'])
+    expect(order(false)).toEqual(['status', 'version'])
   })
 
   it('shows no chips on a node that carries no metadata', () => {
@@ -2639,15 +2653,25 @@ id: list
     expect(lock.find('[data-icon="lock"]').exists()).toBe(true)
     expect(lock.get('.sr-only').text()).toContain('Reconnect to edit')
     expect(wrapper.find('.note.warn').exists()).toBe(false)
-    // With nothing selected the row still carries the chip, alone.
-    const idle = shell({ selection: [], writable: false })
-    expect(idle.get('.node-head').text()).toBe(lock.text())
-    expect(idle.find('.node-head .name').exists()).toBe(false)
+    // Beside a name the chip is the icon alone.
+    expect(lock.attributes('data-labelled')).toBeUndefined()
+    // With nothing selected the row carries the chip alone, and it names itself.
+    for (const selection of [[], ['Card#root', 'Card#root/label']]) {
+      const idle = shell({ selection, writable: false })
+      const idleLock = idle.get('.node-head .read-only-badge')
+      expect(idleLock.attributes('data-labelled')).toBeDefined()
+      const word = idleLock.get('.read-only-word')
+      expect(word.text()).toBe('Read only')
+      // Screen readers hear the title's sentence once, not the word as well.
+      expect(word.attributes('aria-hidden')).toBe('true')
+      expect(idle.find('.node-head .name').exists()).toBe(false)
+    }
   })
 
-  it('names a multi-selection, and asks for one layer the same way on every code tab', async () => {
+  it('names a multi-selection once, and asks for one layer the same way on every code tab', async () => {
     const wrapper = shell({ selection: ['Card#root', 'Card#root/label'] })
-    expect(wrapper.get('.node-head .name.multi').text()).toBe('2 layers')
+    // The empty state says how many; the identity row does not say it first.
+    expect(wrapper.find('.node-head').exists()).toBe(false)
     const hints: Record<string, string> = {
       contract: 'Select one to see its contract.',
       connect: 'Select one to see its connection.',
@@ -2685,12 +2709,36 @@ id: list
     // Unchecked parts are not problems; the Code tab has not rendered yet.
     expect(tab(wrapper, 'contract').find('.badge').exists()).toBe(false)
     expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
-    for (const name of ['contract', 'connect', 'code']) {
+    for (const name of ['contract', 'connect']) {
       await open(wrapper, name)
       const status = wrapper.get('.inspector-status')
       expect(status.attributes('data-tone')).toBe('danger')
       expect(status.get('.status-title').text()).toBe('Library file not found')
     }
+  })
+
+  it("says the library on Code only while Code can't render", async () => {
+    const wrapper = shell({ headlessError: MISSING })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => new Response('', { status: 502 })),
+    )
+    await open(wrapper, 'code')
+    const status = wrapper.get('.inspector-status')
+    expect(status.get('.status-title').text()).toBe('Library file not found')
+    await wrapper.get('button.status-bar').trigger('click')
+    expect(status.text()).toContain("Code can't render without it.")
+    // Rendered all the same: "can't render without it" would be wrong, and
+    // the library's fault is Connect's to show.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () => json({ files: [], diagnostics: [] })),
+    )
+    await wrapper.setProps({ doc: { ...DOC, sourceHash: 'edited' } })
+    await new Promise((done) => setTimeout(done, 450))
+    await flushPromises()
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+    expect(tab(wrapper, 'connect').get('.badge').attributes('title')).toBe('Library file not found')
   })
 
   it("takes the status line's Fix in Connect to Connect › Project, at the library", async () => {
@@ -2730,7 +2778,7 @@ id: list
     expect(online.get('.status-title').text()).toBe("Can't reach the uidx server")
   })
 
-  it('puts a uidx.json that will not load on Connect and Code, and a refused profile on Connect', async () => {
+  it('puts a uidx.json that will not load on Connect and Code, and a refused profile under its field', async () => {
     connectionError.value = 'Unexpected token } in JSON at position 48'
     const wrapper = shell({})
     expect(tab(wrapper, 'connect').get('.badge').attributes('title')).toBe(
@@ -2744,7 +2792,12 @@ id: list
     connectionError.value = 'Profile values must be strings.'
     connectionErrorKey.value = 'profile'
     await open(wrapper, 'connect')
-    expect(wrapper.get('.status-title').text()).toBe("Couldn't save the change")
+    // Said once, under the Naming grid, not again in the status line.
+    expect(wrapper.find('.inspector-status').exists()).toBe(false)
+    expect(wrapper.getComponent(ConnectSection).props('fieldError')).toEqual({
+      key: 'profile',
+      text: 'Profile values must be strings',
+    })
     expect(tab(wrapper, 'connect').find('.badge').exists()).toBe(false)
   })
 
@@ -2782,7 +2835,7 @@ id: list
     await open(wrapper, 'code')
     await flushPromises()
     expect(tab(wrapper, 'code').get('.badge').attributes('data-tone')).toBe('danger')
-    expect(wrapper.get('.status-title').text()).toBe("Code can't be generated")
+    expect(wrapper.get('.status-title').text()).toBe("Can't generate code")
     expect(wrapper.get('.status-count').text()).toBe('1 problem')
     await wrapper.get('button.status-bar').trigger('click')
     await wrapper.get('.status-rows .link-button').trigger('click')
@@ -2794,6 +2847,116 @@ id: list
     expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
     await wrapper.setProps({ doc: parseOrThrow(DOC.source.replace('2.1.0', '2.2.0')) })
     expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+  })
+
+  it('selects the component when another tab opens its contract from an inner layer', async () => {
+    const wrapper = shell({ selection: ['Card#root/label'] })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async () =>
+        json({
+          files: [],
+          diagnostics: [
+            { file: 'card.uidx', line: 11, column: 3, message: 'bad part', severity: 'error' },
+          ],
+        }),
+      ),
+    )
+    await open(wrapper, 'code')
+    await flushPromises()
+    await wrapper.get('button.status-bar').trigger('click')
+    await wrapper.get('.status-rows .link-button').trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['Card']])
+    expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
+    // Connect's Bind parts asks the same of the same component.
+    await open(wrapper, 'connect')
+    wrapper.getComponent(ConnectSection).vm.$emit('open-contract')
+    expect(wrapper.emitted('select')).toEqual([['Card'], ['Card']])
+  })
+
+  it("opens the page that declares an instance's component for its contract", async () => {
+    const wrapper = shell({
+      doc: TEAM,
+      selection: ['list-1'],
+      components: new Map([['List', LIST.tree.children[0]!]]),
+    })
+    await open(wrapper, 'code')
+    await wrapper.getComponent(CodeSection).vm.$emit('act', { run: 'open-contract' })
+    expect(wrapper.emitted('openComponent')).toEqual([['List']])
+    expect(wrapper.emitted('select')).toBeUndefined()
+    expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
+  })
+
+  it("never dots Code for the library, before or after Code renders, nor once it's back", async () => {
+    headlessFailure.value = classifyFailure(new Error(MISSING))
+    const wrapper = shell({ headlessError: MISSING })
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(
+        async () =>
+          new Response(JSON.stringify({ error: MISSING }), {
+            status: 500,
+            headers: { 'content-type': 'application/json' },
+          }),
+      ),
+    )
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    await open(wrapper, 'code')
+    await flushPromises()
+    expect(wrapper.get('.status-title').text()).toBe('Library file not found')
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    await open(wrapper, 'contract')
+    headlessFailure.value = null
+    await wrapper.setProps({ headlessError: '' })
+    await flushPromises()
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    expect(tab(wrapper, 'code').attributes('title')).toBe('Code')
+  })
+
+  it('drops the Code mark when Code is left before it re-renders an edit', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    try {
+      const wrapper = shell({})
+      vi.stubGlobal(
+        'fetch',
+        vi.fn().mockImplementation(async () =>
+          json({
+            files: [],
+            diagnostics: [
+              { file: 'card.uidx', line: 11, column: 3, message: 'bad part', severity: 'error' },
+            ],
+          }),
+        ),
+      )
+      await open(wrapper, 'code')
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+      // An edit lands while Code shows; Code is left before its 400ms re-render.
+      await wrapper.setProps({ doc: parseOrThrow(DOC.source.replace('2.1.0', '2.2.0')) })
+      await vi.advanceTimersByTimeAsync(150)
+      await open(wrapper, 'contract')
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+      // Left with nothing pending, the mark stays.
+      await open(wrapper, 'code')
+      await vi.advanceTimersByTimeAsync(1000)
+      await flushPromises()
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+      await open(wrapper, 'contract')
+      expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it("opens every tab at its top, not at the last tab's scroll position", async () => {
+    const wrapper = shell({})
+    await open(wrapper, 'contract')
+    const pane = wrapper.get('aside.properties').element
+    pane.scrollTop = 200
+    await open(wrapper, 'connect')
+    expect(pane.scrollTop).toBe(0)
   })
 
   it('reports a write that failed on the Code tab, with the way to fix it', async () => {

@@ -67,6 +67,17 @@ export interface StatusItem {
   raw?: string
 }
 
+/**
+ * The Code tab's state after a render, for the shell's status line and tab
+ * dot. It is only sent once a render lands, so there is no 'updating' state:
+ * the last report stands while the next render runs.
+ */
+export interface CodeReport {
+  component: string
+  state: 'live' | 'blocked' | 'failed'
+  items: StatusItem[]
+}
+
 /** A transport or server failure, by class. `raw` is what was thrown, verbatim. */
 export interface Failure {
   code:
@@ -107,7 +118,8 @@ const basename = (path: string): string => path.split(/[\\/]/).filter(Boolean).p
 /**
  * A path short enough for one line of the panel: the first named segment
  * (with any leading `..` or `/`) and as many trailing segments as fit,
- * joined by an ellipsis — '../vendor/…/custom-elements.json'. The full path
+ * joined by an ellipsis — '../vendor/…/custom-elements.json' — or the
+ * trailing segments alone when that is still too long. The full path
  * belongs in the element's title.
  */
 export function shortPath(p: string, max = 34): string {
@@ -125,7 +137,8 @@ export function shortPath(p: string, max = 34): string {
   let tail = [rest.pop()!]
   while (rest.length > 1 && `${head}/…/${[rest.at(-1), ...tail].join('/')}`.length <= max)
     tail = [rest.pop()!, ...tail]
-  if (rest.length === 0) return p
+  // Nothing between the head and the last segment to drop: keep the last.
+  if (rest.length === 0) return `…/${tail.join('/')}`
   const short = `${head}/…/${tail.join('/')}`
   return short.length <= max || tail.length > 1 ? short : `…/${tail.join('/')}`
 }
@@ -215,7 +228,6 @@ export const ACTION = {
   openConnect: { label: 'Open Connect', run: 'open-project', arg: 'library' },
   setFolder: { label: 'Set folder', run: 'open-project', arg: 'output' },
   changeFolder: { label: 'Change folder', run: 'open-project', arg: 'output' },
-  chooseTargets: { label: 'Choose targets', run: 'open-project', arg: 'output' },
   openContract: { label: 'Open contract', run: 'open-contract' },
   showParts: { label: 'Show', run: 'open-contract' },
   makeComponent: { label: 'Make component', run: 'make-component' },
@@ -247,6 +259,12 @@ const LIBRARY_TITLE: Record<Failure['code'], string> = {
   network: "Can't reach the uidx server",
   unknown: "Can't read the library",
 }
+
+/**
+ * Why a library the reader chose was refused, under the Library path field:
+ * the same words the status line uses for a library that will not load.
+ */
+export const libraryChoiceText = (f: Failure): string => LIBRARY_TITLE[f.code]
 
 const LIBRARY_DETAIL: Record<Face, string> = {
   connect: 'Element and part checks are paused until it loads.',
@@ -298,20 +316,6 @@ export function configLoadItem(f: Failure): StatusItem {
   }
 }
 
-/** A change to `uidx.json` the server refused, where no field owns the error. */
-export function saveItem(raw: string): StatusItem {
-  const f = classifyFailure(raw)
-  const detail =
-    transportDetail(f.code) ?? (f.code === 'unknown' ? firstSentence(raw) || undefined : undefined)
-  return {
-    id: 'save',
-    tone: 'danger',
-    title: "Couldn't save the change",
-    ...(detail ? { detail } : {}),
-    ...(detail !== raw ? { raw } : {}),
-  }
-}
-
 /**
  * The short text under the field a refused change came from. The server's
  * sentences are written for the CLI; these are the panel's.
@@ -331,8 +335,9 @@ export function fieldErrorText(key: ConfigChange['key'], raw: string): string {
 
 /**
  * One diagnostic as a status row: the message without its trailing aside,
- * sentence-cased, with where it comes from as the meta line. The manifest
- * miss every new binding hits reads as 'Unknown part “spinner-track”'.
+ * sentence-cased and with curly quotes, with where it comes from as the meta
+ * line. The manifest miss every new binding hits reads as 'Unknown part
+ * “spinner-track”'.
  */
 export function shortDiagnostic(d: Pick<Diagnostic, 'file' | 'line' | 'message'>): {
   label: string
@@ -342,9 +347,15 @@ export function shortDiagnostic(d: Pick<Diagnostic, 'file' | 'line' | 'message'>
   const part = /part "([^"]+)"(?: \(bound to "[^"]+"\))? has no element in the manifest/.exec(
     d.message,
   )
+  // The server quotes names straight; the panel's copy curls them.
   const label = part
     ? `Unknown part “${part[1]}”`
-    : sentenceCase(d.message.replace(/\s*\([^()]*\)\s*$/, '').trim())
+    : sentenceCase(
+        d.message
+          .replace(/\s*\([^()]*\)\s*$/, '')
+          .trim()
+          .replace(/"([^"]+)"/g, '“$1”'),
+      )
   return {
     label,
     full: `${d.file}:${d.line} ${d.message}`,
@@ -361,10 +372,16 @@ const sameFile = (a: string, b: string): boolean =>
  * The Code tab's diagnostics: one item for the subject's own file, whose
  * rows link to its contract, and one 'Blocked by <file>' item per other file
  * — a component that uses a broken one cannot render either, and the fix is
- * over there. Without `ownFile` every problem counts as the subject's own.
- * Rows are all kept; the status line shows three and folds the rest.
+ * over there, so the item opens the component that file declares when
+ * `declaredIn` names one. Without `ownFile` every problem counts as the
+ * subject's own. Rows are all kept; the status line shows three and folds
+ * the rest.
  */
-export function codeItems(diags: readonly Diagnostic[], ownFile?: string): StatusItem[] {
+export function codeItems(
+  diags: readonly Diagnostic[],
+  ownFile?: string,
+  declaredIn?: (file: string) => string | undefined,
+): StatusItem[] {
   const errors = diags.filter(isError)
   if (!errors.length) return []
   const own = ownFile === undefined ? errors : errors.filter((d) => sameFile(d.file, ownFile))
@@ -380,18 +397,21 @@ export function codeItems(diags: readonly Diagnostic[], ownFile?: string): Statu
     items.push({
       id: 'code',
       tone: 'danger',
-      title: "Code can't be generated",
+      title: "Can't generate code",
       count: problems(own.length),
       rows: own.map((d) => ({ ...shortDiagnostic(d), action: ACTION.openContract })),
     })
-  for (const [file, list] of others)
+  for (const [file, list] of others) {
+    const name = declaredIn?.(file)
     items.push({
       id: `blocked:${file}`,
       tone: 'danger',
       title: `Blocked by ${basename(file)}`,
       detail: `That file has ${problems(list.length)}.`,
       rows: list.map((d) => shortDiagnostic(d)),
+      ...(name ? { actions: [openComponent(name)] } : {}),
     })
+  }
   return items
 }
 
@@ -428,9 +448,14 @@ const FILE_DETAIL: Partial<Record<Failure['code'], string>> = {
 
 /**
  * The last Write code run, when it did not write. Success is the footer's
- * caption, not a status: it is news, and the status line is for faults.
+ * caption, not a status: it is news, and the status line is for faults. A
+ * folder that cannot be written names it as `uidx.json` configures it
+ * (`out`), with the absolute path the server tried in its title.
  */
-export function writeItem(result: WriteResult | null | undefined): StatusItem | null {
+export function writeItem(
+  result: WriteResult | null | undefined,
+  out: string | null = null,
+): StatusItem | null {
   if (!result || result.kind === 'ok') return null
   if (result.kind === 'blocked') {
     const errors = result.diagnostics.filter(isError)
@@ -462,21 +487,26 @@ export function writeItem(result: WriteResult | null | undefined): StatusItem | 
       detail: transport,
       raw: f.raw,
     }
-  const path = pathIn(f.raw)
+  const tried = pathIn(f.raw)
+  const path = out ?? tried
+  // ENOTDIR classes as not-found, but on a write it means a file stands where
+  // a folder has to go: the server makes missing folders itself.
   const detail =
     f.code === 'no-access'
       ? 'Permission denied.'
-      : f.code === 'not-found'
-        ? 'A folder on the way is missing.'
-        : f.code === 'is-folder'
-          ? 'A file there is a folder.'
-          : firstSentence(f.raw) || undefined
+      : /\bENOTDIR\b/.test(f.raw)
+        ? 'A file is in the way of that folder.'
+        : f.code === 'not-found'
+          ? 'A folder on the way is missing.'
+          : f.code === 'is-folder'
+            ? 'A file there is a folder.'
+            : firstSentence(f.raw) || undefined
   return {
     id: 'write',
     tone: 'danger',
     title: "Can't write to the output folder",
     ...(detail ? { detail } : {}),
-    ...(path ? { path, pathTitle: path } : {}),
+    ...(path ? { path, pathTitle: tried ?? path } : {}),
     actions: [ACTION.changeFolder],
     ...(detail !== f.raw ? { raw: f.raw } : {}),
   }
@@ -506,12 +536,16 @@ export interface EmptyCopy {
 /**
  * What each tab says when it has nothing to show. `none` is nothing
  * selected, `multi` several layers, `outside` a layer in no component.
- * The multi title counts the layers: see `layersSelected`.
+ * The multi state's title counts the layers (`layersSelected`), so only its
+ * hint is per tab.
  */
-export const EMPTY: Record<Face, Record<'none' | 'multi' | 'outside', EmptyCopy>> = {
+export const EMPTY: Record<
+  Face,
+  { none: EmptyCopy; multi: Pick<EmptyCopy, 'hint'>; outside: EmptyCopy }
+> = {
   contract: {
     none: { title: 'No component selected', hint: 'Select a component, or a layer inside one.' },
-    multi: { title: 'Several layers selected', hint: 'Select one to see its contract.' },
+    multi: { hint: 'Select one to see its contract.' },
     outside: {
       title: 'Not in a component',
       hint: 'Only layers inside a component have a contract.',
@@ -519,7 +553,7 @@ export const EMPTY: Record<Face, Record<'none' | 'multi' | 'outside', EmptyCopy>
   },
   connect: {
     none: { title: 'No component selected', hint: 'Select a component to connect it to code.' },
-    multi: { title: 'Several layers selected', hint: 'Select one to see its connection.' },
+    multi: { hint: 'Select one to see its connection.' },
     outside: {
       title: 'Not in a component',
       hint: 'Only components, and the layers inside them, connect to code.',
@@ -530,7 +564,7 @@ export const EMPTY: Record<Face, Record<'none' | 'multi' | 'outside', EmptyCopy>
       title: 'No component selected',
       hint: 'Select a component or an instance to see its code.',
     },
-    multi: { title: 'Several layers selected', hint: 'Select one to see its code.' },
+    multi: { hint: 'Select one to see its code.' },
     outside: {
       title: 'Not in a component',
       hint: 'Only components and their instances become code.',
@@ -561,11 +595,27 @@ export const SLOT_OUTSIDE: EmptyCopy = {
   hint: 'Make its frame a component to declare it.',
 }
 
-/** The Code tab with a component whose chosen targets produce no file. */
-export const noFiles = (component: string): EmptyCopy & { action: MessageAction } => ({
-  title: `No files for ${component}`,
-  hint: 'The chosen targets produce none.',
-  action: ACTION.chooseTargets,
+/**
+ * A `<Slot>` inside an instance: it fills the slot that instance's
+ * component declares, so its contract is over there.
+ */
+export const slotFill = (
+  component: string,
+  slot: string,
+): EmptyCopy & { action: MessageAction } => ({
+  title: `Fills ${component}'s ${slot} slot`,
+  hint: `The slot is declared on ${component}; what is inside is this page's.`,
+  action: openComponent(component),
+})
+
+/**
+ * The Code tab with a component nothing renders yet: no element and no
+ * contract. The preview renders every kind of file whatever the targets, so
+ * the targets are never why.
+ */
+export const noFiles = (component: string): EmptyCopy => ({
+  title: `No code for ${component}`,
+  hint: 'Code is generated once it implements an element or declares a property.',
 })
 
 /** The disclosures under the nothing-selected state: what each tab is for. */
@@ -580,9 +630,18 @@ export const ABOUT: Record<Face, { label: string; text: string }> = {
   },
   code: {
     label: 'About Code',
-    text: 'Code is a live preview of the files code generation writes for a component, refreshed as you edit. Write code writes every component into the output folder.',
+    text: 'Code is a live preview of what a component generates, refreshed as you edit. Write code saves the chosen targets for every component to the output folder.',
   },
 }
+
+/**
+ * Where a component's element and parts are saved: the page that declares
+ * it, by its file name. A page is not named after its component
+ * (`contact-list.uidx` declares ContactList), so without the page the
+ * component's name stands in, never a file name made from it.
+ */
+const savedIn = (name: string, file?: string): string =>
+  file ? basename(file) : `${name ? `${name}'s` : "the component's"} .uidx file`
 
 /**
  * The (i) text of every section header in the three tabs. Each says what
@@ -600,8 +659,8 @@ export const INFO = {
   codeBinding:
     "The headless element this component implements, and the layer that draws each of its parts. Generated code renders the element. Saved in the component's .uidx file.",
   // Connect
-  element: (name: string): string =>
-    `The web component that gives ${name || 'the component'} its behaviour and accessibility. Generated code renders it. Saved in ${name || 'the component'}.uidx.`,
+  element: (name: string, file?: string): string =>
+    `The web component that gives ${name || 'the component'} its behaviour and accessibility. Generated code renders it. Saved in ${savedIn(name, file)}.`,
   names:
     'Only where the library spells a name differently; empty fields keep the same name. Saved in uidx.json.',
   react: (name: string): string =>
@@ -609,28 +668,26 @@ export const INFO = {
   project:
     'Settings for every component: the library, how it names things, and where generated code goes. Saved in uidx.json.',
   // Code
-  code: 'A live preview of what Write code produces. Write code writes every component into the output folder.',
+  code: 'A live preview of what this component generates. Write code saves the chosen targets for every component to the output folder.',
 } as const
 
 /* ------------------------------------------------------------ shared copy */
 
 /**
  * Sentences two tabs say about the same thing, kept here so they cannot
- * drift: the Element picker in Contract and Connect, the parts progress, the
- * Code footer.
+ * drift: the Headless element picker in Contract and Connect, the parts
+ * progress, the Code footer.
  */
 export const COPY = {
-  /** An Element option the library lacks. */
+  /** A Headless element option the library lacks. */
   notInLibrary: (tag: string): string => `${tag} · not in library`,
-  /** An Element option while the library cannot be read. */
-  libraryUnavailable: (tag: string): string => `${tag} · library unavailable`,
   /** The configured tag is not in the library. */
   tagMissing: (tag: string): string => `${tag} isn't in the library.`,
   noLibrary: 'No library connected.',
   /** The lock chip in the identity row, said once for every tab. */
   readOnly: 'Read only. Reconnect to edit; you can still inspect and export.',
-  /** The identity row's name for a multi-selection. */
-  layers: (n: number): string => `${n} layers`,
+  /** The lock chip's visible word, when the identity row has nothing else to show. */
+  readOnlyShort: 'Read only',
   connectLibrary: 'Connect a component library to pick elements from a list.',
   partsPaused: 'Not checked while the library is unavailable.',
   chooseElement: 'Choose an element to see its parts.',
@@ -642,27 +699,36 @@ export const COPY = {
   notAPart: (tag: string): string => `Not a part of ${tag}. Code generation stops here.`,
   noImplements: (name: string): string => `${name} doesn't implement an element yet.`,
   notDrawn: 'Not drawn',
+  /** A slot a Slot layer draws but the contract does not declare. */
+  slotUndeclared: "Not declared, so uses can't fill it.",
+  /** Code binding's parts without a library: only the contract can declare them. */
+  contractNoParts: 'The contract declares no parts.',
   needsOutput: 'Needs an output folder.',
-  footnote: (name: string): string =>
-    `Element and parts save to ${name || 'the component'}.uidx; names, React and project to uidx.json.`,
+  footnote: (name: string, file?: string): string =>
+    `Element and parts save to ${savedIn(name, file)}; names, React and project to uidx.json.`,
   // Code
   codeBlocked: 'Code appears here once the problem above is fixed.',
-  noOutput: 'No output folder (codegen.out in uidx.json).',
+  noOutput: 'No output folder yet.',
   writeTo: (out: string): string => `All components → ${shortPath(out)}`,
   wrote: (n: number): string => `Wrote ${plural(n, 'file')}`,
   updating: 'Updating…',
   lastRendered: 'Last rendered',
 } as const
 
-/** Why Write code is disabled, or what it will do: the button's title. */
+/**
+ * Why Write code is disabled, or what it will do: the button's title. A
+ * render that failed has no problems to count; the status line names it.
+ */
 export function writeBlockedReason(state: {
   writable: boolean
   problems: number
+  failed?: boolean
   files: number
   out: string | null
 }): string {
   if (!state.writable) return 'Reconnect to write code'
   if (state.problems > 0) return `Fix ${problems(state.problems)} to write code`
+  if (state.failed) return 'Fix the problem above to write code'
   if (!state.files) return 'Nothing to write yet'
   return `Write every component into ${state.out ?? 'the output folder'}`
 }

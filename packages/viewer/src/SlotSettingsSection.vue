@@ -5,6 +5,7 @@ import type { ModelIndex } from '@uidx/schema'
 import ComponentThumb from './ComponentThumb.vue'
 import { contractView, declare, isPlaceholder, PLACEHOLDER } from './contract-edits'
 import type { HeadlessLibrary } from './headless'
+import { COPY } from './inspector-messages'
 import { LAYER_ICONS } from './layer-icons'
 import RepeatSection from './RepeatSection.vue'
 import SlotContentPopup from './SlotContentPopup.vue'
@@ -84,17 +85,20 @@ function pickDefault(pick: SlotPick): void {
         <path :d="LAYER_ICONS.Slot" fill="none" stroke="currentColor" />
       </svg>
       <span class="title">Slot</span>
-      <span class="of">of {{ component.name }}</span>
+      <span class="of" :title="`of ${component.name}`">of {{ component.name }}</span>
     </header>
 
-    <!-- 1. What it is for -->
-    <p v-if="!declaration" class="banner" role="status" data-field="undeclared">
-      Not in {{ component.name }}'s contract yet, so uses cannot fill it and code does not expose
-      it.
-      <button type="button" class="link" :disabled="!writable" @click="redeclare({})">
+    <!--
+      1. What it is for. Undeclared, it is the inspector's one finding row:
+      a dot, a short sentence, the action, as every other fault reads.
+    -->
+    <div v-if="!declaration" class="issue" role="status" data-field="undeclared">
+      <span class="tone-dot" data-tone="warn" />
+      <span>{{ COPY.slotUndeclared }}</span>
+      <button type="button" class="link-button" :disabled="!writable" @click="redeclare({})">
         Declare slot
       </button>
-    </p>
+    </div>
     <label v-else class="stack" data-field="description">
       <span class="label">Description</span>
       <textarea
@@ -171,19 +175,29 @@ function pickDefault(pick: SlotPick): void {
   margin-bottom: var(--pad);
   border-bottom: 1px solid var(--line);
 }
+/* One line at any width: a long component name ellipsises, the full name in its title. */
 .head {
   display: flex;
   gap: 6px;
   align-items: center;
+  min-width: 0;
   height: var(--row-h);
   color: var(--bound);
 }
+.head svg {
+  flex: none;
+}
 .title {
+  flex: none;
   color: var(--text);
   font-weight: 600;
 }
 .of {
+  min-width: 0;
+  overflow: hidden;
   color: var(--text-faint);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .label {
   color: var(--text-dim);
@@ -382,8 +396,7 @@ button.chip:hover {
   line-height: 14px;
 }
 .ok-line,
-.warn-line,
-.banner {
+.warn-line {
   margin: 0;
   font-size: var(--ui-size-sm);
   line-height: 14px;
@@ -394,24 +407,6 @@ button.chip:hover {
 .warn-line,
 .warn {
   color: var(--warn);
-}
-.banner {
-  padding: 6px 8px;
-  border-radius: var(--radius-lg);
-  background: color-mix(in srgb, var(--warn) 14%, transparent);
-  color: var(--text);
-}
-.link {
-  padding: 0;
-  border: 0;
-  background: none;
-  color: var(--accent);
-  font: inherit;
-  cursor: pointer;
-}
-/* Underlined under the pointer only, as every other text action in the inspector. */
-.link:hover:not(:disabled) {
-  text-decoration: underline;
 }
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

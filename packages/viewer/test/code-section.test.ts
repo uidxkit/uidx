@@ -78,7 +78,7 @@ describe('the Code tab', () => {
       props: { component: 'Button', stamp: '', writable: true },
     })
     await flushPromises()
-    expect(section.find('.write').text()).toContain('codegen')
+    expect(section.find('.write').text()).toContain('No output folder')
     await section.find('.write .link-button').trigger('click')
     expect(section.emitted('act')).toEqual([
       [{ label: 'Set folder', run: 'open-project', arg: 'output' }],
@@ -130,7 +130,11 @@ describe('the Code tab', () => {
         stamp: '',
         writable: true,
         file: 'button.uidx',
-        codegen: codegen(),
+        declaredIn: (file: string) =>
+          file === 'checkbox-field.uidx' ? 'CheckboxField' : undefined,
+        codegen: codegen({
+          result: { kind: 'ok', written: 3, out: '../generated', at: Date.now() },
+        }),
       },
     })
     await flushPromises()
@@ -138,16 +142,24 @@ describe('the Code tab', () => {
     const write = section.find('[data-action="write"]')
     expect(write.attributes('disabled')).toBeDefined()
     expect(write.attributes('title')).toBe('Fix 2 problems to write code')
+    // What the last run wrote is no longer what shows.
+    expect(section.find('.caption.done').exists()).toBe(false)
     expect(section.find('pre').exists()).toBe(false)
     expect(section.find('.hint').text()).toBe('Code appears here once the problem above is fixed.')
     // The raw diagnostic is the status line's, never the tab body's.
     expect(section.text()).not.toContain('looked for')
-    const [[report]] = section.emitted('status') as [[{ state: string; items: { id: string }[] }]]
+    const [[report]] = section.emitted('status') as [
+      [{ state: string; items: { id: string; actions?: unknown[] }[] }],
+    ]
     expect(report.state).toBe('blocked')
     expect(report.items.map((item) => item.id)).toEqual(['code', 'blocked:checkbox-field.uidx'])
+    // The file that blocks this one opens at the component it declares.
+    expect(report.items[1]!.actions).toEqual([
+      { label: 'Open CheckboxField', run: 'open-component', arg: 'CheckboxField' },
+    ])
   })
 
-  it('disables Copy when there is no code, and offers the targets when none produce a file', async () => {
+  it('disables Copy when there is no code, and says so when nothing renders the component', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ files: [], diagnostics: [] })))
     const section = mount(CodeSection, {
       props: { component: 'Button', stamp: '', writable: true, codegen: codegen() },
@@ -156,11 +168,10 @@ describe('the Code tab', () => {
     await flushPromises()
     expect(section.find('[data-action="copy"]').attributes('disabled')).toBeDefined()
     expect(section.find('[data-action="write"]').exists()).toBe(false)
-    expect(section.find('[data-empty="no-files"]').text()).toContain('No files for Button')
-    await section.find('[data-empty="no-files"] .link-button').trigger('click')
-    expect(section.emitted('act')).toEqual([
-      [{ label: 'Choose targets', run: 'open-project', arg: 'output' }],
-    ])
+    expect(section.find('[data-empty="no-files"]').text()).toContain('No code for Button')
+    // The preview renders every target whatever is chosen: targets are never why.
+    expect(section.find('[data-empty="no-files"] .link-button').exists()).toBe(false)
+    expect(section.emitted('act')).toBeUndefined()
   })
 
   it('reports a failed request, retries on reload, and drops the failure once code arrives', async () => {
@@ -188,7 +199,10 @@ describe('the Code tab', () => {
       actions: [{ label: 'Retry', run: 'retry-code' }],
     })
     expect(section.find('[data-action="copy"]').attributes('disabled')).toBeDefined()
-    expect(section.find('.write').exists()).toBe(false)
+    // The footer stays, disabled, as it does for a blocked render.
+    const write = section.find('[data-action="write"]')
+    expect(write.attributes('disabled')).toBeDefined()
+    expect(write.attributes('title')).toBe('Fix the problem above to write code')
     await section.setProps({ reload: 1 })
     await flushPromises()
     expect(fetcher).toHaveBeenCalledTimes(2)
@@ -260,6 +274,32 @@ describe('the Code tab', () => {
     expect(writeText).toHaveBeenCalledWith('export function Button() {}\n')
     expect(section.find('[data-action="copy"] [data-icon="check"]').exists()).toBe(true)
     expect(section.find('.sr-only').text()).toBe('Copied')
+  })
+
+  it('shows a copy the browser refused on the button, not only to a screen reader', async () => {
+    vi.useFakeTimers()
+    try {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(json({ files, diagnostics: [] })))
+      vi.stubGlobal('navigator', {
+        ...navigator,
+        clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) },
+      })
+      const section = mount(CodeSection, {
+        props: { component: 'Button', stamp: '', writable: true },
+      })
+      await flushPromises()
+      await section.find('[data-action="copy"]').trigger('click')
+      await flushPromises()
+      const copy = section.find('[data-action="copy"]')
+      expect(copy.find('[data-icon="alert-circle"]').classes()).toContain('copy-failed')
+      expect(copy.attributes('title')).toBe("Couldn't copy. Select the text instead")
+      expect(section.find('.sr-only').text()).toBe("Couldn't copy")
+      await vi.advanceTimersByTimeAsync(1500)
+      expect(copy.find('[data-icon="copy"]').exists()).toBe(true)
+      expect(copy.attributes('title')).toBe('Copy react/Button.tsx')
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

@@ -326,10 +326,11 @@
   opacity: 0.5;
   cursor: default;
 }
-/* A toggle in a tab's section header (wrap lines, the (i) tip) reads as on. */
+/* A toggle in a tab's section header (wrap lines, the (i) tip) reads as on:
+   an accent icon, like the Design tab's eye, so on never looks like hover. */
 .properties .inspector-tab .cluster-btn:is([aria-pressed='true'], [aria-expanded='true']) {
   background: var(--raised);
-  color: var(--text);
+  color: var(--accent);
 }
 
 /* An action that reads as text: accent, underlined only under the pointer. */
@@ -466,6 +467,13 @@
   opacity: 0.5;
   cursor: default;
   text-decoration: none;
+}
+/* A disabled field greys out the same way in Contract, Connect and Code, as
+   the Design tab's do: without this, inputs stayed at full strength and
+   selects took the browser's own 0.7. */
+.properties .inspector-tab :is(input, select, textarea, [role='switch']):disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 /* Checkboxes sit on the gutter, like every other control's left edge. */
 .properties .inspector-tab input[type='checkbox'] {

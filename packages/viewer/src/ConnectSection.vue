@@ -10,6 +10,7 @@ let servedFocus = 0
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
+import { headlessChoiceError } from './headless'
 import type { HeadlessCandidate, HeadlessLibrary } from './headless'
 import type { ComponentNames, ConfigChange, ConnectionConfig, ReactMapping } from './headless'
 import { declaredParts, setImplements } from './contract-edits'
@@ -20,6 +21,7 @@ import {
   COPY,
   INFO,
   firstSentence,
+  libraryChoiceText,
   plainText,
   type MessageAction,
 } from './inspector-messages'
@@ -56,6 +58,8 @@ const props = defineProps<{
   libraryFailed?: boolean
   /** A change to `uidx.json` the server refused, worded for the field it came from. */
   fieldError?: { key: ConfigChange['key']; text: string } | null
+  /** The page that declares the component: its element and parts save there. */
+  file?: string
 }>()
 
 const emit = defineEmits<{
@@ -85,11 +89,13 @@ const element = computed(() =>
   implementsTag.value ? (props.library?.elements.get(implementsTag.value) ?? null) : null,
 )
 /**
- * The picker is a list whenever a library is configured, loaded or not, so
- * the control never changes type while the library loads or fails; a typed
- * tag is only for projects with no library at all.
+ * A list while the library loads or is loaded, so the control does not flip
+ * on load; a typed tag when no library is configured or it cannot be read,
+ * so a tag can still be entered or changed until it is fixed.
  */
-const pickFromList = computed(() => props.library !== null || props.config.headless !== null)
+const pickFromList = computed(
+  () => props.library !== null || (props.config.headless !== null && !props.libraryFailed),
+)
 
 // The Contract tab's list: what the library's element offers and what the
 // contract declares, so the two tabs never count different parts.
@@ -156,7 +162,17 @@ function withEntry(
   return next
 }
 
-function saveNames(next: ComponentNames): void {
+/**
+ * The Names field changed last: a refused save is a whole-file failure, so
+ * its words stay at the section's end, but the field the reader just edited
+ * takes the red border as Module and Output folder do.
+ */
+const namesEdited = ref<string | null>(null)
+const namesInvalid = (field: string): true | undefined =>
+  (props.fieldError?.key === 'binding' && namesEdited.value === field) || undefined
+
+function saveNames(next: ComponentNames, field: string): void {
+  namesEdited.value = field
   emit('save', { key: 'binding', component: name.value, value: next })
 }
 
@@ -209,6 +225,7 @@ watch(
     reactOpen.value = react.value !== null
     reactOn.value = false
     reactFrom.value = ''
+    namesEdited.value = null
   },
   { immediate: true },
 )
@@ -230,6 +247,26 @@ watch(
 const projectOpen = ref(!props.config.headless || !props.config.codegen)
 const editLibrary = ref(false)
 const libraryPath = ref('')
+
+/** Puts the cursor in the library path with all of it selected, ready to fix or replace. */
+function focusLibraryPath(): void {
+  const input = section.value?.querySelector<HTMLInputElement>('[aria-label="Library path"]')
+  input?.focus({ preventScroll: true })
+  input?.select()
+}
+
+/**
+ * 'Change…' opens the editor on the configured path, not an empty field, so
+ * a typo in a long path is fixed rather than retyped.
+ */
+async function toggleLibraryEditor(): Promise<void> {
+  editLibrary.value = !editLibrary.value
+  headlessChoiceError.value = null
+  if (!editLibrary.value) return
+  libraryPath.value = props.config.headless?.manifest ?? ''
+  await nextTick()
+  focusLibraryPath()
+}
 
 /**
  * What a person calls the library: its npm package without the scope, else
@@ -257,12 +294,24 @@ const projectMeta = computed(() => {
   return [libraryName.value, elementCount.value].filter(Boolean).join(' · ')
 })
 
+/**
+ * The editor stays open until the choice lands in `uidx.json`: a path the
+ * server refuses says why under the field, ready to correct, and the
+ * library loaded before stays.
+ */
 function chooseLibrary(path: string): void {
   const value = path.trim()
   if (!value) return
   emit('chooseLibrary', value)
-  editLibrary.value = false
 }
+watch(
+  () => props.config.headless?.manifest,
+  () => {
+    editLibrary.value = false
+    libraryPath.value = ''
+    headlessChoiceError.value = null
+  },
+)
 
 /**
  * The naming profile, with short option labels that fit two columns; the
@@ -357,12 +406,17 @@ watch(
     if (!focus || focus.n === servedFocus) return
     servedFocus = focus.n
     projectOpen.value = true
-    if (focus.target === 'library' && props.config.headless) editLibrary.value = true
+    // 'Fix in Connect' lands on the broken path itself, ready to correct.
+    if (focus.target === 'library' && props.config.headless) {
+      editLibrary.value = true
+      libraryPath.value = props.config.headless.manifest
+    }
     await nextTick()
     const label = focus.target === 'library' ? 'Library path' : 'Output folder'
     const field = section.value?.querySelector<HTMLElement>(`[aria-label="${label}"]`)
     field?.scrollIntoView?.({ block: 'center' })
-    field?.focus({ preventScroll: true })
+    if (focus.target === 'library') focusLibraryPath()
+    else field?.focus({ preventScroll: true })
   },
   { immediate: true },
 )
@@ -376,7 +430,7 @@ watch(
         group="element"
         title="Headless element"
         :meta="relation ?? undefined"
-        :info="INFO.element(name)"
+        :info="INFO.element(name, file)"
       >
         <div class="body">
           <select
@@ -396,9 +450,7 @@ watch(
                 {{ entry.tag }}
               </option>
             </template>
-            <option v-else-if="implementsTag" :value="implementsTag">
-              {{ libraryFailed ? COPY.libraryUnavailable(implementsTag) : implementsTag }}
-            </option>
+            <option v-else-if="implementsTag" :value="implementsTag">{{ implementsTag }}</option>
           </select>
           <template v-else>
             <input
@@ -409,7 +461,8 @@ watch(
               aria-label="Implements"
               @change="chooseElement(($event.target as HTMLInputElement).value.trim())"
             />
-            <p class="hint">
+            <!-- An unreadable library is the status line's to say, not "none connected". -->
+            <p v-if="!libraryFailed" class="hint">
               {{ COPY.noLibrary }}
               <button type="button" class="link-button" @click="emit('act', ACTION.chooseLibrary)">
                 {{ ACTION.chooseLibrary.label }}
@@ -443,9 +496,10 @@ watch(
         </div>
       </InspectorSection>
 
-      <!-- 2. The library's names: lives in uidx.json. -->
+      <!-- 2. The library's names: lives in uidx.json, under the library, so
+           only once one is named; the element's hint offers to choose one. -->
       <InspectorSection
-        v-if="implementsTag"
+        v-if="implementsTag && config.headless"
         group="names"
         title="Names in the library"
         collapsible
@@ -456,12 +510,6 @@ watch(
       >
         <div class="body">
           <p v-if="library" class="hint">Leave empty to keep the same name.</p>
-          <p v-else-if="!libraryFailed && !config.headless" class="hint">
-            {{ COPY.noLibrary }}
-            <button type="button" class="link-button" @click="emit('act', ACTION.chooseLibrary)">
-              {{ ACTION.chooseLibrary.label }}
-            </button>
-          </p>
           <label class="pair">
             <code class="from">tag</code>
             <input
@@ -469,12 +517,16 @@ watch(
               :value="names.tag ?? ''"
               :placeholder="implementsTag"
               :disabled="!writable || !library"
+              :aria-invalid="namesInvalid('tag')"
               aria-label="Tag in the library"
               @change="
-                saveNames({
-                  ...names,
-                  tag: ($event.target as HTMLInputElement).value.trim() || undefined,
-                })
+                saveNames(
+                  {
+                    ...names,
+                    tag: ($event.target as HTMLInputElement).value.trim() || undefined,
+                  },
+                  'tag',
+                )
               "
             />
           </label>
@@ -491,16 +543,20 @@ watch(
               :placeholder="kebab(prop.name)"
               :list="element ? 'connect-attributes' : undefined"
               :disabled="!writable || !library"
+              :aria-invalid="namesInvalid(`attr:${prop.name}`)"
               :aria-label="`Attribute for ${prop.name}`"
               @change="
-                saveNames({
-                  ...names,
-                  attributes: withEntry(
-                    names.attributes,
-                    prop.name,
-                    ($event.target as HTMLInputElement).value,
-                  ),
-                })
+                saveNames(
+                  {
+                    ...names,
+                    attributes: withEntry(
+                      names.attributes,
+                      prop.name,
+                      ($event.target as HTMLInputElement).value,
+                    ),
+                  },
+                  `attr:${prop.name}`,
+                )
               "
             />
           </div>
@@ -517,16 +573,20 @@ watch(
               :placeholder="event.name"
               :list="element ? 'connect-events' : undefined"
               :disabled="!writable || !library"
+              :aria-invalid="namesInvalid(`event:${event.name}`)"
               :aria-label="`Event for ${event.name}`"
               @change="
-                saveNames({
-                  ...names,
-                  events: withEntry(
-                    names.events,
-                    event.name,
-                    ($event.target as HTMLInputElement).value,
-                  ),
-                })
+                saveNames(
+                  {
+                    ...names,
+                    events: withEntry(
+                      names.events,
+                      event.name,
+                      ($event.target as HTMLInputElement).value,
+                    ),
+                  },
+                  `event:${event.name}`,
+                )
               "
             />
           </div>
@@ -620,6 +680,12 @@ watch(
                   "
                 />
               </label>
+              <!-- Column captions; each box already says "Omit {prop}" to a screen reader. -->
+              <div v-if="propsList.length" class="pair mapped pair-head" aria-hidden="true">
+                <span />
+                <span>React prop</span>
+                <span class="omit">Omit</span>
+              </div>
               <div
                 v-for="prop in propsList"
                 :key="`rp:${prop.name}`"
@@ -725,16 +791,18 @@ watch(
     >
       <div class="body">
         <header class="subhead">Library</header>
+        <!-- The element count is the head's meta; the row adds only a fault,
+             in the status line's danger, since the library stops work. -->
         <div v-if="config.headless" class="kv" data-field="library">
-          <span v-if="libraryFailed" class="tone-dot" data-tone="warn" />
+          <span v-if="libraryFailed" class="tone-dot" data-tone="danger" />
           <span class="value" :title="config.headless.manifest">{{ libraryName }}</span>
-          <span v-if="elementCount" class="meta">{{ elementCount }}</span>
+          <span v-if="libraryFailed" class="meta">{{ elementCount }}</span>
           <button
             type="button"
             class="btn compact"
             :disabled="!writable"
             :aria-expanded="editLibrary"
-            @click="editLibrary = !editLibrary"
+            @click="toggleLibraryEditor"
           >
             {{ editLibrary ? 'Cancel' : 'Change…' }}
           </button>
@@ -752,14 +820,20 @@ watch(
               {{ candidate.package }}
             </option>
           </select>
+          <p v-if="candidates?.length" class="hint or-path">Or enter a path</p>
           <input
             v-model="libraryPath"
             class="field"
             :disabled="!writable"
-            placeholder="node_modules/…/custom-elements.json"
+            placeholder="…/custom-elements.json"
+            :aria-invalid="!!headlessChoiceError || undefined"
             aria-label="Library path"
+            @input="headlessChoiceError = null"
             @keydown.enter="chooseLibrary(libraryPath)"
           />
+          <p v-if="headlessChoiceError" class="field-error" role="alert">
+            {{ libraryChoiceText(headlessChoiceError) }}
+          </p>
           <button
             type="button"
             class="btn block"
@@ -799,21 +873,22 @@ watch(
               </select>
             </label>
           </div>
+          <p v-if="fieldError?.key === 'profile'" class="field-error" role="alert">
+            {{ fieldError.text }}
+          </p>
         </template>
 
+        <!-- One label per block: 'Output' heads the folder as 'Library' heads its path. -->
         <header class="subhead">Output</header>
-        <label class="stack">
-          <span class="caption">Folder</span>
-          <input
-            class="field"
-            :value="config.codegen?.out ?? outDraft"
-            placeholder="src/ds"
-            :disabled="!writable"
-            :aria-invalid="fieldError?.key === 'codegen' || undefined"
-            aria-label="Output folder"
-            @change="setOutput(($event.target as HTMLInputElement).value)"
-          />
-        </label>
+        <input
+          class="field"
+          :value="config.codegen?.out ?? outDraft"
+          placeholder="src/ds"
+          :disabled="!writable"
+          :aria-invalid="fieldError?.key === 'codegen' || undefined"
+          aria-label="Output folder"
+          @change="setOutput(($event.target as HTMLInputElement).value)"
+        />
         <p v-if="fieldError?.key === 'codegen'" class="field-error" role="alert">
           {{ fieldError.text }}
         </p>
@@ -837,7 +912,7 @@ watch(
       </div>
     </InspectorSection>
 
-    <p v-if="component" class="footnote">{{ COPY.footnote(name) }}</p>
+    <p v-if="component" class="footnote">{{ COPY.footnote(name, file) }}</p>
   </section>
 </template>
 
@@ -868,8 +943,12 @@ code {
   font: inherit;
   text-overflow: ellipsis;
 }
-/* The native arrow brings its own room; the text keeps the inputs' 8px inset. */
+/*
+ * Chromium pads a native select's text 4px inside, so 4px here keeps it on
+ * the inputs' 8px inset. The native arrow brings its own room.
+ */
 select.field {
+  padding-left: 4px;
   padding-right: 2px;
 }
 .field:hover:not(:disabled) {
@@ -881,10 +960,6 @@ select.field {
 }
 .field[aria-invalid='true'] {
   border-color: var(--danger);
-}
-.field:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 /* A refused value sits right under its field, not a row away. */
 .body > .field-error {
@@ -923,9 +998,20 @@ select.field {
   align-items: center;
   gap: 8px;
 }
-/* React rows keep a third column for a prop's omit box, so every input lines up. */
+/*
+ * React rows: .pair's name column exactly (1 of 2.2 shares after its gap),
+ * so Names and React inputs share one edge, then the omit box's column.
+ */
 .pair.mapped {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) 24px;
+  grid-template-columns: calc((100% - 8px) / 2.2) minmax(0, 1fr) 24px;
+}
+/* The captions over React's input and omit columns. */
+.pair-head {
+  margin-bottom: -4px;
+  color: var(--text-faint);
+  font-size: var(--ui-size-sm);
+  line-height: 16px;
+  white-space: nowrap;
 }
 .from {
   overflow: hidden;
@@ -964,11 +1050,21 @@ select.field {
   flex: none;
   margin-left: auto;
 }
+/* A row's trailing link, as Contract's 'Bind by name' and the status line's. */
+.kv > .link-button {
+  font-size: var(--ui-size-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
 .hint {
   margin: 0;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: var(--ui-size-sm);
   line-height: 16px;
+}
+/* The dependency list and the path are alternatives; this captions the path, 4px above it. */
+.or-path {
+  margin-bottom: -4px;
 }
 .hint > .link-button,
 .field-help > .link-button {
@@ -988,6 +1084,7 @@ select.field {
 .description > .link-button {
   font-size: var(--ui-size-sm);
 }
+/* Under a control, in every hint's grey. */
 .field-help {
   margin: -4px 0 0;
   color: var(--text-dim);
@@ -1006,10 +1103,12 @@ select.field {
   min-height: 24px;
   color: var(--text);
 }
+/* A long component name is one word here; it breaks rather than scroll the pane. */
 .footnote {
   margin: 12px 0;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: var(--ui-size-sm);
   line-height: 16px;
+  overflow-wrap: anywhere;
 }
 </style>

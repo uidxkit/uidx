@@ -48,9 +48,9 @@ import {
   layersSelected,
   libraryItem,
   problems,
-  saveItem,
   sortByTone,
   writeItem,
+  type CodeReport,
   type EmptyCopy,
   type Face,
   type Failure,
@@ -337,6 +337,16 @@ const emit = defineEmits<{
  */
 const face = ref<'design' | Face>('design')
 
+/**
+ * The pane's scroller. A tab opens at its top, its status line first, not at
+ * the scroll position the last tab was left at. `scrollTop` rather than
+ * `scrollTo`, which jsdom lacks.
+ */
+const paneEl = ref<HTMLElement | null>(null)
+watch(face, () => {
+  if (paneEl.value) paneEl.value.scrollTop = 0
+})
+
 /** The tab strip, in order. */
 const FACES = [
   { id: 'design', label: 'Design' },
@@ -424,31 +434,31 @@ const contractFocus = ref<{ target: 'parts'; n: number } | null>(null)
 /** Moves on the Code tab's Retry, so it renders again. */
 const codeReload = ref(0)
 
-/** What the Code tab last found for a component. */
-interface CodeReport {
-  component: string
-  state: 'live' | 'updating' | 'blocked' | 'failed'
-  items: StatusItem[]
-}
-const codeReport = shallowRef<CodeReport | null>(null)
+/** What the Code tab last found for a component, and the document stamp it was made at. */
+const codeReport = shallowRef<(CodeReport & { stamp: string }) | null>(null)
 
 /**
- * The Code tab's report. A re-render of the same component keeps the last
- * findings until it lands, so the status line does not blink on every edit.
+ * The Code tab's report. It comes only once a render lands, so the last
+ * findings stand while the next render runs and the status line does not
+ * blink on every edit.
  */
 function onCodeStatus(report: CodeReport): void {
-  const last = codeReport.value
-  if (report.state === 'updating' && last?.component === report.component) return
-  codeReport.value = report
+  codeReport.value = { ...report, stamp: codeStamp.value }
+}
+
+/** The component a loaded page declares, so a file that blocks Code can be opened. */
+function componentIn(file: string): string | undefined {
+  return props.pages?.get(file)?.tree.children.find((child) => child.element === 'Component')?.name
 }
 
 /*
  * The Code tab only reports while it shows. An edit made on another face may
  * have fixed what it found, so the report is dropped rather than left to mark
- * the tab with a fault that may be gone.
+ * the tab with a fault that may be gone; and so is one Code was left before
+ * it re-rendered the latest edit, since leaving cancels that render.
  */
-watch(codeStamp, () => {
-  if (face.value !== 'code') codeReport.value = null
+watch([codeStamp, face], () => {
+  if (face.value !== 'code' && codeReport.value?.stamp !== codeStamp.value) codeReport.value = null
 })
 
 /**
@@ -462,9 +472,13 @@ const tabItems = computed<Record<Face, StatusItem[]>>(() => {
   const items: Record<Face, StatusItem[]> = { contract: [], connect: [], code: [] }
   const offline = props.writable === false
   const library = libraryFailure.value
+  const report = codeReport.value
+  // Code rendered all the same: "Code can't render without it" would be wrong there.
+  const rendered = report?.component === codeComponent.value && report.state !== 'failed'
   if (library && !(offline && library.code === 'network'))
     for (const tab of TABS)
-      items[tab].push(libraryItem(library, tab, connection.value.headless?.manifest ?? null))
+      if (tab !== 'code' || !rendered)
+        items[tab].push(libraryItem(library, tab, connection.value.headless?.manifest ?? null))
   const raw = connectionError.value
   if (raw && !connectionErrorKey.value) {
     const load = classifyFailure(raw)
@@ -476,13 +490,11 @@ const tabItems = computed<Record<Face, StatusItem[]>>(() => {
       items.code.push(item)
     }
   }
-  // Connect shows a refused change under its field; the naming profile has none.
-  if (raw && connectionErrorKey.value === 'profile') items.connect.push(saveItem(raw))
+  // A refused change, the naming profile's too, shows under its field in Connect.
   if (contractProblemCount.value > 0)
     items.contract.push(contractProblemItem(contractProblemCount.value))
-  const report = codeReport.value
   if (report && report.component === codeComponent.value) items.code.push(...report.items)
-  const written = writeItem(props.codegen?.result)
+  const written = writeItem(props.codegen?.result, props.codegen?.out ?? null)
   if (written) items.code.push(written)
   return items
 })
@@ -497,7 +509,9 @@ interface TabDot {
 /**
  * A dot only for a real problem. Contract marks stray parts, never unbound
  * ones, which are progress and show under Parts; Connect marks a library or
- * uidx.json it cannot read; Code marks a render or a write that stopped.
+ * uidx.json it cannot read; Code marks a render or a write that stopped,
+ * and only by its own findings: a render that failed for the library says
+ * nothing of its own, so the library's dot stays Connect's alone.
  */
 const tabDot = computed<Record<Face, TabDot | null>>(() => {
   const dot = (tab: Face, tone: Tone, count?: number): TabDot => {
@@ -512,9 +526,7 @@ const tabDot = computed<Record<Face, TabDot | null>>(() => {
     (item) => item.id === 'library' || item.id === 'config',
   ).length
   const report = codeReport.value
-  const rendering =
-    report?.component === codeComponent.value &&
-    (report.state === 'blocked' || report.state === 'failed')
+  const rendering = report?.component === codeComponent.value && report.items.length > 0
   const writing =
     props.codegen?.result?.kind === 'blocked' || props.codegen?.result?.kind === 'failed'
   return {
@@ -559,6 +571,13 @@ function emptyFor(tab: Face): EmptyState | null {
     const { action, ...copy } = instanceEmpty(tab, name)
     return { kind, ...copy, ...(definition ? { action } : {}) }
   }
+  // An instance of a component nothing declares has no code to preview.
+  if (kind === 'instance' && !definition && name && tab === 'code')
+    return {
+      kind,
+      title: `Instance of ${name}`,
+      hint: `This document has no component called “${name}”.`,
+    }
   return null
 }
 const tabEmpty = computed(() => (face.value === 'design' ? null : emptyFor(face.value)))
@@ -586,10 +605,20 @@ function act(action: MessageAction): void {
         n: Date.now(),
       }
       break
-    case 'open-contract':
+    case 'open-contract': {
+      // Code and Connect speak for the enclosing component, and its parts live
+      // in that component's Code binding, not in an inner layer's or an
+      // instance's view. Contract's own Show stays on its layer, whose
+      // warning is already there.
+      const { kind, local, name } = subject.value
+      if (face.value !== 'contract' && (kind === 'inside' || kind === 'instance')) {
+        if (local) emit('select', local.address)
+        else if (name) emit('openComponent', name)
+      }
       face.value = 'contract'
       contractFocus.value = { target: 'parts', n: Date.now() }
       break
+    }
     case 'select':
       if (action.arg) emit('select', action.arg)
       break
@@ -1090,7 +1119,7 @@ const meta = computed<{ name: string; value: string }[]>(() => {
   const node = active.value
   if (!node) return []
   const chips = [...METADATA_ATTRS].flatMap((name) => {
-    // A component's status is a picker of its own, below.
+    // A component's status is a picker of its own, first, where the read-only chip sits.
     if (name === 'status' && statusEditable.value) return []
     const value = node.attrs[name]?.value
     return typeof value === 'string' ? [{ name, value }] : []
@@ -2218,7 +2247,7 @@ function onDetach(prop: string, value: JsonValue): void {
 </script>
 
 <template>
-  <aside class="properties">
+  <aside ref="paneEl" class="properties">
     <header class="inspector-header">
       <div class="inspector-title">
         <nav class="face-toggle" aria-label="Inspector view">
@@ -2246,19 +2275,12 @@ function onDetach(prop: string, value: JsonValue): void {
           </button>
         </nav>
       </div>
-      <div v-if="active || (selection?.length ?? 0) > 1 || writable === false" class="node-head">
+      <!-- A multi-selection has no identity: the empty state says what is
+           selected, as it says nothing is. -->
+      <div v-if="active || writable === false" class="node-head">
         <template v-if="active">
           <span class="element">{{ active.element }}</span>
           <span class="name" :title="active.name">{{ active.name }}</span>
-          <span
-            v-for="chip in meta"
-            :key="chip.name"
-            class="meta"
-            :data-meta="chip.name"
-            :data-value="chip.value"
-            :title="`${chip.name}: ${chip.value}`"
-            >{{ chip.value }}</span
-          >
           <select
             v-if="statusEditable"
             class="meta status-pick"
@@ -2272,12 +2294,27 @@ function onDetach(prop: string, value: JsonValue): void {
             <option value="">no status</option>
             <option v-for="option in STATUSES" :key="option" :value="option">{{ option }}</option>
           </select>
+          <span
+            v-for="chip in meta"
+            :key="chip.name"
+            class="meta"
+            :data-meta="chip.name"
+            :data-value="chip.value"
+            :title="`${chip.name}: ${chip.value}`"
+            >{{ chip.value }}</span
+          >
         </template>
-        <span v-else-if="(selection?.length ?? 0) > 1" class="name multi">{{
-          COPY.layers(selection!.length)
-        }}</span>
-        <span v-if="writable === false" class="read-only-badge" :title="COPY.readOnly"
-          ><FieldIcon name="lock" /><span class="sr-only">{{ COPY.readOnly }}</span></span
+        <span
+          v-if="writable === false"
+          class="read-only-badge"
+          :data-labelled="active ? undefined : ''"
+          :title="COPY.readOnly"
+          ><FieldIcon name="lock" /><span
+            v-if="!active"
+            class="read-only-word"
+            aria-hidden="true"
+            >{{ COPY.readOnlyShort }}</span
+          ><span class="sr-only">{{ COPY.readOnly }}</span></span
         >
       </div>
     </header>
@@ -2304,6 +2341,7 @@ function onDetach(prop: string, value: JsonValue): void {
           :relation="subject.relation"
           :focus="projectFocus"
           :library-failed="!!libraryFailure"
+          :file="file"
           :field-error="
             connectionErrorKey && connectionError
               ? {
@@ -2323,6 +2361,7 @@ function onDetach(prop: string, value: JsonValue): void {
           :component="codeComponent"
           :relation="subject.kind === 'component' ? null : subject.relation"
           :file="codeFile"
+          :declared-in="componentIn"
           :reload="codeReload"
           :stamp="codeStamp"
           :codegen="codegen"
@@ -3304,7 +3343,8 @@ function onDetach(prop: string, value: JsonValue): void {
   min-width: 0;
 }
 /* The lock chip: read-only said once, at the end of the identity row, for
-   every face. Its words are its title and its screen-reader text. */
+   every face. Its words are its title and its screen-reader text, and with
+   nothing else in the row it also shows "Read only". */
 .read-only-badge {
   display: inline-flex;
   flex: none;
@@ -3317,6 +3357,12 @@ function onDetach(prop: string, value: JsonValue): void {
   border-radius: var(--radius-lg);
   background: var(--raised);
   color: var(--text-dim);
+}
+.read-only-badge[data-labelled] {
+  width: auto;
+  gap: 4px;
+  padding: 0 6px;
+  font-size: var(--ui-size-sm);
 }
 /*
  * The same toggle the left rail uses for Elements / Tokens / Fonts, the
@@ -3337,9 +3383,10 @@ function onDetach(prop: string, value: JsonValue): void {
   flex: 1 1 auto;
   align-items: center;
   justify-content: center;
-  gap: 4px;
+  gap: 3px;
   min-width: 0;
-  padding: 4px 6px;
+  /* Narrow sides, so all four labels and two dots fit a 264px pane. */
+  padding: 4px;
   overflow: hidden;
   border: 0;
   border-radius: 5px;
@@ -3348,7 +3395,7 @@ function onDetach(prop: string, value: JsonValue): void {
   font: inherit;
   font-size: 11px;
   font-weight: 500;
-  /* A 28px strip: the header is 52px tall, 84px with the identity row. */
+  /* A 28px strip: the header is 52px tall, 84px with a one-line identity row. */
   line-height: 14px;
   white-space: nowrap;
   cursor: pointer;
@@ -3424,6 +3471,18 @@ function onDetach(prop: string, value: JsonValue): void {
   /* Anchors the create dialog, which is absolutely positioned. */
   position: relative;
   margin-bottom: 8px;
+}
+/* The Code tab fills the pane, so Write code sits on its bottom edge
+   whatever the length of the file shown, with no strip under it. */
+.properties:has(> .editor > .code > .write) {
+  display: flex;
+  flex-direction: column;
+}
+.editor.inspector-tab:has(> .code > .write) {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
+  margin-bottom: 0;
 }
 /* Connect's Project under an empty state: the same full-bleed rule that
    separates sections, so the empty state reads as one and not as a header. */
@@ -3606,12 +3665,13 @@ function onDetach(prop: string, value: JsonValue): void {
 .field > :deep(.structured) {
   grid-column: 1 / -1;
 }
-/* The identity row: one line at any width. What does not fit ellipsizes,
-   the name and chips alike, each keeping its full text in its title. */
+/* The identity row: the name first, in full where it fits; chips that don't
+   fit move to a second line, never squeezing the name. A name longer than
+   the row ellipsizes, keeping its full text in its title. */
 .node-head {
   display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
+  flex-wrap: wrap;
+  gap: 4px 6px;
   align-items: center;
   box-sizing: border-box;
   min-width: 0;
@@ -3643,9 +3703,6 @@ function onDetach(prop: string, value: JsonValue): void {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.name.multi {
-  color: var(--text-dim);
-}
 /*
  * A maturity chip, coloured by what the status means rather than by a palette
  * of its own: stable is the same green a healthy connection uses, draft the
@@ -3667,8 +3724,11 @@ function onDetach(prop: string, value: JsonValue): void {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.status-pick {
+.meta[data-meta='status'] {
+  /* The status is a word or two: the name ellipsizes before it does. */
   flex: none;
+}
+.status-pick {
   /* As wide as the chosen status, not the longest option: the name needs
      the room more. Browsers without it keep the native width. */
   field-sizing: content;

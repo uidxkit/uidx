@@ -15,9 +15,9 @@ import {
   noFiles,
   requestItem,
   writeBlockedReason,
+  type CodeReport,
   type Failure,
   type MessageAction,
-  type StatusItem,
 } from './inspector-messages'
 
 /**
@@ -44,14 +44,9 @@ const props = defineProps<{
   file?: string
   /** Moves when the reader asks to retry, so the code refetches at once. */
   reload?: number
+  /** The component a file declares, so a file that blocks this one can be opened. */
+  declaredIn?: (file: string) => string | undefined
 }>()
-
-/** The tab's state after a render, for the shell's status line and tab dot. */
-interface CodeReport {
-  component: string
-  state: 'live' | 'updating' | 'blocked' | 'failed'
-  items: StatusItem[]
-}
 
 const emit = defineEmits<{
   generateCode: []
@@ -168,7 +163,7 @@ function report(component: string): void {
     component,
     state: fault ? 'failed' : problems.value.length ? 'blocked' : 'live',
     items: !fault
-      ? codeItems(problems.value, props.file)
+      ? codeItems(problems.value, props.file, props.declaredIn)
       : headlessFailure.value && !('status' in fault)
         ? []
         : [requestItem(fault)],
@@ -227,6 +222,14 @@ const copied = ref(false)
 const copyFailed = ref(false)
 let copyTimer: ReturnType<typeof setTimeout> | undefined
 const copyLabel = computed(() => (shown.value ? `Copy ${shown.value.path}` : 'Copy code'))
+/** A copy the browser refused says so where the pointer is, not only to a screen reader. */
+const copyTitle = computed(() =>
+  copied.value
+    ? 'Copied'
+    : copyFailed.value
+      ? "Couldn't copy. Select the text instead"
+      : copyLabel.value,
+)
 async function copy(): Promise<void> {
   const file = shown.value
   if (!file) return
@@ -279,6 +282,7 @@ const writeTitle = computed(() =>
   writeBlockedReason({
     writable: props.writable,
     problems: problems.value.length,
+    failed: !!failed.value,
     files: tabs.value.length,
     out: props.codegen?.out ?? null,
   }),
@@ -314,11 +318,14 @@ onUnmounted(() => {
             class="cluster-btn"
             data-action="copy"
             :aria-label="copyLabel"
-            :title="copied ? 'Copied' : copyLabel"
+            :title="copyTitle"
             :disabled="!shown"
             @click="copy"
           >
-            <FieldIcon :name="copied ? 'check' : 'copy'" />
+            <FieldIcon
+              :name="copied ? 'check' : copyFailed ? 'alert-circle' : 'copy'"
+              :class="{ 'copy-failed': copyFailed }"
+            />
           </button>
           <span class="sr-only" aria-live="polite">{{
             copied ? 'Copied' : copyFailed ? "Couldn't copy" : ''
@@ -353,7 +360,6 @@ onUnmounted(() => {
           v-else-if="!tabs.length && !loading"
           kind="no-files"
           v-bind="noFiles(component)"
-          @act="emit('act', $event)"
         />
       </InspectorSection>
       <div
@@ -370,12 +376,16 @@ onUnmounted(() => {
             >· {{ lines.length }} {{ lines.length === 1 ? 'line' : 'lines' }}</span
           >
         </div>
+        <!-- Keyed by file, so another file opens at its first line. -->
         <pre
+          :key="shown.path"
           :data-wrap="wrap"
         ><code><span v-for="(line, i) in lines" :key="i" class="line"><span class="n">{{ i + 1 }}</span>{{ line }}
 </span></code></pre>
       </div>
-      <footer v-if="tabs.length || problems.length" class="write">
+      <!-- A render that stopped keeps the footer, disabled, as a blocked one
+           does: only a component with no files at all has nothing to write. -->
+      <footer v-if="tabs.length || problems.length || failed" class="write">
         <template v-if="codegen?.out">
           <button
             type="button"
@@ -388,7 +398,12 @@ onUnmounted(() => {
             {{ codegen.running ? 'Writing…' : 'Write code' }}
           </button>
           <p class="caption" :title="codegen.out">{{ COPY.writeTo(codegen.out) }}</p>
-          <p v-if="codegen.result?.kind === 'ok'" class="caption done" role="status">
+          <!-- Not over a render that stopped: what was written is no longer what shows. -->
+          <p
+            v-if="codegen.result?.kind === 'ok' && !problems.length && !failed"
+            class="caption done"
+            role="status"
+          >
             <FieldIcon name="check" />{{ COPY.wrote(codegen.result.written) }}
           </p>
         </template>
@@ -408,20 +423,35 @@ onUnmounted(() => {
   display: block;
   padding: 0 0 24px;
 }
-/* The sticky footer is the tab's last edge. */
+/* The sticky footer is the tab's last edge. The tab fills the pane's
+   height (the shell makes the editor a column), so Write code sits on the
+   bottom edge whatever the length of the file shown. */
 .code:has(> .write) {
+  display: flex;
+  flex: 1 0 auto;
+  flex-direction: column;
   padding-bottom: 0;
+}
+/* Whatever sits above the footer takes the free height: the code grows to
+   meet it; without code, the section keeps its rule and the gap opens below
+   it. */
+.code:has(> .write) > .source {
+  flex: 1 0 auto;
+}
+.code:has(> .write) > .section:has(+ .write) {
+  margin-bottom: auto;
 }
 .hint {
   margin: 0;
-  color: var(--text-faint);
+  color: var(--text-dim);
   font-size: var(--ui-size-sm);
   line-height: 16px;
 }
-/* One row that never wraps: each segment gets its label's width while
-   they fit and a fair share once they do not, ellipsized, so five targets
-   fit the narrowest pane. The shared `.enum-segmented` rules size it like
-   the Design tab's segmented controls. */
+/* One row that never wraps. Segments carry no side padding of their own:
+   each auto track is its label's width plus an equal share of the spare
+   room, so all five labels fit the narrowest pane even beside a classic
+   scrollbar. Ellipsis is only a last resort. The shared `.enum-segmented`
+   rules size it like the Design tab's segmented controls. */
 .files {
   display: grid;
   grid-auto-flow: column;
@@ -437,7 +467,6 @@ onUnmounted(() => {
 }
 .files .enum-item {
   min-width: 0;
-  padding: 0 4px;
   overflow: hidden;
   border: 1px solid transparent;
   border-radius: var(--radius);
@@ -455,6 +484,12 @@ onUnmounted(() => {
   background: var(--panel);
   border-color: var(--line);
   color: var(--text);
+}
+/* The segments' missing side padding (see `.files`). It has to outrank the
+   shared segment rule (`.properties .editor :is(.enum-segmented .enum-item,
+   …)`), which pads every segment 4px a side. */
+.code .files.enum-segmented .enum-item {
+  padding-inline: 0;
 }
 /* Full-bleed, like a section: the section's rule above is its top edge and
    the footer's its bottom one. */
@@ -484,13 +519,19 @@ onUnmounted(() => {
 .lines {
   flex: none;
 }
-/* Only the code scrolls sideways, never the pane. */
+/* The listing is the only scroller: it fills the pane between the Code head
+   and the sticky footer, so the file switcher, Wrap, Copy and Write stay in
+   reach and its sideways scrollbar is always on screen. 336px is the chrome
+   around it (app bar, inspector header, Code head, files, path bar, footer);
+   when there is more, the pane scrolls by that much. */
 pre {
+  max-height: max(240px, calc(100dvh - 336px));
   margin: 0;
   padding: 8px 0;
-  overflow-x: auto;
+  overflow: auto;
   color: var(--text);
   font: 11px/17px var(--mono-font);
+  scrollbar-width: thin;
 }
 .line {
   display: block;
@@ -517,6 +558,23 @@ pre[data-wrap='false'] .n {
   position: sticky;
   left: 0;
   background: var(--bg);
+}
+/* A cut line fades out at the right edge. The fade ends each line inside
+   its right padding and sticks to the edge while the line runs past it, so
+   only cut lines fade, and once scrolled to the end it covers no code. It is
+   content, not a mask, so the listing's scrollbars stay solid. The line is a
+   row so the fade sits beside its text, not under the newline ending it. */
+pre[data-wrap='false'] .line {
+  display: flex;
+}
+pre[data-wrap='false'] .line::after {
+  content: '';
+  position: sticky;
+  right: 0;
+  flex: none;
+  width: var(--section-pad);
+  margin-right: calc(-1 * var(--section-pad));
+  background: linear-gradient(to right, transparent, var(--bg));
 }
 pre[data-wrap='true'] .line {
   display: grid;
@@ -559,6 +617,10 @@ pre[data-wrap='true'] .n {
 .caption.done :deep(svg) {
   flex: none;
   color: var(--ok);
+}
+/* A refused copy: the icon turns to the alert, as the status line marks a fault. */
+.copy-failed {
+  color: var(--danger);
 }
 /* A sentence with its fix: it wraps rather than cut the link off. */
 .caption.setup {

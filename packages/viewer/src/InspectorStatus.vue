@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue'
+import { computed, reactive, useId } from 'vue'
 
 import { FieldIcon } from './field-icons'
 import { shortPath, sortByTone, type MessageAction, type StatusItem } from './inspector-messages'
@@ -50,6 +50,7 @@ const expandable = computed(() => {
   )
 })
 const TONE_WORD = { danger: 'Error', warn: 'Warning', info: 'Note' } as const
+const listId = useId()
 const toneWord = computed(() => (top.value ? TONE_WORD[top.value.tone] : ''))
 
 /** Items whose folded rows the reader asked to see. */
@@ -73,37 +74,39 @@ async function copyRaw(raw: string): Promise<void> {
 </script>
 
 <template>
-  <div
-    v-if="top"
-    class="inspector-status"
-    :data-tone="top.tone"
-    :role="top.tone === 'danger' ? 'alert' : 'status'"
-    aria-live="polite"
-  >
-    <component
-      :is="expandable ? 'button' : 'div'"
-      class="status-bar"
-      :type="expandable ? 'button' : undefined"
-      :aria-expanded="expandable ? open : undefined"
-      :aria-label="`${toneWord}: ${top.title}${countText ? ` (${countText})` : ''}`"
-      @click="toggle"
-    >
-      <FieldIcon v-if="top.tone === 'danger'" class="mark danger" name="alert-circle" />
-      <span v-else class="tone-dot" :data-tone="top.tone" />
-      <span class="status-title" :title="top.title">{{ top.title }}</span>
-      <span v-if="countText" class="status-count">{{ countText }}</span>
-      <span class="grow" />
-      <button
-        v-if="!expandable && top.actions?.length === 1"
-        type="button"
-        class="link-button"
-        @click.stop="emit('act', top.actions[0]!)"
+  <div v-if="top" class="inspector-status" :data-tone="top.tone">
+    <!-- Only the bar is live: opening the list, "+N more" and Details are the
+         reader's own doing, and are not announced again. -->
+    <div class="status-live" :role="top.tone === 'danger' ? 'alert' : 'status'">
+      <component
+        :is="expandable ? 'button' : 'div'"
+        class="status-bar"
+        :type="expandable ? 'button' : undefined"
+        :aria-expanded="expandable ? open : undefined"
+        :aria-controls="expandable && open ? listId : undefined"
+        :aria-label="
+          expandable ? `${toneWord}: ${top.title}${countText ? ` (${countText})` : ''}` : undefined
+        "
+        @click="toggle"
       >
-        {{ top.actions[0]!.label }}
-      </button>
-      <span v-if="expandable" class="chevron" aria-hidden="true">›</span>
-    </component>
-    <div v-if="expandable && open" class="status-list">
+        <FieldIcon v-if="top.tone === 'danger'" class="mark danger" name="alert-circle" />
+        <span v-else class="tone-dot" :data-tone="top.tone" />
+        <span v-if="!expandable" class="sr-only">{{ toneWord }}: </span>
+        <span class="status-title" :title="top.title">{{ top.title }}</span>
+        <span v-if="countText" class="status-count">{{ countText }}</span>
+        <span class="grow" />
+        <button
+          v-if="!expandable && top.actions?.length === 1"
+          type="button"
+          class="link-button"
+          @click.stop="emit('act', top.actions[0]!)"
+        >
+          {{ top.actions[0]!.label }}
+        </button>
+        <span v-if="expandable" class="chevron" aria-hidden="true">›</span>
+      </component>
+    </div>
+    <div v-if="expandable && open" :id="listId" class="status-list">
       <div v-for="item in sorted" :key="item.id" class="status-row" :data-status="item.id">
         <!-- With one item the bar already names it: the row keeps the gutter, not the title. -->
         <span class="mark-cell">
@@ -114,12 +117,14 @@ async function copyRaw(raw: string): Promise<void> {
         </span>
         <p v-if="sorted.length > 1" class="row-title">{{ item.title }}</p>
         <p v-if="item.detail" class="status-detail" :title="item.detail">{{ item.detail }}</p>
+        <!-- 28 monospace characters fit the chip column of the narrowest (264px) pane. -->
         <code v-if="item.path" class="path-chip" :title="item.pathTitle ?? item.path">{{
-          shortPath(item.path)
+          shortPath(item.path, 28)
         }}</code>
         <ul v-if="item.rows?.length" class="status-rows">
           <li v-for="(row, index) in shown(item)" :key="index" :title="row.full ?? row.label">
             <span class="row-label">{{ row.label }}</span>
+            <span v-if="row.meta" class="row-meta">{{ row.meta }}</span>
             <button
               v-if="row.action"
               type="button"
@@ -128,7 +133,6 @@ async function copyRaw(raw: string): Promise<void> {
             >
               {{ row.action.label }}
             </button>
-            <span v-if="row.meta" class="row-meta">{{ row.meta }}</span>
           </li>
           <li v-if="hidden(item)">
             <button type="button" class="link-button" @click="more.add(item.id)">
@@ -215,12 +219,16 @@ button.status-bar:hover {
 }
 .status-count {
   flex: none;
+  /* As far from the title as a section's meta is from its own. */
+  margin-left: -2px;
   color: var(--text-faint);
   font-size: var(--ui-size-sm);
   white-space: nowrap;
 }
 .grow {
   flex: 1 1 0;
+  /* A spacer, not an item: it takes the free room without a second gap. */
+  margin-right: -8px;
 }
 .status-bar > .link-button {
   flex: none;
@@ -230,12 +238,17 @@ button.status-bar:hover {
 }
 .chevron {
   flex: none;
+  /* A section chevron's 24px box and turn (› closed, down open), at the
+     right edge where a section's last control sits. The box's own left
+     space around the glyph stands in for the bar's gap. */
+  width: 24px;
+  margin-left: -10px;
+  text-align: center;
   color: var(--text-faint);
-  transform: rotate(90deg);
   transition: transform 0.1s;
 }
 [aria-expanded='true'] > .chevron {
-  transform: rotate(-90deg);
+  transform: rotate(90deg);
 }
 .status-list {
   padding: 0 var(--section-pad) 8px;
@@ -287,27 +300,33 @@ button.status-bar:hover {
   list-style: none;
 }
 .status-rows li {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
   column-gap: 8px;
   padding: 1px 0;
   font-size: var(--ui-size-sm);
   line-height: 16px;
 }
+.status-rows li + li {
+  margin-top: 4px;
+}
+/* The diagnostic is the message: it gets the whole line and wraps, clamped
+   as a guard. Where it comes from and its action share the next line. */
 .row-label {
+  flex: 1 0 100%;
   min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--text);
 }
 .row-action {
-  grid-column: 2;
-  grid-row: 1;
   white-space: nowrap;
 }
 .row-meta {
-  grid-column: 1;
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -326,12 +345,12 @@ button.status-bar:hover {
 .status-actions > .link-button {
   font-weight: 500;
 }
+/* Details keeps a line of its own, open or closed, so it never moves out
+   from under the pointer that opened it. */
 .status-raw {
+  flex-basis: 100%;
   min-width: 0;
   max-width: 100%;
-}
-.status-raw[open] {
-  flex-basis: 100%;
 }
 .status-raw > summary {
   display: inline-flex;

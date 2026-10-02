@@ -5,7 +5,7 @@ import type { MessageAction } from './inspector-messages'
 
 /**
  * The one empty state of the Contract, Connect and Code tabs: a dim title,
- * one faint line of hint, and at most one action. Nothing selected, several
+ * one line of hint, and at most one action. Nothing selected, several
  * layers, a layer outside every component — each tab says it the same way,
  * in words from `inspector-messages`.
  *
@@ -49,7 +49,13 @@ function remember(event: Event): void {
   <div class="empty-state" :data-empty="kind">
     <p class="empty-title">{{ title }}</p>
     <p v-if="hint" class="empty-hint">{{ hint }}</p>
-    <button v-if="action" type="button" class="link-button" @click="emit('act', action)">
+    <button
+      v-if="action"
+      type="button"
+      class="link-button"
+      :title="action.label"
+      @click="emit('act', action)"
+    >
       {{ action.label }}
     </button>
     <details v-if="about" class="about" :open="aboutOpen" @toggle="remember">
@@ -74,13 +80,21 @@ function remember(event: Event): void {
 }
 .empty-hint {
   margin: 2px 0 0;
-  color: var(--text-faint);
+  /* A message, not metadata: --text-faint is under 4.5:1 on the light panel. */
+  color: var(--text-dim);
   font-size: var(--ui-size-sm);
   line-height: 16px;
 }
+/* One line, left-aligned like the text above it, however long the name it
+   carries ('Open PrimaryNavigationSidebar…'); the full label is its title. */
 .empty-state > .link-button {
   display: block;
+  max-width: 100%;
   margin-top: 8px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: var(--ui-size-sm);
   font-weight: 500;
 }

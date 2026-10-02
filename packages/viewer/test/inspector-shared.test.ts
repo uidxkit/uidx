@@ -39,7 +39,10 @@ describe('InspectorStatus', () => {
     })
     const root = status.find('.inspector-status')
     expect(root.attributes('data-tone')).toBe('danger')
-    expect(root.attributes('role')).toBe('alert')
+    // Only the bar is live, never the list a reader opens under it.
+    expect(root.attributes('role')).toBeUndefined()
+    expect(status.find('.status-live').attributes('role')).toBe('alert')
+    expect(status.find('.status-bar').attributes('aria-label')).toBe('Error: lib title (+2)')
     expect(status.find('.status-title').text()).toBe('lib title')
     expect(status.find('.status-count').text()).toBe('+2')
     expect(status.find('[data-icon="alert-circle"]').exists()).toBe(true)
@@ -51,7 +54,7 @@ describe('InspectorStatus', () => {
       props: { items: [item('code', 'warn', { count: '3 problems', detail: 'x' })], open: false },
     })
     expect(status.find('.status-count').text()).toBe('3 problems')
-    expect(status.find('.inspector-status').attributes('role')).toBe('status')
+    expect(status.find('.status-live').attributes('role')).toBe('status')
     expect(status.find('.tone-dot[data-tone="warn"]').exists()).toBe(true)
   })
 
@@ -76,20 +79,25 @@ describe('InspectorStatus', () => {
     })
     const bar = status.find('button.status-bar')
     expect(bar.attributes('aria-expanded')).toBe('false')
+    expect(bar.attributes('aria-controls')).toBeUndefined()
     await bar.trigger('click')
     expect(status.emitted('update:open')).toEqual([[true]])
     await status.setProps({ open: true })
+    const list = status.find('.status-list')
+    expect(bar.attributes('aria-controls')).toBe(list.attributes('id'))
+    expect(status.find('.status-live .status-list').exists()).toBe(false)
 
     const rows = status.findAll('.status-row')
     expect(rows.map((row) => row.attributes('data-status'))).toEqual(['library', 'blocked'])
     expect(rows[0]!.find('.row-title').text()).toBe('library title')
     expect(rows[0]!.find('.status-detail').text()).toBe('Part checks are paused.')
     const chip = rows[0]!.find('.path-chip')
-    expect(chip.text()).toBe('../vendor/…/custom-elements.json')
+    expect(chip.text()).toBe('…/custom-elements.json')
     expect(chip.attributes('title')).toBe('/abs/vendor/hwc/missing/custom-elements.json')
 
     // Three rows, then the rest behind '+N more'.
     expect(rows[0]!.findAll('.row-label').map((l) => l.text())).toEqual(['a', 'b', 'c'])
+    expect(rows[0]!.find('.status-rows li .row-meta').text()).toBe('a.uidx · line 1')
     const more = rows[0]!.findAll('.status-rows .link-button').at(-1)!
     expect(more.text()).toBe('+2 more')
     await more.trigger('click')
@@ -117,6 +125,46 @@ describe('InspectorStatus', () => {
     expect(writeText).toHaveBeenCalledWith('ENOENT: no such file')
   })
 
+  it('lists a row’s message first, then where it is from and its action', async () => {
+    const status = mount(InspectorStatus, {
+      props: {
+        items: [
+          item('code', 'danger', {
+            rows: [
+              {
+                label: 'Unknown part “spinner-track”',
+                meta: 'button.uidx · line 11',
+                action: { label: 'Open contract', run: 'open-contract' },
+              },
+            ],
+          }),
+        ],
+        open: true,
+      },
+    })
+    const row = status.find('.status-rows li')
+    expect([...row.element.children].map((child) => child.className)).toEqual([
+      'row-label',
+      'row-meta',
+      'link-button row-action',
+    ])
+    await row.find('.row-action').trigger('click')
+    expect(status.emitted('act')).toEqual([[{ label: 'Open contract', run: 'open-contract' }]])
+  })
+
+  it('shows the full path the chip shortens in its title', async () => {
+    const status = mount(InspectorStatus, {
+      props: {
+        items: [item('library', 'danger', { path: '../vendor/hwc/missing/custom-elements.json' })],
+        open: true,
+      },
+    })
+    // The chip's budget is the narrowest pane's: the file name survives.
+    const chip = status.find('.path-chip')
+    expect(chip.text()).toBe('…/custom-elements.json')
+    expect(chip.attributes('title')).toBe('../vendor/hwc/missing/custom-elements.json')
+  })
+
   it('shows a lone action inline when there is nothing to open', async () => {
     const status = mount(InspectorStatus, {
       props: {
@@ -126,6 +174,9 @@ describe('InspectorStatus', () => {
     })
     expect(status.find('button.status-bar').exists()).toBe(false)
     expect(status.find('.chevron').exists()).toBe(false)
+    // A plain bar takes no label; its tone is read out from hidden text.
+    expect(status.find('.status-bar').attributes('aria-label')).toBeUndefined()
+    expect(status.find('.status-bar .sr-only').text()).toBe('Warning:')
     await status.find('.status-bar .link-button').trigger('click')
     expect(status.emitted('act')).toEqual([[{ label: 'Show', run: 'open-contract' }]])
     expect(status.emitted('update:open')).toBeUndefined()
@@ -180,7 +231,7 @@ describe('InspectorSection', () => {
     expect(section.find('section').attributes('data-field')).toBeUndefined()
   })
 
-  it('collapses as a details whose toggle reports the reader’s choice', async () => {
+  it('collapses as a disclosure whose toggle reports the reader’s choice', async () => {
     const section = mount(InspectorSection, {
       props: {
         title: 'Code binding',
@@ -190,33 +241,68 @@ describe('InspectorSection', () => {
       },
       slots: { default: '<p class="body">element</p>' },
     })
-    const details = section.find('details[data-field="code-binding"]')
-    expect(details.exists()).toBe(true)
-    expect((details.element as HTMLDetailsElement).open).toBe(false)
-    expect(details.text()).toContain('for developers')
-    expect(section.find('summary .chevron').exists()).toBe(true)
-    ;(details.element as HTMLDetailsElement).open = true
-    await details.trigger('toggle')
-    expect(section.emitted('toggle')).toEqual([[true]])
+    const root = section.find('section[data-field="code-binding"]')
+    expect(root.exists()).toBe(true)
+    const toggle = section.find('button.section-toggle')
+    const body = section.find('.section-body')
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(toggle.attributes('aria-controls')).toBe(body.attributes('id'))
+    expect(toggle.text()).toContain('Code binding')
+    expect(toggle.find('.section-meta').text()).toBe('for developers')
+    const shown = (): boolean => (body.element as HTMLElement).style.display !== 'none'
+    expect(shown()).toBe(false)
+    expect(section.find('.head .chevron').exists()).toBe(true)
 
-    await section.setProps({ open: false })
+    await toggle.trigger('click')
+    expect(section.emitted('toggle')).toEqual([[true]])
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(shown()).toBe(true)
+    // The chevron folds it too.
+    await section.find('.chevron').trigger('click')
+    expect(section.emitted('toggle')).toEqual([[true], [false]])
+
+    // `open` moves it when it changes; between changes, the reader's choice stands.
     await section.setProps({ open: true })
-    expect((details.element as HTMLDetailsElement).open).toBe(true)
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    await section.setProps({ open: false })
+    expect(toggle.attributes('aria-expanded')).toBe('false')
   })
 
-  it('keeps head buttons from toggling a collapsible section', async () => {
+  it('keeps head buttons out of the toggle, and shows the tip while closed', async () => {
     const onClick = vi.fn()
     const section = mount(InspectorSection, {
       props: { title: 'React component', collapsible: true, info: 'Render it.' },
       slots: { actions: () => [h('button', { class: 'cluster-btn remove', onClick }, 'x')] },
     })
-    const event = new MouseEvent('click', { bubbles: true, cancelable: true })
-    section.find('.remove').element.dispatchEvent(event)
+    // Nothing interactive nests in the toggle: each button is its own control.
+    expect(section.find('.section-toggle button').exists()).toBe(false)
+    expect(section.find('.section-toggle').text()).toBe('React component')
+    await section.find('.remove').trigger('click')
     expect(onClick).toHaveBeenCalled()
-    expect(event.defaultPrevented).toBe(true)
-    await section.find('.info-tip').trigger('click')
-    expect((section.find('details').element as HTMLDetailsElement).open).toBe(false)
-    expect(section.find('.section-tip').exists()).toBe(true)
+    const tip = section.find('.info-tip')
+    await tip.trigger('click')
+    expect(section.emitted('toggle')).toBeUndefined()
+    expect(section.find('.section-toggle').attributes('aria-expanded')).toBe('false')
+    // The (i) of a closed section still shows its text, under the head.
+    expect(tip.attributes('aria-expanded')).toBe('true')
+    const tipText = section.find('.section-tip')
+    expect(tipText.element.closest('.section-body')).toBeNull()
+    expect(tipText.text()).toBe('Render it.')
+    // The (i) is last, after the chevron, at the right edge as on every section.
+    const head = [...section.find('.head').element.children].map((child) => child.className)
+    expect(head.slice(-2)).toEqual(['chevron', 'cluster-btn info-tip'])
+  })
+
+  it('opens on request, also after the reader closed it', async () => {
+    const section = mount(InspectorSection, {
+      props: { title: 'Code binding', collapsible: true, open: true },
+    })
+    await section.find('.section-toggle').trigger('click')
+    expect(section.find('.section-toggle').attributes('aria-expanded')).toBe('false')
+    ;(section.vm as unknown as { show(): void }).show()
+    await section.vm.$nextTick()
+    expect(section.find('.section-toggle').attributes('aria-expanded')).toBe('true')
+    expect(section.emitted('toggle')).toEqual([[false], [true]])
   })
 })
 
@@ -235,6 +321,8 @@ describe('InspectorEmpty', () => {
     expect(empty.find('.empty-title').text()).toBe('Not in a component')
     expect(empty.find('.empty-hint').text()).toBe('Only layers inside a component have a contract.')
     expect(empty.find('details.about').exists()).toBe(false)
+    // A long name ellipsises on one line; the full label is the title.
+    expect(empty.find('.link-button').attributes('title')).toBe('Make component')
     await empty.find('.link-button').trigger('click')
     expect(empty.emitted('act')).toEqual([[{ label: 'Make component', run: 'make-component' }]])
   })

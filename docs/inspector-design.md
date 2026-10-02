@@ -73,12 +73,17 @@ tab and like each other. Every title, hint, (i) text and action is worded in
 - **Section header.** A full-bleed section with a rule below, as in Design:
   the title, a faint meta (a count, "of Button" for a layer inside it,
   "Updating…"), actions on the right, and an (i) that shows the section's
-  explanation, and where it saves, on demand. Accessibility and forms, Code
-  binding, Names in the library, React component and Project collapse.
+  explanation, and where it saves, on demand, open or closed. The (i) is the
+  last control, so the icons form one column down the tab. Accessibility and
+  forms, Code binding, Names in the library, React component and Project
+  collapse: the title and meta are the toggle, with the chevron before the
+  (i), and the head's other buttons sit beside the toggle, never in it.
 - **Status line.** The first row of the tab, one line until opened: the
   worst item's title and a count. Opened, each item shows a short detail, the
   path it is about, up to three rows (then "+N more"), its actions, and the
-  server's own words behind Details, with Copy. One fault reads the same on
+  server's own words behind Details, with Copy. A row gives the problem a line
+  of its own, then the file and line it comes from and its fix; a file that
+  blocks the render offers to open the component it declares. One fault reads the same on
   every tab: an unreadable library is "Library file not found" on all three,
   and only the detail and actions differ (Choose library on Connect, Fix in
   Connect elsewhere). While the server is unreachable, the tabs leave that to
