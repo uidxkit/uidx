@@ -9,7 +9,8 @@ import {
   type UidxDocument,
   type UidxNode,
 } from '@uidx/format'
-import { isKnownProp } from './known-props.js'
+import { INSTANCE_CASCADE_PROPS, isKnownProp } from './known-props.js'
+import { instanceRole } from './instance-box.js'
 import {
   axesOf,
   enumValues,
@@ -29,7 +30,7 @@ import {
 
 /**
  * The rules that make the design-system regions a contract rather than
- * documentation (ADRs 0013–0017). Cross-region checks only: the parser has
+ * documentation (ADRs 0013–0018). Cross-region checks only: the parser has
  * already refused a malformed region, and these ask whether the regions
  * agree with each other and with the tree.
  *
@@ -293,7 +294,8 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
         }
       }
       for (const [part, props] of Object.entries(row.values)) {
-        if (part !== ROOT_PART && !styleTarget(component, part)) {
+        const target = part === ROOT_PART ? component : styleTarget(component, part)
+        if (!target) {
           error(
             CODES.STYLE_ROW,
             `<Style> names "${part}", which is neither a bound part nor the name of a node in the tree`,
@@ -303,6 +305,26 @@ export function auditDesignSystem(doc: UidxDocument, models?: ModelIndex): Diagn
         for (const prop of Object.keys(props)) {
           if (!isKnownProp(prop))
             warn(CODES.STYLE_ROW, `<Style> sets "${prop}", which is not a scene property`, row.loc)
+          // Known only so an `<Instance>` may state it (ADR 0018 §4); on
+          // anything else nothing reads it. An unknown target is reported above.
+          else if (target && target.element !== 'Instance' && INSTANCE_CASCADE_PROPS.includes(prop))
+            warn(
+              CODES.STYLE_ROW,
+              `<Style> sets "${prop}" on "${part}", which is not an <Instance>; only a placed component hands its texts a colour, so set the text's own "fills"`,
+              row.loc,
+            )
+          // A row writes onto the node it names, and on a placed component
+          // the inside is its own, as it is when the instance states it
+          // (ADR 0018 §1): every target ignores it.
+          else if (target?.element === 'Instance' && instanceRole(prop) === 'locked') {
+            const name = target.attrs.component?.value
+            const drawn = typeof name === 'string' && name !== '' ? name : 'its component'
+            warn(
+              CODES.INSTANCE_LOCKED_PROP,
+              `<Style> sets "${prop}" on "${part}", an instance of ${drawn}, whose inside is its own; a row may restyle a placed component's outer box and textFills, so change ${drawn} or detach it (ADR 0018)`,
+              row.loc,
+            )
+          }
         }
       }
     }

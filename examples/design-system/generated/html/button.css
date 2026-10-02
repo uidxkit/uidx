@@ -6,13 +6,42 @@ hwc-button {
   justify-content: center;
   align-items: center;
   gap: calc(var(--space-xs) * 1px);
-  padding-left: calc(var(--space-md) * 1px);
-  padding-right: calc(var(--space-md) * 1px);
-  padding-top: calc(var(--space-sm) * 1px);
-  padding-bottom: calc(var(--space-sm) * 1px);
-  border-radius: calc(var(--radius-md) * 1px);
-  background-color: var(--surface-accent);
-  border: 1px solid var(--surface-accent);
+  padding-left: var(--uidx-padding-left, calc(var(--space-md) * 1px));
+  padding-right: var(--uidx-padding-right, calc(var(--space-md) * 1px));
+  padding-top: var(--uidx-padding-top, calc(var(--space-sm) * 1px));
+  padding-bottom: var(--uidx-padding-bottom, calc(var(--space-sm) * 1px));
+  border-top-left-radius: var(--uidx-radius-top-left, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-top-right-radius: var(--uidx-radius-top-right, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-bottom-right-radius: var(--uidx-radius-bottom-right, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-bottom-left-radius: var(--uidx-radius-bottom-left, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  background-color: var(--uidx-fill, var(--surface-accent));
+  border-top-width: var(--uidx-stroke-top-weight, var(--uidx-stroke-weight, 1px));
+  border-right-width: var(--uidx-stroke-right-weight, var(--uidx-stroke-weight, 1px));
+  border-bottom-width: var(--uidx-stroke-bottom-weight, var(--uidx-stroke-weight, 1px));
+  border-left-width: var(--uidx-stroke-left-weight, var(--uidx-stroke-weight, 1px));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--surface-accent));
+  opacity: var(--uidx-opacity, 1);
+  box-shadow: var(--uidx-shadow, none);
+  --uidx-fill: initial;
+  --uidx-stroke: initial;
+  --uidx-stroke-weight: initial;
+  --uidx-stroke-style: initial;
+  --uidx-stroke-top-weight: initial;
+  --uidx-stroke-right-weight: initial;
+  --uidx-stroke-bottom-weight: initial;
+  --uidx-stroke-left-weight: initial;
+  --uidx-radius: initial;
+  --uidx-radius-top-left: initial;
+  --uidx-radius-top-right: initial;
+  --uidx-radius-bottom-right: initial;
+  --uidx-radius-bottom-left: initial;
+  --uidx-opacity: initial;
+  --uidx-shadow: initial;
+  --uidx-padding-top: initial;
+  --uidx-padding-right: initial;
+  --uidx-padding-bottom: initial;
+  --uidx-padding-left: initial;
 }
 
 hwc-button hwc-button-leading-icon {
@@ -25,16 +54,17 @@ hwc-button hwc-button-leading-icon {
 hwc-button hwc-button-label {
   font-size: 14px;
   font-weight: 500;
-  color: var(--text-onAccent);
+  color: var(--uidx-text-color, var(--text-onAccent));
 }
 
 hwc-button[variant="secondary"] {
-  background-color: var(--surface-raised);
-  border: 1px solid var(--border-default);
+  background-color: var(--uidx-fill, var(--surface-raised));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--border-default));
 }
 
 hwc-button[variant="secondary"] hwc-button-label {
-  color: var(--text-default);
+  color: var(--uidx-text-color, var(--text-default));
 }
 
 hwc-button[variant="secondary"] hwc-button-leading-icon {
@@ -42,12 +72,13 @@ hwc-button[variant="secondary"] hwc-button-leading-icon {
 }
 
 hwc-button[variant="outline"] {
-  background-color: var(--surface-control);
-  border: 1px solid var(--border-default);
+  background-color: var(--uidx-fill, var(--surface-control));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--border-default));
 }
 
 hwc-button[variant="outline"] hwc-button-label {
-  color: var(--text-default);
+  color: var(--uidx-text-color, var(--text-default));
 }
 
 hwc-button[variant="outline"] hwc-button-leading-icon {
@@ -55,12 +86,13 @@ hwc-button[variant="outline"] hwc-button-leading-icon {
 }
 
 hwc-button[variant="ghost"] {
-  background-color: var(--surface-control);
-  border: 1px solid var(--surface-control);
+  background-color: var(--uidx-fill, var(--surface-control));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--surface-control));
 }
 
 hwc-button[variant="ghost"] hwc-button-label {
-  color: var(--text-default);
+  color: var(--uidx-text-color, var(--text-default));
 }
 
 hwc-button[variant="ghost"] hwc-button-leading-icon {
@@ -68,17 +100,19 @@ hwc-button[variant="ghost"] hwc-button-leading-icon {
 }
 
 hwc-button[variant="destructive"] {
-  background-color: var(--surface-danger);
-  border: 1px solid var(--surface-danger);
+  background-color: var(--uidx-fill, var(--surface-danger));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--surface-danger));
 }
 
 hwc-button[variant="link"] {
-  background-color: var(--surface-control);
-  border: 1px solid var(--surface-control);
+  background-color: var(--uidx-fill, var(--surface-control));
+  border-style: var(--uidx-stroke-style, solid);
+  border-color: var(--uidx-stroke, var(--surface-control));
 }
 
 hwc-button[variant="link"] hwc-button-label {
-  color: var(--surface-accent);
+  color: var(--uidx-text-color, var(--surface-accent));
 }
 
 hwc-button[variant="link"] hwc-button-leading-icon {
@@ -86,10 +120,10 @@ hwc-button[variant="link"] hwc-button-leading-icon {
 }
 
 hwc-button[size="small"] {
-  padding-left: calc(var(--space-sm) * 1px);
-  padding-right: calc(var(--space-sm) * 1px);
-  padding-top: calc(var(--space-xs) * 1px);
-  padding-bottom: calc(var(--space-xs) * 1px);
+  padding-left: var(--uidx-padding-left, calc(var(--space-sm) * 1px));
+  padding-right: var(--uidx-padding-right, calc(var(--space-sm) * 1px));
+  padding-top: var(--uidx-padding-top, calc(var(--space-xs) * 1px));
+  padding-bottom: var(--uidx-padding-bottom, calc(var(--space-xs) * 1px));
 }
 
 hwc-button[size="small"] hwc-button-label {
@@ -97,10 +131,10 @@ hwc-button[size="small"] hwc-button-label {
 }
 
 hwc-button[size="large"] {
-  padding-left: calc(var(--space-lg) * 1px);
-  padding-right: calc(var(--space-lg) * 1px);
-  padding-top: calc(var(--space-md) * 1px);
-  padding-bottom: calc(var(--space-md) * 1px);
+  padding-left: var(--uidx-padding-left, calc(var(--space-lg) * 1px));
+  padding-right: var(--uidx-padding-right, calc(var(--space-lg) * 1px));
+  padding-top: var(--uidx-padding-top, calc(var(--space-md) * 1px));
+  padding-bottom: var(--uidx-padding-bottom, calc(var(--space-md) * 1px));
 }
 
 hwc-button[size="large"] hwc-button-label {
@@ -109,32 +143,38 @@ hwc-button[size="large"] hwc-button-label {
 
 hwc-button:hover {
   background-color: var(--surface-accentHover);
-  border: 1px solid var(--surface-accentHover);
+  border-style: solid;
+  border-color: var(--surface-accentHover);
 }
 
 hwc-button:hover[variant="secondary"] {
   background-color: var(--surface-raised);
-  border: 1px solid var(--border-hover);
+  border-style: solid;
+  border-color: var(--border-hover);
 }
 
 hwc-button:hover[variant="outline"] {
   background-color: var(--surface-control);
-  border: 1px solid var(--border-hover);
+  border-style: solid;
+  border-color: var(--border-hover);
 }
 
 hwc-button:hover[variant="ghost"] {
   background-color: var(--surface-raised);
-  border: 1px solid var(--surface-raised);
+  border-style: solid;
+  border-color: var(--surface-raised);
 }
 
 hwc-button:hover[variant="destructive"] {
   background-color: var(--surface-danger);
-  border: 1px solid var(--surface-danger);
+  border-style: solid;
+  border-color: var(--surface-danger);
 }
 
 hwc-button:hover[variant="link"] {
   background-color: var(--surface-control);
-  border: 1px solid var(--surface-control);
+  border-style: solid;
+  border-color: var(--surface-control);
 }
 
 hwc-button:hover[variant="link"] hwc-button-label {
@@ -146,7 +186,8 @@ hwc-button:hover[variant="link"] hwc-button-leading-icon {
 }
 
 hwc-button:focus-visible {
-  border: 1px solid var(--border-focus);
+  border-style: solid;
+  border-color: var(--border-focus);
 }
 
 hwc-button[disabled] {

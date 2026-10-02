@@ -5,7 +5,7 @@ description: Build or extend this project's design system in uidx — tokens, co
 
 # Building a design system in uidx
 
-A component here is an *identity* (ADRs 0012–0017): one `.uidx` file holding
+A component here is an *identity* (ADRs 0012–0018): one `.uidx` file holding
 its anatomy, its contract, its state styles and its behaviour. Code, the canvas
 and Figma are renders of it. Work in this order and check after each step.
 
@@ -31,5 +31,22 @@ and Figma are renders of it. Work in this order and check after each step.
 8. **Verify.** `uidx check` (every region against the others), `uidx render
    <page> -o out.png` and look at it, then `uidx codegen` if the project
    generates code. Fix what they name before moving on.
+
+**A use restyles only its outer box** (ADR 0018): fills, strokes, corners,
+padding, opacity and effects, plus `textFills` for every text inside, never the
+component's layout or layers. A row keyed by a state (`hover`, a visual
+boolean, a declared state) wins over that override, and a row keyed only by
+visual enums is the resting look it replaces. So a look that must hold in some
+state belongs on that state's row, and a look many uses want is a visual prop
+with rows, not a restyle repeated. Generated components read the override
+through `--uidx-*` custom properties (`--uidx-fill`, `--uidx-radius`,
+`--uidx-padding-left`, `--uidx-text-color`, …), which a use sets in `style`.
+Each component root resets them, except the text colour, which inherits. A
+use's box goes through a frame that only wraps another to the one inside, so
+the Shoelace example's Button is restyled on its `base` part. Over a
+shadow-DOM library, code reads only the hooks for what the design states on
+that node: where it states none, as on the Shoelace Checkbox, Switch and
+Input, a look its uses vary is a visual prop. Never name a token collection
+`uidx`: its variables would spell those hooks (UIDX155).
 
 Read `uidx-authoring` for the grammar and `uidx-eval-api` for scripted batches.

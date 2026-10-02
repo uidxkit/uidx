@@ -1,4 +1,4 @@
-import type { Diagnostic, UidxDocument } from '@uidx/format'
+import { CODES, diagnostic, type Diagnostic, type UidxDocument, type UidxNode } from '@uidx/format'
 import { contractJson } from '@uidx/schema/design-system'
 import { tokensCss } from './css.js'
 import { checkConformance } from './conformance.js'
@@ -86,6 +86,7 @@ export function generate(input: GenerateInput): GenerateOutput {
   if (targets.has('react')) {
     if (tokens) files.set('react/tokens.css', tokens)
     const tags = new Set<string>()
+    const adapters = new Map(Object.entries(input.react ?? {}))
     for (const model of rendered) {
       const mapped = input.react?.[model.name]
       if (mapped) {
@@ -93,7 +94,17 @@ export function generate(input: GenerateInput): GenerateOutput {
         files.set(`react/${model.identifier}.tsx`, emitReactAdapter(model, mapped))
         continue
       }
-      files.set(`react/${model.identifier}.tsx`, emitReact(model, { components: byName }))
+      // A use that restyles an adapter is drawn in the library's look, not
+      // the canvas's: a warning, since the code still runs (ADR 0018 §6).
+      const warn = (node: UidxNode, message: string) =>
+        diagnostics.push({
+          ...diagnostic(model.doc.source, CODES.CONFORMANCE, message, node.openTagLoc, 'warning'),
+          file: owner.get(model)!,
+        })
+      files.set(
+        `react/${model.identifier}.tsx`,
+        emitReact(model, { components: byName, adapters, warn }),
+      )
       files.set(`react/${model.stem}.css`, emitCss(model, { components: byName }))
       if (model.tag) tags.add(model.tag)
       for (const part of model.parts) if (part.kind === 'element') tags.add(part.tag)
@@ -108,16 +119,20 @@ export function generate(input: GenerateInput): GenerateOutput {
         files.set(`react/${model.identifier}.stories.tsx`, emitStories(model, Boolean(tokens)))
   }
 
-  if (targets.has('cem')) files.set('custom-elements.json', emitCem(rendered))
+  if (targets.has('cem'))
+    files.set('custom-elements.json', emitCem(rendered, { components: byName }))
 
   if (targets.has('contract')) {
+    // A composition's outer box is in the component it holds, which may be on
+    // another page (ADR 0018 §2).
+    const nodes = new Map(models.map((model) => [model.name, model.node]))
     const seen = new Set<UidxDocument>()
     for (const model of rendered) {
       if (seen.has(model.doc)) continue
       seen.add(model.doc)
       files.set(
         `contract/${model.stem}.json`,
-        `${JSON.stringify(contractJson(model.doc), null, 2)}\n`,
+        `${JSON.stringify(contractJson(model.doc, nodes), null, 2)}\n`,
       )
     }
   }

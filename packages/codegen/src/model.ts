@@ -11,6 +11,7 @@ import {
 } from '@uidx/format'
 import {
   axesOf,
+  derivesVariants,
   modelByRef,
   modelIndex,
   modelOfType,
@@ -20,6 +21,7 @@ import {
   type ModelIndex,
   type RepeatScope,
 } from '@uidx/schema/design-system'
+import { boxTargetOf, wrappedFrame } from '@uidx/schema/instance-box'
 
 /**
  * What every code target reads: a component's identity, contract and tree,
@@ -269,9 +271,14 @@ export interface ComponentModel {
   /** The document the component comes from, for token and asset context. */
   doc: UidxDocument
   /**
-   * A composition: no headless root of its own and exactly one child, an
-   * instance of another component. It renders as that instance, with its
-   * props passed through — a pattern, not a new element (ADR 0012 §3).
+   * A composition: no headless root of its own, and nothing but one instance
+   * of another component. It renders as that instance, with its props passed
+   * through — a pattern, not a new element (ADR 0012 §3).
+   *
+   * "Nothing but" is the canvas's rule (`boxTargetOf`): a component that
+   * states a layout or a size, has a styles table or repeats the instance
+   * draws a frame of its own around it, and so renders one — which is where
+   * a use's outer box lands (ADR 0018 §2).
    */
   composes: UidxNode | undefined
   /** The models a prop's type may name, across the document (ADR 0015 §1). */
@@ -325,6 +332,31 @@ export function boundPath(
 /** The repeat an element carries, as the model recorded it. */
 export function repeatFor(model: ComponentModel, node: UidxNode): RepeatInfo | undefined {
   return model.repeats.find((entry) => entry.node === node)
+}
+
+/** Each node's parent, per component tree, built the first time it is asked. */
+const PARENTS = new WeakMap<UidxNode, Map<UidxNode, UidxNode>>()
+
+/**
+ * The node `node` sits in, anywhere in the component's tree, the content an
+ * instance puts in a slot included. An instance's size reads its parent's
+ * layout: a stretch or a grow fills that axis, whatever width it states.
+ */
+export function parentOf(model: ComponentModel, node: UidxNode): UidxNode | undefined {
+  let parents = PARENTS.get(model.node)
+  if (!parents) {
+    const found = new Map<UidxNode, UidxNode>()
+    const walk = (parent: UidxNode): void => {
+      for (const child of parent.children) {
+        found.set(child, parent)
+        walk(child)
+      }
+    }
+    walk(model.node)
+    PARENTS.set(model.node, found)
+    parents = found
+  }
+  return parents.get(node)
 }
 
 /** The declared model a name refers to, on this page or any other. */
@@ -447,13 +479,20 @@ export function componentModel(
     partOf,
     samples: specBindings(spec, 0),
     doc,
-    composes:
-      tag === undefined &&
-      component.children.length === 1 &&
-      component.children[0]!.element === 'Instance'
-        ? component.children[0]
-        : undefined,
+    composes: composedBy(component, tag),
   }
+}
+
+/**
+ * The instance a composition is nothing but, by the canvas's rule
+ * (`boxTargetOf`): the one it wraps, stating no layout or size of its own. A
+ * component that only wraps one in a frame of its own still renders that
+ * frame, though the box goes through it to the instance (ADR 0018 §2).
+ */
+function composedBy(component: UidxNode, tag: string | undefined): UidxNode | undefined {
+  if (tag !== undefined || derivesVariants(component)) return undefined
+  const box = boxTargetOf(component)
+  return box.kind === 'instance' && box.node === wrappedFrame(component) ? box.node : undefined
 }
 
 /** The models used by a component, with the ones they reference, by name. */

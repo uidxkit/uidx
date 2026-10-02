@@ -2,6 +2,7 @@ import {
   addressOf,
   resolve,
   aliasTarget,
+  componentVariants,
   defaultCombination,
   hasVariants,
   METADATA_ATTRS,
@@ -18,7 +19,7 @@ import {
 } from '@uidx/format'
 
 /**
- * The design-system model on the scene side (ADRs 0012–0017).
+ * The design-system model on the scene side (ADRs 0012–0018).
  *
  * Three jobs, all pure functions of a parsed document:
  *
@@ -33,7 +34,16 @@ import {
  * never links them, and a gesture on one produces no patch (ADR 0016 §4).
  */
 
-import { axesOf, EMPTY_STATE, listProps, STATE_AXIS } from '@uidx/format'
+import { axesOf, DEFAULT_STATE, EMPTY_STATE, listProps, STATE_AXIS } from '@uidx/format'
+// A cycle: `instance-box` reads `synthAttr` and `repeatOf` from here. Both
+// sides use the other only inside functions, never while loading.
+import {
+  boxTargetOf,
+  INSTANCE_BOX_PROPS,
+  INSTANCE_CASCADE_PROPS,
+  INSTANCE_PLACEMENT_PROPS,
+  laysOut,
+} from './instance-box.js'
 /** The styles-table name for the component's own frame (ADR 0016 §2). */
 export const ROOT_PART = 'root'
 
@@ -293,7 +303,12 @@ function combinations(axes: ReadonlyMap<string, readonly string[]>): Map<string,
   return out
 }
 
-function synthAttr(
+/**
+ * An attribute no file spelled: `value`, with a span collapsed onto `at` so it
+ * still points somewhere without claiming source text. Shared with the
+ * instance layer (`instance-box.ts`), whose values are written the same way.
+ */
+export function synthAttr(
   name: string,
   value: JsonValue,
   at: UidxAttr | { loc: { start: number; end: number } },
@@ -404,6 +419,16 @@ export function deriveVariants(component: UidxNode): UidxNode {
       continue
     ownAttrs[name] = attr
   }
+  // A component that states no layout and no size is drawn as a column hugging
+  // what it holds (ADR 0008, `componentSizing` in the scene build). Its root is
+  // a frame, which says nothing of the sort by default — the engine's 100×100
+  // box, with the content in its corner — so the root says it here.
+  const own = component.attrs
+  if (!own.layoutMode && !own.width && !own.height) {
+    ownAttrs.layoutMode = synthAttr('layoutMode', 'VERTICAL', component)
+    ownAttrs.primaryAxisSizingMode = synthAttr('primaryAxisSizingMode', 'AUTO', component)
+    ownAttrs.counterAxisSizingMode = synthAttr('counterAxisSizingMode', 'AUTO', component)
+  }
 
   const variants: UidxNode[] = []
   for (const combination of combinations(axes)) {
@@ -432,11 +457,20 @@ export function deriveVariants(component: UidxNode): UidxNode {
       pruneRepeats(root, lists)
     }
     for (const row of rowsFor(rows, combination)) {
+      // ADR 0018 §3: a row keyed by any state but `default` sits above an
+      // instance's outer box, so what it writes carries the state's name and
+      // the instance's layer skips it. A later row that wins the property
+      // writes a fresh attribute, which is what clears the stamp.
+      const state = row.keys[STATE_AXIS]
+      const stamp = state !== undefined && state !== DEFAULT_STATE ? { stateRow: state } : {}
       for (const [part, props] of Object.entries(row.values)) {
         const target = part === ROOT_PART ? root : styleTarget(root, part)
         if (!target) continue
         for (const [prop, value] of Object.entries(props)) {
-          target.attrs[prop] = synthAttr(prop, value, target.attrs[prop] ?? component)
+          target.attrs[prop] = {
+            ...synthAttr(prop, value, target.attrs[prop] ?? component),
+            ...stamp,
+          }
         }
       }
     }
@@ -574,6 +608,121 @@ export function propSpec(spec: DocumentSpec | undefined, name: string): PropSpec
   return spec?.contract?.props.find((prop) => prop.name === name)
 }
 
+/* ------------------------------------------------------ the instance box */
+
+/**
+ * How generated code takes an instance's outer box and its text colour: one
+ * custom property per attribute (ADR 0018 §6). One set for every component,
+ * so a generator that has not read the ADR implements the same API. A nested
+ * instance sets them in `style`, and the component's resting rules read them
+ * with its own value as the fallback.
+ *
+ * `strokeAlign` and `cornerSmoothing` have no CSS form, so no hook: they stay
+ * canvas-only, as they already are for a component.
+ */
+export const INSTANCE_BOX_HOOKS: Readonly<Record<string, string>> = {
+  fills: '--uidx-fill',
+  strokes: '--uidx-stroke',
+  strokeWeight: '--uidx-stroke-weight',
+  dashPattern: '--uidx-stroke-style',
+  strokeTopWeight: '--uidx-stroke-top-weight',
+  strokeRightWeight: '--uidx-stroke-right-weight',
+  strokeBottomWeight: '--uidx-stroke-bottom-weight',
+  strokeLeftWeight: '--uidx-stroke-left-weight',
+  cornerRadius: '--uidx-radius',
+  topLeftRadius: '--uidx-radius-top-left',
+  topRightRadius: '--uidx-radius-top-right',
+  bottomRightRadius: '--uidx-radius-bottom-right',
+  bottomLeftRadius: '--uidx-radius-bottom-left',
+  opacity: '--uidx-opacity',
+  effects: '--uidx-shadow',
+  paddingTop: '--uidx-padding-top',
+  paddingRight: '--uidx-padding-right',
+  paddingBottom: '--uidx-padding-bottom',
+  paddingLeft: '--uidx-padding-left',
+  textFills: '--uidx-text-color',
+}
+
+/** Where a use's outer box lands in a component, as the contract says it (ADR 0018 §2). */
+export interface ContractBox {
+  /** The component's own frame, the one frame it wraps, or the one instance it composes. */
+  target: 'self' | 'frame' | 'instance'
+  /** That frame or instance, by name. */
+  node?: string
+  /** The component a composed instance draws, when it names one rather than binds it. */
+  component?: string
+  /**
+   * The part that frame binds, when it binds one: over a shadow-DOM library,
+   * the `::part()` a generator styles the box through.
+   */
+  part?: string
+}
+
+export interface ComponentBox {
+  box: ContractBox
+  /**
+   * Whether the box lays out, so a use's padding insets the content; on a box
+   * that does not, padding does nothing. Null for a composition whose
+   * component is not among those given, since its box is that component's.
+   */
+  laysOut: boolean | null
+}
+
+/**
+ * What a use of `component` draws when it asks for nothing: the component
+ * itself, or the resting variant of its set, derived or authored. An authored
+ * set whose variants differ in shape is described by that one.
+ */
+function restingSource(component: UidxNode): UidxNode {
+  const set = deriveVariants(component)
+  if (!hasVariants(set)) return set
+  const resting = variantName(defaultCombination(componentVariants(set).axes))
+  return (
+    set.children.find((child) => child.name === resting) ??
+    set.children.find((child) => child.element === 'Variant') ??
+    set
+  )
+}
+
+/**
+ * Where a use's outer box lands in `component`, by the rule the scene build
+ * uses (`boxTargetOf`), and whether it lays out, as the build draws it
+ * (`laysOut`). A composition's box is the box of the component it holds, so
+ * `components` is where that is looked up; a component that holds itself,
+ * however deep, gives up rather than loops.
+ */
+export function componentBox(
+  component: UidxNode,
+  components?: ReadonlyMap<string, UidxNode>,
+): ComponentBox {
+  const visit = (node: UidxNode, seen: ReadonlySet<string>): ComponentBox => {
+    const source = restingSource(node)
+    const target = boxTargetOf(source)
+    if (target.kind === 'self') return { box: { target: 'self' }, laysOut: laysOut(source) }
+    if (target.kind === 'frame') {
+      const part = target.node.attrs.part?.value
+      const box: ContractBox = {
+        target: 'frame',
+        node: target.node.name,
+        ...(typeof part === 'string' ? { part } : {}),
+      }
+      return { box, laysOut: laysOut(target.node) }
+    }
+    const written = target.node.attrs.component?.value
+    const name = typeof written === 'string' && aliasTarget(written) === null ? written : undefined
+    const box: ContractBox = {
+      target: 'instance',
+      node: target.node.name,
+      ...(name === undefined ? {} : { component: name }),
+    }
+    if (name === undefined || seen.has(name)) return { box, laysOut: null }
+    const composed = components?.get(name)
+    if (!composed) return { box, laysOut: null }
+    return { box, laysOut: visit(composed, new Set([...seen, name])).laysOut }
+  }
+  return visit(component, new Set([component.name]))
+}
+
 /* ---------------------------------------------------------- contract JSON */
 
 /** A value with every `loc` removed, recursively — the shape a generator reads. */
@@ -595,31 +744,51 @@ function withoutLocs(value: unknown): unknown {
  * facts a generator needs from the tree: each component's name, the headless
  * root it implements, and the parts and slots its tree binds. This is what
  * `uidx contract` prints (ADR 0017 §3), so a generator never parses MDX.
+ *
+ * It also states the instance API (ADR 0018 §6): `instanceBox` is the role
+ * table and the hooks, and each component says where a use's outer box lands
+ * and whether it lays out. A composition's box is in the component it holds,
+ * so `components` (by name, across pages) is where that one is found; the
+ * document's own components are always searched.
  */
-export function contractJson(doc: UidxDocument): Record<string, unknown> {
-  const components = doc.tree.children
-    .filter((node) => node.element === 'Component')
-    .map((component) => {
-      const parts: string[] = []
-      const slots: string[] = []
-      const walk = (node: UidxNode): void => {
-        if (typeof node.attrs.part?.value === 'string') parts.push(node.attrs.part.value)
-        if (node.element === 'Slot') slots.push(node.name)
-        for (const child of node.children) walk(child)
-      }
-      for (const child of component.children) walk(child)
-      return {
-        name: component.name,
-        implements: component.attrs.implements?.value ?? null,
-        status: component.attrs.status?.value ?? null,
-        boundParts: parts,
-        treeSlots: slots,
-        axes: Object.fromEntries(axesOf(component.spec)),
-      }
-    })
+export function contractJson(
+  doc: UidxDocument,
+  components?: ReadonlyMap<string, UidxNode>,
+): Record<string, unknown> {
+  const declared = doc.tree.children.filter((node) => node.element === 'Component')
+  const lookup = new Map([
+    ...(components ?? []),
+    ...declared.map((node) => [node.name, node] as const),
+  ])
+  const entries = declared.map((component) => {
+    const parts: string[] = []
+    const slots: string[] = []
+    const walk = (node: UidxNode): void => {
+      if (typeof node.attrs.part?.value === 'string') parts.push(node.attrs.part.value)
+      if (node.element === 'Slot') slots.push(node.name)
+      for (const child of node.children) walk(child)
+    }
+    for (const child of component.children) walk(child)
+    return {
+      name: component.name,
+      implements: component.attrs.implements?.value ?? null,
+      status: component.attrs.status?.value ?? null,
+      boundParts: parts,
+      treeSlots: slots,
+      axes: Object.fromEntries(axesOf(component.spec)),
+      ...componentBox(component, lookup),
+    }
+  })
   return {
     id: doc.frontmatter.id ?? null,
-    components,
+    components: entries,
     ...(withoutLocs(doc.spec ?? {}) as Record<string, unknown>),
+    instanceBox: {
+      version: 1,
+      box: [...INSTANCE_BOX_PROPS],
+      cascade: [...INSTANCE_CASCADE_PROPS],
+      placement: [...INSTANCE_PLACEMENT_PROPS],
+      hooks: { ...INSTANCE_BOX_HOOKS },
+    },
   }
 }

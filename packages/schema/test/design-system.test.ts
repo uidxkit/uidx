@@ -345,6 +345,73 @@ describe('a composition passes its own props through (ADR 0017 §3)', () => {
   })
 })
 
+/**
+ * A `<Component>` that states no layout and no size is drawn as a hugging
+ * column around what it holds (ADR 0008). A styles table moves its own
+ * attributes onto each variant's `root` frame, and a frame that says nothing
+ * is the engine's 100×100 box, so the root must say what the component meant.
+ */
+describe('the root a styles table derives for a bare component', () => {
+  const SLEEVE = page(
+    'sleeve',
+    `  <Component name="Sleeve" status="draft">
+    <Frame name="box" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+      paddingLeft={4} fills="{surface#accent}">
+      <Text name="label" characters="{label}" fontSize={14} />
+    </Frame>
+  </Component>`,
+    `
+<Styles>
+  <Style state="hover" box:fills="{surface#accentHover}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Hi">Words.</Prop>
+</Props>
+`,
+  )
+  const doc = parseOrThrow(SLEEVE)
+
+  it('hugs what it wraps, as the component itself does', () => {
+    const root = deriveVariants(resolve(doc.tree, 'Sleeve')!).children[0]!.children[0]!
+    expect(root.name).toBe('root')
+    expect(root.attrs.layoutMode?.value).toBe('VERTICAL')
+    expect(root.attrs.primaryAxisSizingMode?.value).toBe('AUTO')
+    expect(root.attrs.counterAxisSizingMode?.value).toBe('AUTO')
+  })
+
+  it('draws each variant, and a use of it, at the size of what it holds', () => {
+    const plain = toSceneGraph(parseOrThrow(SLEEVE.replace(/\n<Styles>[\s\S]*?<\/Styles>\n/, '')), {
+      resolveAlias,
+    }).graph.getNode('Sleeve')!
+    const scene = toSceneGraph(doc, { resolveAlias })
+    for (const state of ['default', 'hover']) {
+      const variant = scene.graph.getNode(`Sleeve#state=${state}`)!
+      expect([variant.width, variant.height], state).toEqual([plain.width, plain.height])
+      expect(scene.graph.getNode(`Sleeve#state=${state}/root`)!.width, state).toBe(plain.width)
+    }
+    const index = componentIndex(doc)
+    const use = toSceneGraph(
+      parseOrThrow(page('home', '  <Instance name="s" component="Sleeve" />')),
+      {
+        resolveAlias,
+        resolveComponent: (name) => index.get(name),
+      },
+    )
+    expect(use.graph.getNode('s')!.width).toBe(plain.width)
+    expect(use.graph.getNode('s')!.height).toBe(plain.height)
+  })
+
+  it('leaves a component that states a layout or a size to say it itself', () => {
+    const root = deriveVariants(resolve(parseOrThrow(CHECKBOX_SOURCE).tree, 'Checkbox')!)
+      .children[0]!.children[0]!
+    expect(root.attrs.layoutMode).toBeUndefined()
+    expect(root.attrs.width?.value).toBe(20)
+  })
+})
+
 describe('a slot that says nothing about its size', () => {
   it('hugs its placeholder rather than sitting in the engine default box', () => {
     const scene = toSceneGraph(parseOrThrow(LIST_SOURCE))
@@ -481,6 +548,62 @@ describe('auditDesignSystem', () => {
     )
   })
 
+  // `textFills` is a known prop so an `<Instance>` may state it, which also
+  // means "not a scene property" no longer catches it anywhere else.
+  it('warns on a text colour a row hands to anything but a placed component (ADR 0018 §4)', () => {
+    const chip = page(
+      'chip',
+      `  <Component name="Chip" layoutMode="HORIZONTAL">
+    <Instance name="badge" component="Badge" />
+    <Text name="label" characters="{label}" />
+  </Component>`,
+      `
+<Styles>
+  <Style state="hover" root:textFills="{text#x}" label:textFills="{text#x}" badge:textFills="{text#x}" />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Chip">What it says.</Prop>
+</Props>
+`,
+    )
+    const found = auditDesignSystem(parseOrThrow(chip)).filter((d) => d.code === CODES.STYLE_ROW)
+    expect(found.map((d) => d.severity)).toEqual(['warning', 'warning'])
+    expect(found[0]!.message).toMatch(/sets "textFills" on "root", which is not an <Instance>/)
+    expect(found[1]!.message).toMatch(/sets "textFills" on "label", which is not an <Instance>/)
+  })
+
+  it('warns on a row that writes a placed component’s inside, as on the instance itself (UIDX154)', () => {
+    const chip = page(
+      'chip',
+      `  <Component name="Chip" layoutMode="HORIZONTAL">
+    <Instance name="badge" component="Badge" />
+    <Text name="label" characters="{label}" />
+  </Component>`,
+      `
+<Styles>
+  <Style state="hover" badge:itemSpacing={4} badge:fontSize={12} badge:fills="{surface#x}" label:fontSize={12} />
+</Styles>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Chip">What it says.</Prop>
+</Props>
+`,
+    )
+    const found = auditDesignSystem(parseOrThrow(chip)).filter(
+      (d) => d.code === CODES.INSTANCE_LOCKED_PROP,
+    )
+    expect(found.map((d) => d.severity)).toEqual(['warning', 'warning'])
+    expect(found[0]!.message).toMatch(
+      /<Style> sets "itemSpacing" on "badge", an instance of Badge, whose inside is its own/,
+    )
+    expect(found[1]!.message).toMatch(/sets "fontSize" on "badge"/)
+  })
+
   it('warns about an axis value nothing styles', () => {
     const found = auditDesignSystem(
       parseOrThrow(CHECKBOX_SOURCE.replace('<Style state="disabled" root:opacity={0.4} />', '')),
@@ -558,6 +681,8 @@ describe('contractJson', () => {
         boundParts: ['checked-indicator'],
         treeSlots: ['label'],
         axes: { size: ['md', 'sm'], state: ['default', 'checked', 'disabled', 'hover'] },
+        box: { target: 'frame', node: 'root' },
+        laysOut: false,
       },
     ])
     expect(JSON.stringify(json)).not.toContain('"loc"')

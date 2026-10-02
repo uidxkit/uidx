@@ -6,19 +6,27 @@ import {
   type PropSpec,
   type UidxNode,
 } from '@uidx/format'
-import { modelOfType, type ModelIndex, type RepeatScope } from '@uidx/schema/design-system'
+import {
+  INSTANCE_BOX_HOOKS,
+  modelOfType,
+  type ModelIndex,
+  type RepeatScope,
+} from '@uidx/schema/design-system'
+import { INSTANCE_BOX_SHORTHANDS } from '@uidx/schema/instance-box'
 import {
   attributeName,
   boundPath,
   boundProp,
   eventName,
+  parentOf,
   pascal,
   repeatFor,
   type ComponentModel,
   type RepeatInfo,
   vectorPaint,
 } from './model.js'
-import { slotsWithin } from './html.js'
+import { boxOf, instanceInlineStyle, slotsWithin } from './html.js'
+import type { ReactBinding } from './react-adapter.js'
 
 /**
  * The React target (ADR 0017 §3): one component per identity, wrapping the
@@ -31,6 +39,14 @@ import { slotsWithin } from './html.js'
 
 export interface ReactContext {
   components: Map<string, ComponentModel>
+  /**
+   * Components rendered onto an existing React library (`codegen.react`), by
+   * name. Their adapters take the contract's props and nothing else, so a use
+   * that restyles one has no `style` to say it in (ADR 0018 §6).
+   */
+  adapters?: ReadonlyMap<string, ReactBinding>
+  /** Told of each such use, so the generator can say the library's own look is drawn there. */
+  warn?: (node: UidxNode, message: string) => void
 }
 
 const HEADER = (name: string) =>
@@ -194,6 +210,89 @@ function textExpression(
   return jsxText(characters)
 }
 
+/* ------------------------------------------------------------ the outer box */
+
+/** `text` as a single-quoted JS string. */
+function quoted(text: string): string {
+  return `'${text.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`
+}
+
+/**
+ * Declarations as a `style` value, `rest` spread last so it wins:
+ * `{{ '--uidx-fill': 'var(--surface-danger)', width: '199px' } as CSSProperties}`.
+ * `CSSProperties` names no custom property, so the object is asserted to it.
+ */
+function styleValue(style: Readonly<Record<string, string>>, rest?: string): string {
+  const entries = Object.entries(style).map(
+    ([prop, value]) => `${/^[A-Za-z]\w*$/.test(prop) ? prop : quoted(prop)}: ${quoted(value)}`,
+  )
+  if (rest !== undefined) entries.push(`...${rest}`)
+  return `{{ ${entries.join(', ')} } as CSSProperties}`
+}
+
+/** A shorthand's hook and its longhands' hooks, found by any one of them. */
+const HOOK_GROUPS = new Map(
+  Object.entries(INSTANCE_BOX_SHORTHANDS).flatMap(([shorthand, longhands]) => {
+    const group = {
+      hook: INSTANCE_BOX_HOOKS[shorthand]!,
+      longhands: longhands.map((longhand) => INSTANCE_BOX_HOOKS[longhand]!),
+    }
+    return [group.hook, ...group.longhands].map((hook) => [hook, group] as const)
+  }),
+)
+
+/**
+ * The hooks the instance a component hands its `style` to states, made to
+ * give way to a shorthand the consumer's style states. On the canvas a use's
+ * `cornerRadius` drops the corners the definition gave that instance (ADR
+ * 0018 §5), and the HTML target drops them when it lays one over the other.
+ * Here the consumer's side is known only at runtime, so the rule is put in
+ * CSS: each longhand reads the shorthand's hook first, with its own value as
+ * the fallback, and the component's root resets that hook unless the
+ * consumer sets it. A shorthand stated beside its longhands is spelled out
+ * into the ones it covers, so only the consumer's can take them all.
+ */
+function yielding(own: Readonly<Record<string, string>>): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const [hook, value] of Object.entries(own)) {
+    const group = HOOK_GROUPS.get(hook)
+    if (!group || !group.longhands.some((longhand) => longhand in own)) {
+      out[hook] = value
+      continue
+    }
+    // Spelled out once, where the group first appears.
+    if (group.longhands.some((longhand) => longhand in out)) continue
+    for (const longhand of group.longhands) {
+      const stated = own[longhand] ?? own[group.hook]
+      if (stated !== undefined) out[longhand] = `var(${group.hook}, ${stated})`
+    }
+  }
+  return out
+}
+
+/**
+ * `boxStyleOf`, written into a component whose element wraps the one
+ * instance that is its box (ADR 0018 §2). The element keeps the consumer's
+ * whole style, as a React root does: a margin, a flex share or a grid area
+ * places the element. The box is handed its part: the `--uidx-*` hooks,
+ * which its own root would otherwise reset, and a stated size, which it
+ * fills — the canvas hands the held instance the use's size the same way.
+ */
+function boxStyleHelper(held: string): string[] {
+  return [
+    `/** The part of the consumer's style that belongs to the ${held} this holds: the --uidx-* hooks, and a size it fills. */`,
+    'function boxStyleOf(style: CSSProperties | undefined): CSSProperties {',
+    '  const box: Record<string, unknown> = {}',
+    '  for (const [key, value] of Object.entries(style ?? {})) {',
+    '    if (value === undefined) continue',
+    "    if (key.startsWith('--uidx-')) box[key] = value",
+    "    else if (key === 'width' || key === 'height') box[key] = '100%'",
+    '  }',
+    '  return box as CSSProperties',
+    '}',
+  ]
+}
+
 export function emitReact(model: ComponentModel, ctx: ReactContext): string {
   const contract = model.contract
   const props: PropLine[] = []
@@ -275,6 +374,21 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
         repeat.slot?.description ?? `Draws one "${repeat.node.name}"; the design's is the default.`,
     })
   }
+  const targetOf = (node: UidxNode): ComponentModel | undefined => {
+    const name = node.attrs.component?.value
+    return typeof name === 'string' ? ctx.components.get(name) : undefined
+  }
+  // The consumer's `style` carries the hooks (ADR 0018 §6), which act where a
+  // use's outer box lands (§2): the root, or the one instance that is the
+  // box. A composition renders as that instance, so it takes the style whole.
+  // An element that wraps one keeps the style, since where it sits is its
+  // own, as any React root's is, and hands the box the part that is the
+  // box's (`boxStyleOf`) — unless the instance cannot take a style.
+  const box = boxOf(model)
+  const boxInstance = box.kind === 'instance' ? box.node : undefined
+  const boxTarget = boxInstance && targetOf(boxInstance)
+  const handsStyleOn =
+    !model.composes && boxTarget !== undefined && !ctx.adapters?.has(boxTarget.name)
   props.push({
     name: 'className',
     type: 'string',
@@ -285,7 +399,9 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     name: 'style',
     type: 'CSSProperties',
     optional: true,
-    doc: 'Inline style for the root element.',
+    doc: handsStyleOn
+      ? `Inline style for the root element. Its --uidx-* hooks and its size also reach its box, the ${boxTarget!.name} it holds (ADR 0018 §2).`
+      : 'Inline style for the root element.',
   })
 
   const compound: { name: string; tag: string; part: string }[] = []
@@ -295,6 +411,37 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     if (prop && part.node.element === 'Text' && part.kind === 'element')
       compound.push({ name: pascal(part.name), tag: part.tag, part: part.name })
   }
+
+  /**
+   * The style a use sets on the component it draws (ADR 0018 §6): the hooks
+   * for the box and text colour it states, and the size it fixes, as the
+   * HTML target writes them. An adapter takes the contract's props and
+   * nothing else, so it gets none, and the generator hears of any hook lost.
+   */
+  const useStyle = (node: UidxNode, target: ComponentModel): Record<string, string> => {
+    const style = instanceInlineStyle(node, target, parentOf(model, node)?.attrs.layoutMode?.value)
+    const adapter = ctx.adapters?.get(target.name)
+    if (!adapter) return style
+    const lost = Object.keys(node.attrs).filter((prop) => {
+      const hook = INSTANCE_BOX_HOOKS[prop]
+      return hook !== undefined && hook in style
+    })
+    if (lost.length)
+      ctx.warn?.(
+        node,
+        `"${node.name}" sets ${lost.join(', ')} on ${target.name}, which codegen.react renders ` +
+          `onto ${adapter.from}: its adapter takes no --uidx-* hooks, so React draws the ` +
+          "library's own look there (ADR 0018 §6)",
+      )
+    return {}
+  }
+  /**
+   * For the instance that is the box: what the use states there, with what
+   * the consumer's style hands it laid over — all of it for a composition,
+   * which renders as that instance, or the box's part of it.
+   */
+  const handedStyle = (own: Record<string, string>, handed: string): string =>
+    Object.keys(own).length ? styleValue(yielding(own), handed) : `{${handed}}`
 
   const rendering = new Set<UidxNode>()
   const render = (node: UidxNode, depth: number, scopes: RepeatScope[] = []): string[] => {
@@ -338,9 +485,14 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     const children = () => node.children.flatMap((child) => render(child, depth + 1, scopes))
     switch (node.element) {
       case 'Instance': {
-        const name = node.attrs.component?.value
-        const target = typeof name === 'string' ? ctx.components.get(name) : undefined
-        if (!target) return [`${pad}<div data-instance="${String(name ?? '')}" />`]
+        const target = targetOf(node)
+        // The instance a composition renders as is its root (ADR 0012 §3):
+        // the consumer's className and style go on it.
+        const asRoot = node === model.composes
+        if (!target)
+          return [
+            `${pad}<div${asRoot ? ' className={className} style={style}' : ''} data-instance="${String(node.attrs.component?.value ?? '')}" />`,
+          ]
         imports.add(target.identifier)
         // A use passes props through (F7): `{label}` hands this component's
         // own prop down, a literal is a literal. A slot fill (ADR 0007 §2)
@@ -361,10 +513,21 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
         // The row's item reaches a nested component only as the use binds it
         // (`props={{ item: '{item}' }}`, ADR 0017 §2) — passed above like any
         // other bound prop. Nothing is inferred from types.
+
+        // Its outer box and size go as `style` (ADR 0018 §6): its own, or —
+        // where it is this component's box — the consumer's laid over it.
+        const own = useStyle(node, target)
+        const handed = asRoot || (node === boxInstance && handsStyleOn)
+        const attributes = [
+          ...(asRoot ? ['className={className}'] : []),
+          ...(handed ? [`style=${handedStyle(own, asRoot ? 'style' : 'boxStyleOf(style)')}`] : []),
+          ...passed,
+          ...(!handed && Object.keys(own).length ? [`style=${styleValue(own)}`] : []),
+        ]
+        const open = `${pad}<${target.identifier}${attributes.length ? ` ${attributes.join(' ')}` : ''}`
         const fills = node.children.filter((child) => child.element === 'Slot')
-        if (fills.length === 0)
-          return [`${pad}<${target.identifier}${passed.length ? ` ${passed.join(' ')}` : ''} />`]
-        const lines = [`${pad}<${target.identifier}${passed.length ? ` ${passed.join(' ')}` : ''}`]
+        if (fills.length === 0) return [`${open} />`]
+        const lines = [open]
         for (const fill of fills) {
           const prop = fill.name === 'default' ? 'children' : fill.name
           const inner = fill.children.flatMap((child) => render(child, depth + 2, scopes))
@@ -409,12 +572,12 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
       }
     }
   }
-  const body = render(model.node, 2)
-
   const rootTag = model.tag ?? 'div'
   // A composition renders as the instance it holds, className and style
-  // handed to it, so the pattern adds no element of its own.
+  // handed to it, so the pattern adds no element of its own. Each use is
+  // rendered once, so the generator hears of it once.
   const composed = model.composes ? render(model.composes, 2) : null
+  const body = composed ? [] : render(model.node, 2)
   // Props reach the element the way the library reflects them (ADR 0013 §3):
   // as attributes, as data attributes, or as classes joined onto className.
   const classed = model.profile.props === 'class' ? attributeProps : []
@@ -487,15 +650,10 @@ export function emitReact(model: ComponentModel, ctx: ReactContext): string {
     ]),
     '}',
     '',
+    ...(handsStyleOn ? [...boxStyleHelper(boxTarget!.name), ''] : []),
     `function ${model.identifier}Base({ ${destructure} }: ${model.identifier}Props) {`,
     ...(composed
-      ? [
-          `  return (`,
-          ...composed.map((line, at) =>
-            at === 0 ? line.replace(/^(\s*<\w+)/, '$1 className={className} style={style}') : line,
-          ),
-          `  )`,
-        ]
+      ? [`  return (`, ...composed, `  )`]
       : [
           `  const ref = useRef<${model.tag ? 'HTMLElement' : 'HTMLDivElement'}>(null)`,
           ...events,

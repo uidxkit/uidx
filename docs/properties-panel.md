@@ -1,8 +1,9 @@
 # Spec — the properties panel as a real inspector
 
-**Status: awaiting approval.** Nothing here is built. Decisions in
-[Settled decisions](#settled-decisions) were agreed on 2026-08-17; the two
-stories below are what implementation would follow.
+**Status: built.** Decisions in [Settled decisions](#settled-decisions) were
+agreed on 2026-08-17, and C6 and C7 below shipped from them; the backlog's
+C6/C7 entry records what shipped and the one criterion since found failing.
+[An instance's panel](#an-instances-panel-adr-0018-7) was added with ADR 0018.
 
 ## Why this exists
 
@@ -194,6 +195,61 @@ the file written by any edit is byte-identical to what C5 would have written.
 exactly one attribute and one line to the diff; typing a width into a hugging
 frame persists *and* flips the sizing mode, in one review-legible change; and
 clearing a property removes its attribute rather than writing a default.
+
+## An instance's panel (ADR 0018 §7)
+
+An instance is a black box with a styleable outer box, so selecting one shows
+that box and nothing inside it. The component owns its layout, its layers and
+their text; a use may restyle the box and colour the text inside
+([ADR 0018](decisions/0018-instance-box-overrides.md),
+[the role table](property-vocabulary.md#instances-the-outer-box-adr-0018)).
+
+**What shows.** Position; Layout, with W/H (Fixed, or Hug, which removes the
+stated size) and Padding; Appearance; Fill; a Text color section; Stroke; and
+Effects. Stroke offers dashes and per-side weights, but no cap, join or miter.
+Direction, gap, alignment, wrap and clipping are one read-only line with a
+lock, "Row · Gap 8 · center/center · No wrap — from Button1", and Edit
+component opens the component: controls there would write what nothing draws.
+An attribute of the inside that the file states anyway, such as a hand-written
+`layoutMode`, is listed under Additional properties, read-only, with the reason
+and a Remove button.
+
+**Inherited values.** Every row shows the component's effective value, dimmed,
+until the use changes it: what the component draws where the box lands, for
+the combination the instance's own props select, so a secondary Button shows
+the secondary fill. Engine defaults never show. Text color shows the colour of
+the texts it would reach, or Mixed when they disagree.
+
+**Overrides.** A row the use states wears a dot and ↺. The ↺ title says what
+comes back, "Reset to Button1 — 12", and the click removes the attribute. A
+section header wears the mark for its rows and resets them all, which is how a
+paint or effect row without a caption is reset. The instance card counts the
+overrides, "3 overrides · Reset all", and the canvas's right-click menu offers
+Reset all overrides. Both remove every box attribute, `textFills`, `width` and
+`height` in one envelope, so one undo brings them back, and neither touches
+position, props, slot fills or modes.
+
+**States.** A state row sits above the use (ADR 0018 §3). When the instance's
+own props select a state that sets part of the box, a note says so before
+anything is edited: "Its checked state sets: Fill". A row the use states that
+such a state hides wears the state's chip instead of the dot, with the note
+"The ‘checked’ state sets this; your value shows in the other states".
+
+**Paint.** An inherited fill or stroke stack is copy-on-write: editing one
+paint writes the whole resulting stack, and removing the last paint writes
+`fills={[]}`, an explicit none. Text color is one solid paint or one token,
+never a stack, and its note says where it stops: "Every text inside Button1 ·
+slot text with its own colour keeps it". Slot text that states no colour
+takes this one too.
+
+**Writes.** Every edit is a structural patch on the `<Instance>` (`add`,
+`set` or `remove`), never a scene write. The node that draws the value is
+generated and has no address, and the instance's own node is only the wrapper
+around it, so a scene write would paint the wrapper: a square behind a pill.
+While a control scrubs, the canvas draws the box node and the texts through
+the scene build's own functions, so the preview is what the committed patch
+draws. Hovering Padding tints the box node, a styles table's `#root`, not the
+wrapper.
 
 ## Out of scope
 

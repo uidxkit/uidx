@@ -39,6 +39,9 @@ describe('defaultFor', () => {
     for (const [name, ui] of Object.entries(PROP_UI)) {
       if (ui.control === 'opaque') continue
       for (const element of ui.appliesTo ?? (['Frame'] as const)) {
+        // A variant has no unset rows to probe (ADR 0005 §5): `defaults.ts`
+        // leaves it out of its fixtures by type, so a list naming it is not a gap.
+        if (element === 'Variant') continue
         if (defaultFor(element, name) === undefined) withoutDefault.push(`${element}.${name}`)
       }
     }
@@ -48,6 +51,9 @@ describe('defaultFor', () => {
         'Frame.maxWidth',
         'Frame.minHeight',
         'Frame.minWidth',
+        // An instance that states no text colour leaves each text its own
+        // fills (ADR 0018 §4), so there is no one colour to show.
+        'Instance.textFills',
         'Text.lineHeight',
         'Text.maxLines',
       ].sort(),

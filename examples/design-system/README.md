@@ -1,7 +1,7 @@
 # Example design system
 
 A design system whose components are renders of their `.uidx` identities
-(ADRs 0012–0017). Nothing in `generated/` is written by hand.
+(ADRs 0012–0018). Nothing in `generated/` is written by hand.
 
 ```
 .uidx/            the identities: tokens, Checkbox, Field, CheckboxField, Button, ContactOption, ContactList

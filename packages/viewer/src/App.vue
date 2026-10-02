@@ -110,6 +110,7 @@ import HomePane from './HomePane.vue'
 import NewPageDialog from './NewPageDialog.vue'
 import { childSelection, duplicateLayer, mainComponentOf, parentSelection } from './layer-actions'
 import { detachInstance } from './detach'
+import { overrideCount, resetAllPatches } from './instance-box-edits'
 import { renameField, renameModel } from './model-rename'
 import { homeModel, type PageCard } from './home-model'
 import { createThumbnailer } from './thumbnails'
@@ -638,6 +639,20 @@ function detachSelection(): void {
   commitPatches(plan.patches)
   selection.value = [plan.address]
 }
+/**
+ * The selected instance, when it overrides anything of its component: its
+ * outer box, the colour it hands its texts, or a size (ADR 0018 §7).
+ */
+const overridden = computed(() => {
+  const address = soleSelection.value
+  const node = address !== null && sceneDoc.value ? resolve(sceneDoc.value.tree, address) : null
+  return node?.element === 'Instance' && overrideCount(node) > 0 ? node : null
+})
+/** Every override at once, in one envelope: one undo brings them all back. */
+function resetOverrides(): void {
+  const node = overridden.value
+  if (node) commitPatches(resetAllPatches(node))
+}
 
 async function goToMainComponent(): Promise<void> {
   const target = mainComponent.value
@@ -669,6 +684,11 @@ const menuItems = (): MenuItem[] => [
     shortcut: '⌥⌘B',
     disabled: detach.value === null,
     run: detachSelection,
+  },
+  {
+    label: 'Reset all overrides',
+    disabled: overridden.value === null,
+    run: resetOverrides,
   },
   { kind: 'separator' },
   {
@@ -1787,6 +1807,9 @@ function onPreview(address: string, prop: string, value: JsonValue): void {
  * through `fromSceneChange` and emits back here. Routing it that way rather than
  * building a patch here means panel edits and canvas gestures share one filter —
  * so D4's rule about computed geometry is enforced in one place rather than two.
+ * An instance's outer box comes this way too, though it writes nothing to the
+ * scene: the canvas holds its scrub, so it is the canvas that lets the scrub go
+ * and writes the patch (`restyleInstance`, ADR 0018 §7).
  */
 function onCommit(address: string, prop: string, value: JsonValue): void {
   canvasPane.value?.applyProp(address, prop, value, 'commit')

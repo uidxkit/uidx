@@ -1,7 +1,9 @@
 # ADR 0012 — The design system model: identity, contract, behaviour; components are renders
 
-Status: **accepted**, 2026-09-29. Umbrella for ADRs 0013–0017, which each
-decide one region of the file.
+Status: **accepted**, 2026-09-29. Umbrella for ADRs 0013–0018: 0013–0017 each
+decide one region of the file, and 0018 decides what a placed component lets
+its use restyle. **Amended by [ADR 0018](0018-instance-box-overrides.md)** in
+§1 and §4.
 
 ## Context
 
@@ -40,6 +42,15 @@ A **theme** is token values in modes. A **concrete component** is
 that space and are never authored (ADR 0016); only variants that change
 anatomy are authored trees.
 
+> **Amended 2026-10-01** by [ADR 0018](0018-instance-box-overrides.md). A
+> concrete component is now `render(identity, props, theme, target, box)`.
+> The fifth input is the use's outer box: the fill, stroke, corners,
+> padding, opacity and effects an `<Instance>` states, plus `textFills`,
+> which colours every text inside it. It applies above the component's
+> resting look and beneath its state rows, so a hover row still wins.
+> Without it, restyling one use meant detaching it or adding a prop to a
+> shared component. Everything inside the box stays the component's own.
+
 The targets are the canvas (today), Figma export, HTML/CSS and React
 (ADR 0017). Each target reads the regions it can use and ignores the rest.
 The viewer and Figma never read `## Contract`, `## Behavior` or `## Models`
@@ -72,6 +83,11 @@ looks and where it sits; the headless element owns what it does. Composition
   axis in this iteration.
 - Responsive and adaptive layout rules.
 - Evals for generated screens.
+
+> **Amended 2026-10-01** by [ADR 0018](0018-instance-box-overrides.md).
+> Per-use overrides now exist, limited to one instance's outer box and the
+> colour of its text. They are a one-off on a single use, not a theme.
+> Per-product theming stays deferred.
 
 ## Consequences
 

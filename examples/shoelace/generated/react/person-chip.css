@@ -5,15 +5,45 @@
   flex-direction: row;
   justify-content: center;
   align-items: center;
-  padding-left: 12px;
-  padding-right: 12px;
-  padding-top: 8px;
-  padding-bottom: 8px;
-  border-radius: calc(var(--radius-full) * 1px);
-  background-color: var(--color-accent);
+  padding-left: var(--uidx-padding-left, 12px);
+  padding-right: var(--uidx-padding-right, 12px);
+  padding-top: var(--uidx-padding-top, 8px);
+  padding-bottom: var(--uidx-padding-bottom, 8px);
+  border-top-left-radius: var(--uidx-radius-top-left, var(--uidx-radius, calc(var(--radius-full) * 1px)));
+  border-top-right-radius: var(--uidx-radius-top-right, var(--uidx-radius, calc(var(--radius-full) * 1px)));
+  border-bottom-right-radius: var(--uidx-radius-bottom-right, var(--uidx-radius, calc(var(--radius-full) * 1px)));
+  border-bottom-left-radius: var(--uidx-radius-bottom-left, var(--uidx-radius, calc(var(--radius-full) * 1px)));
+  background-color: var(--uidx-fill, var(--color-accent));
+  border-top-width: var(--uidx-stroke-top-weight, var(--uidx-stroke-weight, 1px));
+  border-right-width: var(--uidx-stroke-right-weight, var(--uidx-stroke-weight, 1px));
+  border-bottom-width: var(--uidx-stroke-bottom-weight, var(--uidx-stroke-weight, 1px));
+  border-left-width: var(--uidx-stroke-left-weight, var(--uidx-stroke-weight, 1px));
+  border-style: var(--uidx-stroke-style, none);
+  border-color: var(--uidx-stroke, transparent);
+  opacity: var(--uidx-opacity, 1);
+  box-shadow: var(--uidx-shadow, none);
+  --uidx-fill: initial;
+  --uidx-stroke: initial;
+  --uidx-stroke-weight: initial;
+  --uidx-stroke-style: initial;
+  --uidx-stroke-top-weight: initial;
+  --uidx-stroke-right-weight: initial;
+  --uidx-stroke-bottom-weight: initial;
+  --uidx-stroke-left-weight: initial;
+  --uidx-radius: initial;
+  --uidx-radius-top-left: initial;
+  --uidx-radius-top-right: initial;
+  --uidx-radius-bottom-right: initial;
+  --uidx-radius-bottom-left: initial;
+  --uidx-opacity: initial;
+  --uidx-shadow: initial;
+  --uidx-padding-top: initial;
+  --uidx-padding-right: initial;
+  --uidx-padding-bottom: initial;
+  --uidx-padding-left: initial;
 }
 
 .person-chip [data-node="name"] {
   font-size: calc(var(--type-sm) * 1px);
-  color: var(--color-on-accent);
+  color: var(--uidx-text-color, var(--color-on-accent));
 }

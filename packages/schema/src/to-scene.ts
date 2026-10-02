@@ -36,7 +36,20 @@ import {
   type UidxNode,
 } from '@uidx/format'
 
-import { STRUCTURAL_PROPS } from './known-props.js'
+import { INSTANCE_CASCADE_PROPS, STRUCTURAL_PROPS } from './known-props.js'
+import {
+  boxLayer,
+  boxTargetOf,
+  boxValue,
+  instanceRole,
+  layered,
+  nodeAtPath,
+  placementOf,
+  withTextFills,
+  wrappedFrame,
+  type BoxLayer,
+  type BoxTarget,
+} from './instance-box.js'
 import { createPinMap, type MutablePinMap, type PinMap } from './pin-index.js'
 import { pinFrom } from './pins.js'
 import { resolvePins } from './pin-pass.js'
@@ -51,6 +64,7 @@ import {
   repeatOf,
   sampleCount,
   specBindings,
+  synthAttr,
   type RepeatScope,
   type ModelIndex,
 } from './design-system.js'
@@ -219,6 +233,17 @@ export interface SceneOptions {
   generated?: boolean
   /** The component whose contract the subtree reads: where a repeat's list prop lives. */
   component?: UidxNode
+  /**
+   * The text colour the nearest enclosing instance hands down (ADR 0018 §4),
+   * already bound in the scope that instance is written in: the fills every
+   * text below takes, unless a state row coloured it.
+   */
+  textFills?: JsonValue
+  /**
+   * The `textTargets` lists of the linked instances whose colour reaches this
+   * subtree: a text drawn here is one each of them would recolour.
+   */
+  textSinks?: readonly string[][]
   /** The repeats this subtree sits inside, outermost first (ADR 0017 §2). */
   repeats?: readonly RepeatScope[]
   /**
@@ -253,6 +278,16 @@ export interface SceneResult {
    * that cannot (a test, `uidx check`) can ignore it.
    */
   unmeasuredText: number
+  /**
+   * For every linked instance, by scene id, the texts its `textFills` reaches
+   * (ADR 0018 §4) — whether or not it states one yet, so the editor can
+   * preview a colour before it is written. A text a state row colours is not
+   * among them, nor is anything under a nested instance that states its own.
+   *
+   * Kept here rather than marked on the nodes: a mark on a scene node would
+   * travel into `.fig` and every other export.
+   */
+  textTargets: Map<string, string[]>
 }
 
 /**
@@ -287,6 +322,7 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
   const warnings: string[] = []
   const addresses = createAddressMap()
   const pins = createPinMap()
+  const textTargets = new Map<string, string[]>()
 
   const rootId = page.id
   addresses.link('', rootId)
@@ -391,7 +427,7 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     )
 
     if (node.element === 'Instance') {
-      expandInstance(graph, addresses, pins, node, warnings, inner)
+      expandInstance(graph, addresses, pins, textTargets, node, warnings, inner)
       return
     }
 
@@ -424,6 +460,7 @@ export function toSceneGraph(doc: UidxDocument, options: SceneOptions = {}): Sce
     pins,
     unmeasuredText,
     rootFontSize: options.rootFontSize,
+    textTargets,
   }
 }
 
@@ -891,10 +928,12 @@ function matchesSpecType(prop: PropSpec, value: JsonValue): boolean {
  * What an `<Instance>` node itself is made of.
  *
  * An instance *is* the component, placed somewhere — so it starts from the
- * component's own scene properties and the instance's authored ones are laid
- * over the top. That ordering is the whole semantic: the definition decides
- * what the thing looks like, and the use decides where it sits and what it
- * changes about it.
+ * component's own scene properties and the instance's placement is laid over
+ * the top. That ordering is the whole semantic: the definition decides what
+ * the thing looks like, and the use decides where it sits and what it changes
+ * about its outer box (ADR 0018). The box lands on whichever node draws it
+ * (`boxTargetOf`): this one only when the component lays itself out and does
+ * not merely wrap one frame.
  *
  * Everything that is not an instance is unchanged, which is why this wraps
  * `scenePropsFor` rather than replacing it.
@@ -909,24 +948,25 @@ function instanceProps(
   options: SceneOptions,
   parentLayout?: SceneNode['layoutMode'],
 ): Partial<SceneNode> {
-  const own = scenePropsFor(
-    node,
-    warnings,
-    options.resolveAlias,
-    options.resolveAsset,
-    options.rootFontSize,
-  )
-  if (node.element !== 'Instance') return own
+  if (node.element !== 'Instance')
+    return scenePropsFor(
+      node,
+      warnings,
+      options.resolveAlias,
+      options.resolveAsset,
+      options.rootFontSize,
+    )
 
   const definition = componentFor(node, warnings, options)
-  if (!definition) return own
-  return placedProps(node, own, definition, options, parentLayout, warnings)
+  // With no component it draws nothing, and still holds its place.
+  if (!definition) return placementProps(node, warnings, options)
+  return placedProps(node, definition, options, parentLayout, warnings)
 }
 
 /**
  * What an instance's own scene node is made of, given its definition
  * explicitly — the base is the chosen variant (or the definition), and the
- * instance's own attributes win. The incremental path uses this with the
+ * instance's placement wins. The incremental path uses this with the
  * definition before and after a change, so an attribute on a component root
  * reaches every instance root without a rebuild (viewer-at-scale spec §3).
  */
@@ -937,20 +977,30 @@ export function instanceRootProps(
   parentLayout?: SceneNode['layoutMode'],
   warnings: string[] = [],
 ): Partial<SceneNode> {
-  const own = scenePropsFor(
-    instance,
+  return placedProps(instance, definition, options, parentLayout, warnings)
+}
+
+/**
+ * Where an instance sits and how big it is, as scene props: the only
+ * attributes its own node takes from it (`placementOf`).
+ */
+function placementProps(
+  instance: UidxNode,
+  warnings: string[],
+  options: SceneOptions,
+): Partial<SceneNode> {
+  return scenePropsFor(
+    placementOf(instance),
     warnings,
     options.resolveAlias,
     options.resolveAsset,
     options.rootFontSize,
   )
-  return placedProps(instance, own, definition, options, parentLayout, warnings)
 }
 
-/** The two above, once the instance's own props are in hand. */
+/** The two above, once the definition is in hand. */
 function placedProps(
   instance: UidxNode,
-  own: Partial<SceneNode>,
   definition: UidxNode,
   options: SceneOptions,
   parentLayout: SceneNode['layoutMode'] | undefined,
@@ -960,27 +1010,58 @@ function placedProps(
   // §4), so the base is the chosen variant rather than the set — the set is a
   // container for four looks and has none of its own.
   const source = variantFor(definition, instance, options.resolveAlias) ?? definition
+  warnLocked(instance, definition, warnings)
+  // A component that lays itself out draws its box on this very node, so the
+  // use's box is laid over it here, beneath its state rows. Any other shape
+  // draws its box a level or more down, where `expandInstance` puts it.
+  const layer: BoxLayer =
+    boxTargetOf(source).kind === 'self' ? boxLayer(instance, options.resolveAlias, warnings) : {}
   const merged = {
     ...scenePropsFor(
-      source,
+      layered(source, layer),
       warnings,
       options.resolveAlias,
       options.resolveAsset,
       options.rootFontSize,
     ),
+    // A variant's attributes are its coordinates, which `scenePropsFor` reads
+    // as its identity and never draws, so a box over one is drawn on its own.
+    ...(source.element === 'Variant' && Object.keys(layer).length > 0
+      ? overridesFor(
+          { ...source, attrs: layer },
+          warnings,
+          options.resolveAlias,
+          options.resolveAsset,
+          options.rootFontSize,
+        )
+      : {}),
     // The instance's own name and geometry win: `scenePropsFor` on the
     // definition brought the component's name with it, and a use is not called
     // by the definition's name.
-    ...own,
+    ...placementProps(instance, warnings, options),
   }
   return { ...merged, ...instanceSizing(instance, merged.layoutMode, parentLayout) }
+}
+
+/**
+ * Says so when an instance states something about its component's inside:
+ * its layout, a stroke's ends, a text or vector property. Every target ignores
+ * it (ADR 0018 §1); `uidx check` reports it as UIDX154.
+ */
+function warnLocked(instance: UidxNode, definition: UidxNode, warnings: string[]): void {
+  for (const prop of Object.keys(instance.attrs)) {
+    if (instanceRole(prop) !== 'locked') continue
+    warnings.push(
+      `${instance.address}: ${prop} on an instance is ignored — ${definition.name}'s inside is its own (ADR 0018)`,
+    )
+  }
 }
 
 /**
  * What an `<Instance>`'s own scene node is made of, resolved exactly as the
  * build resolves it: the component found by name (or by the property that
  * names it), its styles table expanded, the chosen variant, and the
- * instance's own attributes and size laid over. For a caller holding the
+ * instance's placement and size laid over. For a caller holding the
  * document rather than the build — the viewer asks it how an instance sizes
  * before a resize says otherwise, because the scene node a preview has
  * already moved cannot answer that.
@@ -1169,6 +1250,7 @@ function expandInstance(
   graph: SceneGraph,
   addresses: MutableAddressMap,
   pins: MutablePinMap,
+  textTargets: Map<string, string[]>,
   node: UidxNode,
   warnings: string[],
   options: SceneOptions,
@@ -1188,6 +1270,22 @@ function expandInstance(
   const overrides = overrideMap(node)
   /** What the consuming page puts in each hole, keyed by slot name (ADR 0007 §2). */
   const { fills } = slotFills(node)
+
+  /*
+   * The text colour this use hands down (ADR 0018 §4): its own, bound where it
+   * is written, or else the one it inherited — the nearest stated one wins, as
+   * CSS `color` does. A linked instance also keeps the list of texts its colour
+   * reaches, stated or not, and a use that states its own takes everything
+   * under it out of the lists above it.
+   */
+  const ownText = boxValue(node, 'textFills', options.resolveAlias, warnings)
+  const textFills = ownText ?? options.textFills
+  const targets = addresses.addressOf(node.address) === undefined ? undefined : []
+  if (targets) textTargets.set(node.address, targets)
+  const textSinks = [
+    ...(ownText === undefined ? (options.textSinks ?? []) : []),
+    ...(targets ? [targets] : []),
+  ]
 
   /*
    * The clones resolve `{label}` against the *definition's* properties, not the
@@ -1210,6 +1308,8 @@ function expandInstance(
     : (options.previewIndex ?? options.sampleIndex)
   const scope: SceneOptions = {
     ...options,
+    textFills,
+    textSinks,
     component: definition,
     repeats: [],
     resolveAlias: withProperties(
@@ -1244,11 +1344,21 @@ function expandInstance(
     const sceneId = addressOf(parentSceneId, source.name)
     if (!within.generated) addresses.link(source.address, sceneId)
     pins.link(sceneId, pinFrom(source.attrs, within.rootFontSize, within.resolveAlias))
+    // Fill content is the consumer's own: a text that states its fills keeps
+    // them, since explicit beats inherited, and one that states none takes
+    // the colour the instance hands down (ADR 0018 §4).
+    const inherits = source.element === 'Text' && source.attrs.fills === undefined
+    if (inherits) for (const sink of within.textSinks ?? []) sink.push(sceneId)
     graph.createNodeWithId(
       sceneId,
       nodeTypeFor(source),
       parentSceneId,
-      instanceProps(source, warnings, within, graph.getNode(parentSceneId)?.layoutMode),
+      instanceProps(
+        inherits ? withTextFills(source, within.textFills) : source,
+        warnings,
+        within,
+        graph.getNode(parentSceneId)?.layoutMode,
+      ),
     )
     // An instance inside a fill expands with the consuming page's scope and
     // this instance's own chain, so a cycle that runs through a fill still
@@ -1258,6 +1368,7 @@ function expandInstance(
         graph,
         addresses,
         pins,
+        textTargets,
         { ...source, address: sceneId },
         warnings,
         within,
@@ -1272,10 +1383,16 @@ function expandInstance(
   const authoredName = new WeakMap<UidxNode, string>()
 
   /**
+   * The node of the definition that draws the component's box, and what the
+   * use hands it (ADR 0018 §2): set once the variant is chosen, below.
+   */
+  let box: DrawnBox | undefined
+
+  /**
    * `source` is a node of the definition; `relative` is its path inside the
    * component, which is exactly the key an override uses (ADR 0004 §3).
    * `inherited` sits under the node's own props and `pinned` over them — the
-   * sizing the instance passes to the frame its component wraps.
+   * size the instance fixes, which the node that draws its box takes.
    */
   const clone = (
     source: UidxNode,
@@ -1285,6 +1402,19 @@ function expandInstance(
     local: SceneOptions = scope,
     pinned: Partial<SceneNode> = {},
   ): void => {
+    // The use's box goes to the node that draws the component's, at whatever
+    // depth a wrapper puts it: laid over that frame with the size the use
+    // fixes, or handed to the instance a composition holds as if it had
+    // stated it there, its colour with it.
+    if (box && source === box.node) {
+      if (box.kind === 'instance') {
+        local = composedTextFills(source, local, ownText, targets, warnings)
+        source = composedNode(node, source, box.layer, box.placed)
+      } else {
+        source = layered(source, box.layer)
+        pinned = box.pinned
+      }
+    }
     // ADR 0017 §2 inside a definition being instanced: the same expansion
     // the top-level build does, in the definition's local at each sample
     // index.
@@ -1312,7 +1442,16 @@ function expandInstance(
       return
     }
     const id = addressOf(parentId, source.name)
-    const props = instanceProps(source, warnings, local, graph.getNode(parentId)?.layoutMode)
+    // Every text the component draws takes the colour the use hands down,
+    // unless a state row coloured it (ADR 0018 §3, §4).
+    if (source.element === 'Text' && source.attrs.fills?.stateRow === undefined)
+      for (const sink of local.textSinks ?? []) sink.push(id)
+    const props = instanceProps(
+      withTextFills(source, local.textFills),
+      warnings,
+      local,
+      graph.getNode(parentId)?.layoutMode,
+    )
     const changed = overrides.get(relative)
 
     // A generated child has no address to look the document up by, so its pin
@@ -1334,7 +1473,16 @@ function expandInstance(
     })
 
     if (source.element === 'Instance') {
-      expandInstance(graph, addresses, pins, { ...source, address: id }, warnings, local, chain)
+      expandInstance(
+        graph,
+        addresses,
+        pins,
+        textTargets,
+        { ...source, address: id },
+        warnings,
+        local,
+        chain,
+      )
       return
     }
 
@@ -1358,6 +1506,10 @@ function expandInstance(
         const echo = (local.repeats?.length ?? 0) > 0 && row > 0
         const filled: SceneOptions = {
           ...options,
+          // Drawn inside this instance, so this instance's colour is the
+          // nearest one, and its lists are the ones fill text joins.
+          textFills: local.textFills,
+          textSinks: local.textSinks,
           sampleIndex: local.sampleIndex,
           repeats: local.repeats,
           generated: options.generated || echo,
@@ -1394,8 +1546,106 @@ function expandInstance(
   const sizing = frameSizing(node, source)
   // The instance's own node was built just before this, from `instanceProps`
   // — so it already says which dimensions the instance fixes, and at what.
-  const pinned = pinnedFrame(node, source, graph.getNode(node.address) ?? {})
-  for (const child of source.children) clone(child, node.address, child.name, sizing, scope, pinned)
+  const placed = graph.getNode(node.address) ?? {}
+  /*
+   * The use's outer box goes to the node that draws the component's box
+   * (ADR 0018 §2), computed once: the frame a wrapper-shaped component wraps,
+   * or the instance a composition holds, through any frame that only wraps
+   * it. A component that lays itself out drew it on the instance's own node
+   * already (`placedProps`). The order in `clone` is unchanged — inherited <
+   * own (now with the box) < pinned < overrides — so the box sits beneath the
+   * overrides map, and the layer itself beneath any value a state row stamped.
+   */
+  const target = boxTargetOf(source)
+  if (target.kind !== 'self')
+    box = {
+      kind: target.kind,
+      node: target.node,
+      layer: boxLayer(node, options.resolveAlias, warnings),
+      placed,
+      pinned: pinnedFrame(node, source, placed),
+    }
+  for (const child of source.children) clone(child, node.address, child.name, sizing, scope)
+}
+
+/** The node that draws an instance's box, as `expandInstance` hands it the use's. */
+interface DrawnBox {
+  kind: 'frame' | 'instance'
+  node: UidxNode
+  /** The use's box, bound where it is written (`boxLayer`). */
+  layer: BoxLayer
+  /** The instance's own node, which says what size it fixes. */
+  placed: Partial<SceneNode>
+  /** That size on a frame (`pinnedFrame`); a composition's goes with the box instead. */
+  pinned: Partial<SceneNode>
+}
+
+/**
+ * The one instance a composition holds, as its use would have it (ADR 0018
+ * §2): handed the use's box and the size the use fixes, as if it had stated
+ * them itself, over whatever the definition wrote on it — React passes
+ * `className` and `style` on the same way. Its `textFills` goes too: the
+ * colour reaches its texts through the scope instead (`composedTextFills`).
+ * The editor previews a composition's box through it (`instancePreview`).
+ */
+export function composedNode(
+  instance: UidxNode,
+  composed: UidxNode,
+  layer: BoxLayer,
+  placed: Partial<SceneNode>,
+): UidxNode {
+  const size: BoxLayer = {}
+  for (const [dimension, value] of pinnedSizes(instance, placed))
+    size[dimension] = synthAttr(dimension, value, instance.attrs[dimension]!)
+  const attrs = { ...composed.attrs }
+  delete attrs.textFills
+  return layered({ ...composed, attrs }, { ...layer, ...size })
+}
+
+/**
+ * The scope a composition's held instance expands in, as far as text colour
+ * goes. The use's own colour beats the one the definition wrote on the held
+ * instance, which beats any colour from further out, so the held instance
+ * never states one itself (`composedNode`) and inherits the winner. Whose
+ * lists its texts join follow the same order: the use's always, the ones
+ * further out only when neither the use nor the definition states a colour.
+ */
+function composedTextFills(
+  composed: UidxNode,
+  scope: SceneOptions,
+  ownText: JsonValue | undefined,
+  targets: string[] | undefined,
+  warnings: string[],
+): SceneOptions {
+  if (ownText !== undefined) return scope
+  const written = boxValue(composed, 'textFills', scope.resolveAlias, warnings)
+  if (written === undefined) return scope
+  return { ...scope, textFills: written, textSinks: targets ? [targets] : [] }
+}
+
+/**
+ * The scope the nodes an instance draws resolve in (story F6, F7): the
+ * consumer's, with the component's props bound to what the use assigns over
+ * what the definition declares. So `{label}` inside the definition is this
+ * use's label, and an instance the definition holds asks for the variant the
+ * use's props pass it. `generatedChildProps` computes a copy in it, and the
+ * editor reads an instance's insides with it (`instanceBase`).
+ */
+export function instanceScope(
+  instance: UidxNode,
+  definition: UidxNode,
+  options: SceneOptions,
+): SceneOptions {
+  return {
+    ...options,
+    resolveAlias: withProperties(
+      options.resolveAlias,
+      new Map([
+        ...declaredDefaults(definition),
+        ...instanceValues(instance, definition, options.resolveAlias),
+      ]),
+    ),
+  }
 }
 
 /**
@@ -1438,8 +1688,11 @@ function expandInstance(
  * the instance. The incremental path uses this to update a copy in place when
  * the definition's attributes change (spec §3), instead of rebuilding the page;
  * it must therefore compute exactly what `clone` computes: the instance's
- * component-property scope, the definition node's own props, the sizing a
- * bare frame inherits at the first level, and the instance's overrides last.
+ * component-property scope, the definition node's own props with the use's
+ * text colour on a text, the use's box and the size it fixes on the node that
+ * draws the box (`boxDrawnUnder`, `pinnedFrame`), at whatever depth a wrapper
+ * puts it, the sizing a bare frame inherits at the first level, and the
+ * instance's overrides last.
  */
 export function generatedChildProps(
   instance: UidxNode,
@@ -1450,41 +1703,81 @@ export function generatedChildProps(
   parentLayout?: SceneNode['layoutMode'],
   warnings: string[] = [],
 ): Partial<SceneNode> {
-  const scope: SceneOptions = {
-    ...options,
-    resolveAlias: withProperties(
-      options.resolveAlias,
-      new Map([
-        ...declaredDefaults(definition),
-        ...instanceValues(instance, definition, options.resolveAlias),
-      ]),
-    ),
-  }
+  const scope = instanceScope(instance, definition, options)
   const root = variantFor(definition, instance, options.resolveAlias) ?? definition
   const first = !relative.includes('/')
-  const placed = first ? instanceRootProps(instance, definition, options, parentLayout) : {}
+  // The node that draws the box, at whatever depth (`boxTargetOf`): it takes
+  // the use's box and the size the use fixes, as `clone` gives them.
+  const target = boxTargetOf(root)
+  const boxed = target.kind !== 'self' && target.path.join('/') === relative
+  const placed =
+    first || boxed ? instanceRootProps(instance, definition, options, parentLayout) : {}
   const changed = overrideMap(instance).get(relative)
+  const drawn = boxed ? boxDrawnUnder(instance, target, source, placed, options, warnings) : source
   return {
     ...(first ? frameSizing(instance, root) : {}),
-    ...instanceProps(source, warnings, scope, placed.layoutMode),
-    ...(first ? pinnedFrame(instance, root, placed) : {}),
+    ...instanceProps(
+      textDrawnUnder(instance, drawn, options, warnings),
+      warnings,
+      scope,
+      boxed ? layoutAround(root, target.path, placed) : placed.layoutMode,
+    ),
+    ...(boxed ? pinnedFrame(instance, root, placed) : {}),
     ...(changed ? overrideProps(changed, relative, warnings, options) : {}),
   }
 }
 
 /**
- * The one frame a component wraps, when the component is only a wrapper
- * around it — or undefined for a component that lays itself out (ADR 0008),
- * whose children are its content.
+ * `source`, the node that draws the component's box, as `expandInstance`
+ * draws it under `instance` (ADR 0018 §2): the use's box laid over that
+ * frame, or handed to the instance a composition holds.
  */
-function wrappedFrame(source: UidxNode): UidxNode | undefined {
-  if (source.attrs.layoutMode || source.attrs.width || source.attrs.height) return undefined
-  return source.children.length === 1 ? source.children[0] : undefined
+function boxDrawnUnder(
+  instance: UidxNode,
+  target: Exclude<BoxTarget, { kind: 'self' }>,
+  source: UidxNode,
+  placed: Partial<SceneNode>,
+  options: SceneOptions,
+  warnings: string[],
+): UidxNode {
+  const layer = boxLayer(instance, options.resolveAlias, warnings)
+  return target.kind === 'frame'
+    ? layered(source, layer)
+    : composedNode(instance, source, layer, placed)
+}
+
+/** A text of the component in the colour the use hands down (ADR 0018 §4), as `clone` draws it. */
+function textDrawnUnder(
+  instance: UidxNode,
+  source: UidxNode,
+  options: SceneOptions,
+  warnings: string[],
+): UidxNode {
+  if (source.element !== 'Text') return source
+  const textFills = boxValue(instance, 'textFills', options.resolveAlias, warnings)
+  return withTextFills(source, textFills ?? options.textFills)
+}
+
+/**
+ * The layout the node at `path` below `source` sits in: the instance's own
+ * node for a child of `source` (`placed` is that node's props), else the
+ * frame above it, which a box is found through only when it lays out.
+ */
+function layoutAround(
+  source: UidxNode,
+  path: readonly string[],
+  placed: Partial<SceneNode>,
+): SceneNode['layoutMode'] | undefined {
+  if (path.length <= 1) return placed.layoutMode
+  const mode = nodeAtPath(source, path.slice(0, -1))?.attrs.layoutMode?.value
+  return mode === 'HORIZONTAL' || mode === 'VERTICAL' ? mode : undefined
 }
 
 function frameSizing(instance: UidxNode, source: UidxNode): Partial<SceneNode> {
   // A component that lays itself out (ADR 0008) has no wrapper: its children
   // are its content, and stretching each of them would be a different thing.
+  // Any one frame it wraps, a repeat's rows included — wider than the box
+  // node (`boxTargetOf`), since a row still fills a stretched instance.
   const frame = wrappedFrame(source)
   // Only a frame that lays itself out can pass a size on to what it holds.
   if (!frame?.attrs.layoutMode) return {}
@@ -1494,18 +1787,6 @@ function frameSizing(instance: UidxNode, source: UidxNode): Partial<SceneNode> {
     ...(frame.attrs.width ? {} : { layoutAlignSelf: 'STRETCH' as const }),
     ...(typeof grow === 'number' && grow > 0 && !frame.attrs.height ? { layoutGrow: grow } : {}),
   }
-}
-
-/**
- * The frame `pinnedFrame` hands an instance's size to, if the component has
- * one: a plain frame it wraps. A repeat is a template for many rows rather
- * than the component's frame — each row pinned to the instance's height drew
- * three 200-tall rows in a 200-tall instance — so its rows keep
- * `frameSizing`'s stretch and the size stays on the wrapper.
- */
-function pinnableFrame(source: UidxNode): UidxNode | undefined {
-  const frame = wrappedFrame(source)
-  return frame?.element === 'Frame' && !repeatOf(frame) ? frame : undefined
 }
 
 /**
@@ -1523,27 +1804,48 @@ function pinnableFrame(source: UidxNode): UidxNode | undefined {
  * Laid *over* the frame's own props, unlike `frameSizing`: a width on the
  * frame is the component's default, and the use decides what it changes.
  * `placed` is the instance's own scene props, which already say what it fixes.
+ *
+ * The frame is the one the use's box lands on (`boxTargetOf`), so size and
+ * look always land together (ADR 0018 §2) — found through any frame that only
+ * wraps it, which then hugs it at that size. A repeat is not it: a template
+ * for many rows rather than the component's frame — each row pinned to the
+ * instance's height drew three 200-tall rows in a 200-tall instance — so its
+ * rows keep `frameSizing`'s stretch and the size stays on the wrapper. A
+ * composition passes the size to the instance it holds instead
+ * (`composedNode`).
  */
 function pinnedFrame(
   instance: UidxNode,
   source: UidxNode,
   placed: Partial<SceneNode>,
 ): Partial<SceneNode> {
-  const frame = pinnableFrame(source)
-  if (!frame) return {}
-  const layout = frame.attrs.layoutMode?.value
+  const target = boxTargetOf(source)
+  if (target.kind !== 'frame') return {}
+  const layout = target.node.attrs.layoutMode?.value
+  const around = layoutAround(source, target.path, placed)
   const out: Partial<SceneNode> = {}
-  for (const dimension of DIMENSIONS) {
-    const field = sizingFieldFor(placed.layoutMode, dimension)
-    const size = placed[dimension]
-    if (instance.attrs[dimension] === undefined || placed[field] !== 'FIXED') continue
-    if (typeof size !== 'number') continue
+  for (const [dimension, size] of pinnedSizes(instance, placed)) {
     out[dimension] = size
     if (layout === 'HORIZONTAL' || layout === 'VERTICAL')
       out[sizingFieldFor(layout, dimension)] = 'FIXED'
     // Along the wrapper's main axis the frame was grown, across it stretched.
-    if (field === 'primaryAxisSizing') out.layoutGrow = 0
+    if (sizingFieldFor(around, dimension) === 'primaryAxisSizing') out.layoutGrow = 0
     else out.layoutAlignSelf = 'AUTO'
+  }
+  return out
+}
+
+/**
+ * Each dimension an instance fixes, at the size its own node was given: the
+ * ones it states and its node draws Fixed. `placed` is that node's props.
+ */
+function pinnedSizes(instance: UidxNode, placed: Partial<SceneNode>): [Dimension, number][] {
+  const out: [Dimension, number][] = []
+  for (const dimension of DIMENSIONS) {
+    const size = placed[dimension]
+    if (instance.attrs[dimension] === undefined || typeof size !== 'number') continue
+    if (placed[sizingFieldFor(placed.layoutMode, dimension)] === 'FIXED')
+      out.push([dimension, size])
   }
   return out
 }
@@ -1603,6 +1905,10 @@ function overrideProps(
  *
  * Applies per `<Component>`, not to the root — since ADR 0003 the root is the
  * page, and a `<Frame>` sitting on it is scenery with geometry of its own.
+ *
+ * `laysOut` (instance-box.ts) reads this rule to say whether a use's padding
+ * insets anything, for the contract, `uidx check` and codegen, so the two
+ * change together.
  */
 function componentSizing(node: UidxNode): Partial<SceneNode> {
   if (node.attrs.width || node.attrs.height || node.attrs.layoutMode) return {}
@@ -1831,11 +2137,14 @@ export function scenePropFor(
   // `expandInstance`, which is a long way from setting a field on a node
   // (F3). Without this last one they reach the prop table and are reported as
   // unknown, which is the §3.3 lint accusing the vocabulary of its own words.
+  // An instance's `textFills` is the same: no node has it, and `expandInstance`
+  // hands it to the texts inside (ADR 0018 §4).
   if (
     prop === 'rootFontSize' ||
     prop === 'name' ||
     METADATA_ATTRS.has(prop) ||
-    STRUCTURAL_PROPS.includes(prop)
+    STRUCTURAL_PROPS.includes(prop) ||
+    INSTANCE_CASCADE_PROPS.includes(prop)
   )
     return null
 

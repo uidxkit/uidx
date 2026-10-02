@@ -199,9 +199,13 @@ describe('the HTML/CSS target', () => {
   const css = file('html/checkbox.css')
 
   it('styles the root and the parts from the base tree, tokens as variables', () => {
+    // The box reads its hooks, with the component's own value as the
+    // fallback (ADR 0018 §6).
     expect(css).toContain(
-      'hwc-checkbox {\n  width: 20px;\n  height: 20px;\n  border-radius: calc(var(--radius-sm) * 1px);\n  background-color: var(--surface-control);',
+      'hwc-checkbox {\n  width: 20px;\n  height: 20px;\n  border-top-left-radius: var(--uidx-radius-top-left, var(--uidx-radius, calc(var(--radius-sm) * 1px)));',
     )
+    expect(css).toContain('  background-color: var(--uidx-fill, var(--surface-control));')
+    expect(css).toContain('  border-color: var(--uidx-stroke, rgb(153 153 153));')
     expect(css).toContain('hwc-checkbox hwc-checkbox-checked-indicator {\n  display: none;')
     // A vector's fill is its colour: its paths draw with currentColor.
     expect(css).toContain('  color: rgb(255 255 255);')
@@ -962,8 +966,13 @@ describe('what a frame drawn on the canvas becomes in CSS', () => {
       },
       'container',
     )
-    expect(css.border).toBe('1px solid var(--color-text)')
-    expect(css['border-width']).toBe('2px 2px 2px 2px')
+    // Longhands, so a row can change one part and a hook can read each.
+    expect(css.border).toBeUndefined()
+    expect(css['border-width']).toBe('1px')
+    for (const side of ['top', 'right', 'bottom', 'left'])
+      expect(css[`border-${side}-width`]).toBe('2px')
+    expect(css['border-style']).toBe('solid')
+    expect(css['border-color']).toBe('var(--color-text)')
   })
 })
 

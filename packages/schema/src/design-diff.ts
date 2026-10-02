@@ -1,12 +1,14 @@
-import type { ContractSpec, JsonValue, UidxDocument } from '@uidx/format'
+import type { ContractSpec, JsonValue, UidxDocument, UidxNode } from '@uidx/format'
 
+import { componentBox, derivesVariants, type ContractBox } from './design-system.js'
 import { buildTokenIndex } from './token-index.js'
 
 /**
  * What changed in a design system between two versions of its document, as
  * a reviewer and a release need it (ADR 0013, "removing or renaming a Prop,
  * Event or Slot is a breaking change"): component contracts, models and
- * tokens, each change marked breaking or not.
+ * tokens, each change marked breaking or not, and where a use's outer box
+ * lands (ADR 0018).
  *
  * Pure: two sets of parsed pages in, a list of changes out.
  */
@@ -25,6 +27,25 @@ function contracts(pages: Pages): Map<string, ContractSpec | undefined> {
     for (const node of doc.tree.children)
       if (node.element === 'Component') out.set(node.name, doc.spec?.contract)
   return out
+}
+
+function components(pages: Pages): Map<string, UidxNode> {
+  const out = new Map<string, UidxNode>()
+  for (const doc of pages.values())
+    for (const node of doc.tree.children) if (node.element === 'Component') out.set(node.name, node)
+  return out
+}
+
+/**
+ * Where a use's box lands, as a reviewer would name it. A styles table's
+ * `root` carries the component's own attributes, so it is the component
+ * itself as much as the undivided component is: adding the first style row
+ * moves nothing a use can see.
+ */
+function boxPlace(component: UidxNode, box: ContractBox): string {
+  if (box.target === 'self' || derivesVariants(component)) return 'the component itself'
+  if (box.target === 'frame') return `frame "${box.node}"`
+  return `instance "${box.node}"${box.component ? ` of ${box.component}` : ''}`
 }
 
 function models(pages: Pages) {
@@ -50,6 +71,8 @@ export function designDiff(before: Pages, after: Pages): DesignChange[] {
 
   const was = contracts(before)
   const now = contracts(after)
+  const wasNodes = components(before)
+  const nowNodes = components(after)
   for (const [name, old] of was) {
     if (!now.has(name)) {
       add(true, name, 'component removed')
@@ -91,6 +114,18 @@ export function designDiff(before: Pages, after: Pages): DesignChange[] {
           `prop "${prop.name}" default ${show(prop.default)} → ${show(next_.default)}`,
         )
     }
+    // ADR 0018: a use still builds when its box moves or stops laying out,
+    // so neither breaks. But a restyled use now paints another node, or its
+    // padding does nothing, and the reviewer should hear which.
+    const oldNode = wasNodes.get(name)!
+    const newNode = nowNodes.get(name)!
+    const oldBox = componentBox(oldNode, wasNodes)
+    const newBox = componentBox(newNode, nowNodes)
+    const from = boxPlace(oldNode, oldBox.box)
+    const to = boxPlace(newNode, newBox.box)
+    if (from !== to) add(false, name, `outer box moved from ${from} to ${to}`)
+    if (oldBox.laysOut === true && newBox.laysOut === false)
+      add(false, name, 'outer box no longer lays out, so padding on an instance does nothing')
   }
   for (const name of now.keys()) if (!was.has(name)) add(false, name, 'component added')
 

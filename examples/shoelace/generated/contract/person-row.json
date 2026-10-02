@@ -7,7 +7,11 @@
       "status": "draft",
       "boundParts": [],
       "treeSlots": [],
-      "axes": {}
+      "axes": {},
+      "box": {
+        "target": "self"
+      },
+      "laysOut": true
     }
   ],
   "contract": {
@@ -72,5 +76,82 @@
         }
       ]
     }
-  ]
+  ],
+  "instanceBox": {
+    "version": 1,
+    "box": [
+      "fills",
+      "strokes",
+      "strokeWeight",
+      "strokeAlign",
+      "dashPattern",
+      "strokeTopWeight",
+      "strokeRightWeight",
+      "strokeBottomWeight",
+      "strokeLeftWeight",
+      "cornerRadius",
+      "topLeftRadius",
+      "topRightRadius",
+      "bottomRightRadius",
+      "bottomLeftRadius",
+      "cornerSmoothing",
+      "opacity",
+      "effects",
+      "paddingTop",
+      "paddingRight",
+      "paddingBottom",
+      "paddingLeft"
+    ],
+    "cascade": [
+      "textFills"
+    ],
+    "placement": [
+      "x",
+      "y",
+      "right",
+      "bottom",
+      "centerX",
+      "centerY",
+      "rotation",
+      "constraints",
+      "layoutPositioning",
+      "layoutGrow",
+      "layoutAlign",
+      "width",
+      "height",
+      "minWidth",
+      "maxWidth",
+      "minHeight",
+      "maxHeight",
+      "primaryAxisSizingMode",
+      "counterAxisSizingMode",
+      "visible",
+      "locked",
+      "blendMode",
+      "isMask",
+      "maskType"
+    ],
+    "hooks": {
+      "fills": "--uidx-fill",
+      "strokes": "--uidx-stroke",
+      "strokeWeight": "--uidx-stroke-weight",
+      "dashPattern": "--uidx-stroke-style",
+      "strokeTopWeight": "--uidx-stroke-top-weight",
+      "strokeRightWeight": "--uidx-stroke-right-weight",
+      "strokeBottomWeight": "--uidx-stroke-bottom-weight",
+      "strokeLeftWeight": "--uidx-stroke-left-weight",
+      "cornerRadius": "--uidx-radius",
+      "topLeftRadius": "--uidx-radius-top-left",
+      "topRightRadius": "--uidx-radius-top-right",
+      "bottomRightRadius": "--uidx-radius-bottom-right",
+      "bottomLeftRadius": "--uidx-radius-bottom-left",
+      "opacity": "--uidx-opacity",
+      "effects": "--uidx-shadow",
+      "paddingTop": "--uidx-padding-top",
+      "paddingRight": "--uidx-padding-right",
+      "paddingBottom": "--uidx-padding-bottom",
+      "paddingLeft": "--uidx-padding-left",
+      "textFills": "--uidx-text-color"
+    }
+  }
 }

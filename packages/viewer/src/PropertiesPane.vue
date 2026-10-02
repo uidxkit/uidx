@@ -55,6 +55,11 @@ import {
   isStrokeEndpointProp,
   derivedDocument,
   derivedTarget,
+  instanceBase,
+  instanceDefinition,
+  instanceRole,
+  INSTANCE_BOX_SHORTHANDS,
+  type InstanceBase,
   type PinAxis,
   type PropGroup,
   type TokenIndex,
@@ -62,6 +67,17 @@ import {
   STRUCTURAL_PROPS,
 } from '@uidx/schema'
 import { pinWrites, type PinFrame, type PinWrites } from './pin-writes'
+import { resetPatches, sectionResetProps } from './instance-box-edits'
+import {
+  inheritedText,
+  overrideState,
+  shadowNote,
+  type OverrideContext,
+  type OverrideState,
+} from './override-state'
+import type { InstanceScope } from './resize-writes'
+import LockedLayoutRow from './LockedLayoutRow.vue'
+import OverrideMark from './OverrideMark.vue'
 import {
   convertibleToSlot,
   convertToSlotFor,
@@ -455,9 +471,77 @@ const docPinFrame = computed<PinFrame | null>(() => {
   return { box: pin.value ? resolvedBox(pin.value, box, size) : box, parent: size }
 })
 
+/**
+ * The scope the selection is written in, as the scene build reads it: the
+ * panel's tokens and the document-wide components. Enough to say which
+ * component an instance draws, and what that component draws where the
+ * instance's box lands (ADR 0018 §7).
+ */
+const sceneScope = computed<InstanceScope>(() => ({
+  resolveAlias: (address: string) => props.tokens?.get(address),
+  resolveComponent: (name: string) => props.components?.get(name),
+  models: props.models,
+  rootFontSize: rootFontSize.value,
+}))
+
+/** The selected `<Instance>`, or null for any other node. */
+const instance = computed(() => (active.value?.element === 'Instance' ? active.value : null))
+
+/** The component the selected instance draws, on whatever page declares it. */
+const instanceComponent = computed(() =>
+  instance.value ? instanceDefinition(instance.value, sceneScope.value) : undefined,
+)
+
+/** The component's name, which every override mark and reset speaks of. */
+const instanceName = computed(() => {
+  const named = instance.value?.attrs.component?.value
+  return instanceComponent.value?.name ?? (typeof named === 'string' ? named : '')
+})
+
+/**
+ * What the selected instance inherits from its component (ADR 0018 §7): the
+ * value each unset row of its outer box shows, the states its own props
+ * select — which sit above the use — and the layout its locked line reads.
+ * Null for any other node, and for an instance whose component is missing.
+ */
+const inherits = computed<InstanceBase | null>(() =>
+  instance.value ? instanceBase(instance.value, instanceComponent.value, sceneScope.value) : null,
+)
+
+/** Each longhand of an instance's box, to the shorthand that covers it (ADR 0018 §5). */
+const SHORTHAND_OF: ReadonlyMap<string, string> = new Map(
+  Object.entries(INSTANCE_BOX_SHORTHANDS).flatMap(([shorthand, longhands]) =>
+    longhands.map((longhand) => [longhand, shorthand] as const),
+  ),
+)
+
+/**
+ * The shorthand the selected instance states that a longhand row draws, or
+ * null. A use's `cornerRadius` replaces its component's corners, and its
+ * `strokeWeight` the side weights, as in CSS (ADR 0018 §5) — but not a value
+ * a state row wrote, which sits above the use (§3) and still shows.
+ */
+function governingShorthand(field: EditableProp): string | null {
+  const node = instance.value
+  const shorthand = SHORTHAND_OF.get(field.name)
+  if (!node || !shorthand || field.authored || field.shadow) return null
+  return node.attrs[shorthand] !== undefined ? shorthand : null
+}
+
+/** A longhand row under a shorthand the instance states shows that shorthand, which is what draws. */
+function withShorthands(built: EditableProp[]): EditableProp[] {
+  if (!instance.value) return built
+  const byName = new Map(built.map((field) => [field.name, field]))
+  return built.map((field) => {
+    const shorthand = governingShorthand(field)
+    const drawn = shorthand ? byName.get(shorthand) : undefined
+    return drawn ? { ...field, value: drawn.value, boundTo: drawn.boundTo } : field
+  })
+}
+
 const fields = computed<EditableProp[]>(() => {
   if (!active.value) return []
-  const built = editableProps(active.value, parent.value)
+  const built = withShorthands(editableProps(active.value, parent.value, inherits.value))
   const frame = props.pinFrame ?? docPinFrame.value
   if (!frame) return built
   /*
@@ -807,6 +891,9 @@ function resolved(field: EditableProp): number | null {
 function candidatesFor(field: EditableProp) {
   const address = active.value?.address
   if (!props.doc || !address) return null
+  // An instance's outer box takes a value or a token, never a binding: colour
+  // reaches a component through its visual props (ADR 0018 §5).
+  if (restyles(field.name)) return null
   return withModelFields(field.name, bindCandidates(props.doc, address, field.name))
 }
 
@@ -854,7 +941,8 @@ const tokenSource = computed<TokenBindingSource>(() => {
   }
   if (bindings.cornerRadius) {
     for (const name of CORNER_PROPS) {
-      if (!active.value?.attrs[name]) bindings[name] = bindings.cornerRadius
+      const corner = fields.value.find((field) => field.name === name)
+      if (!corner || !ownCorner(corner)) bindings[name] = bindings.cornerRadius
     }
   }
   return { tokens: props.tokens, tokenIndex: props.tokenIndex, bindings }
@@ -1323,17 +1411,27 @@ const CORNER_PROPS = [
   'bottomLeftRadius',
 ] as const
 /**
- * Authored, not merely present: since C7 every applicable prop has a row, so
- * "the file writes per-corner radii" is a question about what it authored.
+ * Whether a corner row holds a radius of its own rather than the shorthand's:
+ * the file states it, or — on an instance — the component draws it and the
+ * use's `cornerRadius` has not replaced it (ADR 0018 §5).
+ */
+function ownCorner(field: EditableProp): boolean {
+  return field.authored || (field.origin === 'component' && governingShorthand(field) === null)
+}
+
+/**
+ * Stated, not merely present: since C7 every applicable prop has a row, so
+ * "the file writes per-corner radii" is a question about what it states —
+ * and, for an instance, what its component states in its place.
  */
 const hasPerCorner = computed(() =>
-  fields.value.some((f) => f.authored && CORNER_PROPS.includes(f.name as never)),
+  fields.value.some((f) => CORNER_PROPS.includes(f.name as never) && ownCorner(f)),
 )
 const showCorners = computed(
   () => (cornerField.value !== null && !cornerField.value.boundTo) || hasPerCorner.value,
 )
 
-/** Each corner as the document resolves it, falling back to the shorthand. */
+/** Each corner as its row reads it, falling back to the shorthand. */
 const cornerValues = computed<SideValues>(() => {
   const uniform = cornerField.value
     ? (heldFor(cornerField.value) ?? resolved(cornerField.value) ?? 0)
@@ -1341,8 +1439,10 @@ const cornerValues = computed<SideValues>(() => {
   // A previewed corner shows whether or not the file authors it yet: the
   // collapsed box's scrub writes all four, and the unauthored ones would
   // otherwise sit still until release.
-  const radius = (name: string): number =>
-    heldNumber(name) ?? (active.value?.attrs[name] ? numberOf(name, uniform) : uniform)
+  const radius = (name: string): number => {
+    const corner = fields.value.find((field) => field.name === name)
+    return heldNumber(name) ?? (corner && ownCorner(corner) ? numberOf(name, uniform) : uniform)
+  }
   return {
     top: radius('topLeftRadius'),
     right: radius('topRightRadius'),
@@ -1371,9 +1471,186 @@ const paddingValues = computed<SideValues>(() => ({
   left: numberOf('paddingLeft'),
 }))
 
-/** Only an auto-layout frame has axes to align along. */
-const layoutMode = computed(() => valueOf('layoutMode', 'NONE'))
+/**
+ * Only an auto-layout frame has axes to align along. An instance lays out as
+ * the node its box lands on does, which is its component's business: so it is
+ * read there (`InstanceBase.layout`), never from a `layoutMode` the use
+ * states, which nothing draws (ADR 0018 §1).
+ */
+const layoutMode = computed(() => {
+  if (!instance.value) return valueOf('layoutMode', 'NONE')
+  const mode = inherits.value?.layout.layoutMode
+  return typeof mode === 'string' ? mode : 'NONE'
+})
 const hasAutoLayout = computed(() => layoutMode.value !== 'NONE')
+
+const PADDING_PROPS = ['paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft'] as const
+/** Every prop the corner control draws, the shorthand and smoothing included. */
+const CORNER_FAMILY = ['cornerRadius', ...CORNER_PROPS, 'cornerSmoothing'] as const
+
+/**
+ * Whether an instance shows its Padding block: where its box lays out, which
+ * is what padding insets, or where it states padding all the same, so the
+ * value can still be read and handed back.
+ */
+const instancePadding = computed(() => {
+  const node = instance.value
+  return !!node && (hasAutoLayout.value || PADDING_PROPS.some((prop) => node.attrs[prop]))
+})
+
+/**
+ * The props of `list` the selected instance leaves to its component, which a
+ * compound control draws dimmed; undefined outside an instance.
+ */
+function unstated(list: readonly string[]): string[] | undefined {
+  const node = instance.value
+  return node ? list.filter((prop) => node.attrs[prop] === undefined) : undefined
+}
+
+/* ---------------------------------------------- an instance's overrides */
+
+/** Whether a prop is the selected instance's outer box or the text colour it hands down. */
+function restyles(prop: string): boolean {
+  const role = instanceRole(prop)
+  return !!instance.value && (role === 'box' || role === 'cascade')
+}
+
+/**
+ * Where a row stands against the selected instance's component (ADR 0018 §7):
+ * dimmed while it shows the component's value, marked once the use states
+ * one. Undefined for a row that is not the outer box or the text colour — and
+ * for a longhand drawing the shorthand the use states, which is the use's own
+ * value without being a row of its own to reset.
+ */
+function overrideOf(field: EditableProp): OverrideState | undefined {
+  if (!restyles(field.name) || governingShorthand(field)) return undefined
+  return overrideState(field.origin ?? (field.authored ? 'own' : 'engine'), field.shadow ?? null)
+}
+
+/** What the component draws for `prop`, as a reset's title says it, or null when nothing is known. */
+function inheritedOf(prop: string): string | null {
+  const base = inherits.value
+  if (!base) return null
+  const value = instanceRole(prop) === 'cascade' ? base.text : base.values[prop]
+  return value === undefined ? null : inheritedText(value)
+}
+
+function overrideContextOf(field: EditableProp): OverrideContext {
+  return {
+    component: instanceName.value,
+    inherited: inheritedOf(field.name),
+    shadowedBy: field.shadow?.state ?? null,
+  }
+}
+
+/** Text color: one colour or one token the instance hands down, never a stack (ADR 0018 §4). */
+function isTextColor(field: EditableProp): boolean {
+  return instance.value !== null && field.name === 'textFills'
+}
+
+/** An unset Text color whose texts disagree, so there is no one colour of the component's to show. */
+function textMixed(field: EditableProp): boolean {
+  return isTextColor(field) && !field.authored && inherits.value?.text === 'mixed'
+}
+
+/** A row that wears a mark: a value the use states. */
+function isMarked(field: EditableProp): boolean {
+  const state = overrideOf(field)
+  return state === 'set' || state === 'shadowed'
+}
+
+/**
+ * The state hiding a value the use states in any of `rows` right now, for the
+ * note beneath them, or null: a state its own props select sits above the use
+ * (§3), so the value shows only in the other states.
+ */
+function hiddenBy(...rows: Array<EditableProp | null>): string | null {
+  for (const row of rows)
+    if (row && overrideOf(row) === 'shadowed') return row.shadow?.state ?? null
+  return null
+}
+
+/** The mark of a row whose caption the pane draws itself, as a paired row's is. */
+function rowMark(field: EditableProp) {
+  return {
+    state: overrideOf(field) ?? 'inherited',
+    component: instanceName.value,
+    inherited: inheritedOf(field.name),
+    shadowedBy: field.shadow?.state ?? null,
+    label: field.label,
+    writable: editable(field),
+  }
+}
+
+/** How a group of the instance's props stands against its component, for one mark. */
+interface GroupMark {
+  state: OverrideState
+  shadowedBy: string | null
+  /** The props of the group the use states: what its ↺ hands back. */
+  stated: string[]
+  /** The component's value, when the group states one prop and so resets to one value. */
+  inherited: string | null
+}
+
+/**
+ * The mark a group of the instance's props wears together — a section's
+ * header, a compound control's caption. Nothing while it states none of them;
+ * the winning state's chip when a state its own props select hides every one
+ * it states; the dot otherwise.
+ */
+function markFor(list: readonly string[]): GroupMark | null {
+  const node = instance.value
+  if (!node) return null
+  const stated = list.filter((prop) => node.attrs[prop] !== undefined)
+  if (stated.length === 0) return null
+  const states = stated.map((prop) => inherits.value?.stateWins.get(prop))
+  const shadowedBy = states.every((state) => state !== undefined) ? (states[0] ?? null) : null
+  return {
+    state: shadowedBy ? 'shadowed' : 'set',
+    shadowedBy,
+    stated,
+    inherited: stated.length === 1 ? inheritedOf(stated[0]!) : null,
+  }
+}
+
+/** Each section's mark, for the ↺ on its header: what the section's rows override. */
+const sectionMarks = computed(
+  () => new Map(sections.value.map((s) => [s.group, markFor(sectionResetProps(s.group))])),
+)
+const paddingMark = computed(() => markFor(PADDING_PROPS))
+const cornerMark = computed(() => markFor(CORNER_FAMILY))
+
+/**
+ * What the masked note calls a property: its row's label, one name for a
+ * family's parts — four corners read "Corner radius" — and the section's for
+ * a stroke's details, whose labels alone ("Weight") say too little.
+ */
+function boxName(prop: string): string {
+  const ui = propUiFor(prop)
+  const label = ui?.label ?? prop
+  if (PADDING_PROPS.includes(prop as never)) return 'Padding'
+  if (SHORTHAND_OF.get(prop) === 'cornerRadius') return 'Corner radius'
+  if (prop === 'strokeWeight' || SHORTHAND_OF.get(prop) === 'strokeWeight') return 'Stroke weight'
+  if (ui?.group === 'stroke' && prop !== 'strokes') return `Stroke ${label.toLowerCase()}`
+  return label
+}
+
+/**
+ * What the states the instance's own props select set on its outer box, by
+ * state: "Its checked state sets: Fill, Stroke". A state sits above the use
+ * (ADR 0018 §3), so a value the use states for one of these shows only in the
+ * other states — said once here, before any is edited.
+ */
+const masked = computed<Array<{ state: string; names: string[] }>>(() => {
+  const byState = new Map<string, string[]>()
+  for (const [prop, state] of inherits.value?.stateWins ?? []) {
+    const names = byState.get(state) ?? []
+    if (!names.includes(boxName(prop))) names.push(boxName(prop))
+    byState.set(state, names)
+  }
+  return [...byState].map(([state, names]) => ({ state, names }))
+})
+
 /** The section that owns width and height, so the Dimensions row lands with them. */
 const sizeGroup = computed<PropGroup | null>(
   () => fields.value.find((f) => f.name === 'width' || f.name === 'height')?.group ?? null,
@@ -1494,7 +1771,7 @@ function bindingsFor(field: EditableProp): { alias: string; label: string }[] | 
   if (field.name === 'characters') return textBindings.value
   const kind =
     field.control === 'boolean' ? 'boolean' : field.control === 'number' ? 'number' : null
-  if (!kind || STRUCTURAL_PROPS.includes(field.name)) return undefined
+  if (!kind || STRUCTURAL_PROPS.includes(field.name) || restyles(field.name)) return undefined
   const found = fieldBindingCandidates(
     enclosingComponent(props.doc, node.address),
     node,
@@ -1507,6 +1784,22 @@ function bindingsFor(field: EditableProp): { alias: string; label: string }[] | 
 function onCommit(prop: string, value: JsonValue): void {
   if (!active.value) return
   const address = active.value.address
+  /**
+   * An instance's outer box and the colour it hands down are patches on the
+   * `<Instance>`, never scene writes (ADR 0018 §7): the node that draws them
+   * is generated, and the instance's own node is only the wrapper around it.
+   * The commit still goes to the canvas, ahead of the structural routes below
+   * and whatever the value holds, because the canvas is drawing the scrub and
+   * holds it over every document that lands until the release lets it go. A
+   * patch sent from here skipped that, so ↺, Reset all and undo changed the
+   * file under a pill still drawn at the scrubbed value. The canvas writes
+   * the patch itself, with the value as given (`restyleInstance`).
+   */
+  if (restyles(prop)) {
+    preview.value = null
+    emit('commit', address, prop, value)
+    return
+  }
   /**
    * A `{binding}` typed or picked into Content is a binding, not a text: the
    * canvas route resolves it and writes the sample, or writes nothing when
@@ -1615,14 +1908,19 @@ function onCommit(prop: string, value: JsonValue): void {
 }
 
 /**
- * An attribute taken out of the file — an instance's size, when Hug hands
- * the axis back to its component. Straight to the file, like a pin's
- * removals: the scene has no write that means "stop stating this".
+ * Attributes taken out of the file — an instance's size, when Hug hands the
+ * axis back to its component; an override's ↺, a section's, or a Remove on an
+ * attribute nothing draws (ADR 0018 §7). Straight to the file, like a pin's
+ * removals: the scene has no write that means "stop stating this". Several
+ * at once leave as one envelope, so one undo brings them all back.
  */
-function onRemove(prop: string): void {
-  if (!active.value || active.value.attrs[prop] === undefined) return
+function onRemove(prop: string | readonly string[]): void {
+  const node = active.value
+  if (!node) return
+  const patches = resetPatches(node, typeof prop === 'string' ? [prop] : prop)
+  if (patches.length === 0) return
   preview.value = null
-  emit('patches', [{ op: 'remove', address: active.value.address, prop }])
+  emit('patches', patches)
 }
 
 /**
@@ -1938,8 +2236,8 @@ function onDetach(prop: string, value: JsonValue): void {
 
         <!--
         An instance's own properties come first: using a component is choosing
-        its content, and the geometry below is the only other thing an instance
-        lets anyone change.
+        its content, and the geometry and its outer box below are the only
+        other things an instance lets anyone change (ADR 0018).
       -->
         <!--
           A slot inside a component, set up by the component's author: what it
@@ -2056,6 +2354,23 @@ function onDetach(prop: string, value: JsonValue): void {
 
         <p v-if="!fields.length" class="note">This node declares no properties.</p>
 
+        <!--
+          What a state the instance's own props select sets on its outer box,
+          in the box a derived state's cells use: a state sits above the use
+          (ADR 0018 §3), so the author learns which of their values will not
+          show before they edit one.
+        -->
+        <section
+          v-if="masked.length"
+          class="state-cells"
+          data-field="masked"
+          aria-label="What its state sets"
+        >
+          <p v-for="entry in masked" :key="entry.state" class="state-cells-title">
+            Its {{ entry.state }} state sets: {{ entry.names.join(', ') }}
+          </p>
+        </section>
+
         <PropertySectionRoot
           v-for="section in sections"
           :key="section.group"
@@ -2078,6 +2393,19 @@ function onDetach(prop: string, value: JsonValue): void {
               <PropertySectionTitle class="section-title">{{ section.label }}</PropertySectionTitle>
               <span class="chevron" aria-hidden="true">›</span>
             </button>
+            <!-- An instance's overrides in this section, handed back in one
+               go (ADR 0018 §7). A paint or effect row has no caption to wear
+               a mark, so the header wears it for them. -->
+            <OverrideMark
+              v-if="sectionMarks.get(section.group)"
+              :state="sectionMarks.get(section.group)!.state"
+              :component="instanceName"
+              :inherited="sectionMarks.get(section.group)!.inherited"
+              :shadowed-by="sectionMarks.get(section.group)!.shadowedBy"
+              :label="section.label"
+              :writable="writable !== false"
+              @reset="onRemove(sectionMarks.get(section.group)!.stated)"
+            />
             <!-- Figma hangs the node's visibility off the Appearance header
                rather than burying it in a checkbox row. -->
             <button
@@ -2219,6 +2547,51 @@ function onDetach(prop: string, value: JsonValue): void {
               @hover="onHover"
             />
 
+            <!--
+            An instance's layout is its component's (ADR 0018 §1): one
+            read-only line, with the way to the component, where a frame has
+            direction, gap and alignment controls that here would write what
+            nothing draws. Its padding is the outer box's, so it stays a
+            control — here, since the spacing group a frame's sits in is gone.
+          -->
+            <template v-if="instance && section.group === sizeGroup">
+              <LockedLayoutRow
+                v-if="inherits"
+                :layout="inherits.layout"
+                :component="instanceName"
+                @open-component="emit('openComponent', $event)"
+              />
+              <div v-if="instancePadding" class="field field-padding" data-field="instance-padding">
+                <span class="field-caption" :class="{ marked: paddingMark }">
+                  <span>Padding</span>
+                  <OverrideMark
+                    v-if="paddingMark"
+                    :state="paddingMark.state"
+                    :component="instanceName"
+                    :inherited="paddingMark.inherited"
+                    :shadowed-by="paddingMark.shadowedBy"
+                    label="Padding"
+                    :writable="writable !== false"
+                    @reset="onRemove(paddingMark.stated)"
+                  />
+                </span>
+                <PaddingField
+                  :values="paddingValues"
+                  :inherited="unstated(PADDING_PROPS)"
+                  :editable="writable !== false"
+                  :token-source="tokenSource"
+                  @bind="onBindVariables"
+                  @detach="onDetachVariables"
+                  @preview="onMultiPreview"
+                  @commit="onMultiCommit"
+                  @hover="onHover"
+                />
+                <p v-if="paddingMark?.shadowedBy" class="shadow-note">
+                  {{ shadowNote(paddingMark.shadowedBy) }}
+                </p>
+              </div>
+            </template>
+
             <InspectorGroup
               v-for="group in inspectorGroups(section.group, genericFields(section))"
               :key="group.id"
@@ -2252,9 +2625,25 @@ function onDetach(prop: string, value: JsonValue): void {
                 "Position" caption with letters inside the boxes instead;
                 review preferred every edge named the same way, above.
               -->
+                  <!-- A half an instance overrides wears its mark here, since a
+                     compact field draws no caption of its own. -->
                   <div class="pair-captions">
-                    <span class="field-caption">{{ paired.field.label }}</span>
-                    <span class="field-caption">{{ paired.pairedWith.label }}</span>
+                    <span class="field-caption" :class="{ marked: isMarked(paired.field) }">
+                      <span>{{ paired.field.label }}</span>
+                      <OverrideMark
+                        v-if="isMarked(paired.field)"
+                        v-bind="rowMark(paired.field)"
+                        @reset="onRemove(paired.field.name)"
+                      />
+                    </span>
+                    <span class="field-caption" :class="{ marked: isMarked(paired.pairedWith) }">
+                      <span>{{ paired.pairedWith.label }}</span>
+                      <OverrideMark
+                        v-if="isMarked(paired.pairedWith)"
+                        v-bind="rowMark(paired.pairedWith)"
+                        @reset="onRemove(paired.pairedWith.name)"
+                      />
+                    </span>
                   </div>
                   <div class="pair-grid">
                     <div
@@ -2274,6 +2663,7 @@ function onDetach(prop: string, value: JsonValue): void {
                         :component-name="componentName"
                         :tokens="tokens"
                         :token-index="tokenIndex"
+                        :override="overrideOf(paired.field)"
                         compact
                         @preview="onPreview"
                         @commit="onCommit"
@@ -2303,6 +2693,7 @@ function onDetach(prop: string, value: JsonValue): void {
                         :component-name="componentName"
                         :tokens="tokens"
                         :token-index="tokenIndex"
+                        :override="overrideOf(paired.pairedWith)"
                         compact
                         @preview="onPreview"
                         @commit="onCommit"
@@ -2315,6 +2706,9 @@ function onDetach(prop: string, value: JsonValue): void {
                       />
                     </div>
                   </div>
+                  <p v-if="hiddenBy(paired.field, paired.pairedWith)" class="shadow-note">
+                    {{ shadowNote(hiddenBy(paired.field, paired.pairedWith)!) }}
+                  </p>
                 </div>
                 <div
                   v-else
@@ -2340,6 +2734,10 @@ function onDetach(prop: string, value: JsonValue): void {
                     :component-name="componentName"
                     :tokens="tokens"
                     :token-index="tokenIndex"
+                    :override="overrideOf(paired.field)"
+                    :override-context="overrideContextOf(paired.field)"
+                    :single="isTextColor(paired.field)"
+                    :mixed="textMixed(paired.field)"
                     @preview="onPreview"
                     @commit="onCommit"
                     @link="onLink"
@@ -2348,7 +2746,11 @@ function onDetach(prop: string, value: JsonValue): void {
                     @edit="onEditDeclaration"
                     @pick-variable="onPickVariable"
                     @detach="onDetach"
+                    @reset="onRemove"
                   />
+                  <p v-if="hiddenBy(paired.field)" class="shadow-note">
+                    {{ shadowNote(hiddenBy(paired.field)!) }}
+                  </p>
                 </div>
               </template>
               <div
@@ -2368,21 +2770,41 @@ function onDetach(prop: string, value: JsonValue): void {
                 />
               </div>
               <div v-if="group.id === 'appearance-main' && showCorners" class="field field-corner">
-                <span class="field-caption">Corner radius</span>
+                <span class="field-caption" :class="{ marked: cornerMark }">
+                  <span>Corner radius</span>
+                  <OverrideMark
+                    v-if="cornerMark"
+                    :state="cornerMark.state"
+                    :component="instanceName"
+                    :inherited="cornerMark.inherited"
+                    :shadowed-by="cornerMark.shadowedBy"
+                    label="Corner radius"
+                    :writable="writable !== false"
+                    @reset="onRemove(cornerMark.stated)"
+                  />
+                </span>
                 <CornerField
                   :corners="cornerValues"
                   :per-corner="hasPerCorner"
                   :smoothing="numberOf('cornerSmoothing')"
                   :editable="writable !== false"
                   :token-source="tokenSource"
+                  :inherited="unstated(CORNER_FAMILY)"
                   @bind="onBindVariables"
                   @detach="onDetachVariables"
                   @preview="onMultiPreview"
                   @commit="onMultiCommit"
                   @hover="onHover"
                 />
+                <p v-if="cornerMark?.shadowedBy" class="shadow-note">
+                  {{ shadowNote(cornerMark.shadowedBy) }}
+                </p>
               </div>
             </InspectorGroup>
+            <!-- Where an instance's text colour reaches, and where it stops (ADR 0018 §4). -->
+            <p v-if="instance && section.group === 'textColor'" class="note section-note">
+              Every text inside {{ instanceName }} · slot text with its own colour keeps it
+            </p>
           </PropertySectionContent>
         </PropertySectionRoot>
 
@@ -2441,6 +2863,18 @@ function onDetach(prop: string, value: JsonValue): void {
               @commit="onCommit"
               @detach="onDetach"
             />
+            <!-- An instance's attribute that belongs to its component's inside
+               draws nothing (ADR 0018 §1): it cannot be edited, only let go. -->
+            <button
+              v-if="field.removable"
+              type="button"
+              class="remove-attr"
+              :disabled="writable === false"
+              :title="`Remove ${field.name} from this instance — nothing draws it`"
+              @click="onRemove(field.name)"
+            >
+              Remove
+            </button>
           </div>
         </InspectorGroup>
         <!--
@@ -2782,6 +3216,39 @@ h2 {
   display: block;
   color: var(--text-dim);
 }
+/* A caption wearing an instance's override mark: the label, then the dot or
+   state chip and its ↺ — PropertyField's own marked caption. */
+.field-caption.marked {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Why a value the use states does not show right now (ADR 0018 §3). */
+.shadow-note {
+  grid-column: 1 / -1;
+  margin: 4px 0 0;
+  color: var(--warn);
+  font-size: var(--ui-size-sm);
+  line-height: 1.4;
+}
+.section-note {
+  margin: 4px 0 0;
+  font-size: var(--ui-size-sm);
+}
+.remove-attr {
+  margin-top: 4px;
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  cursor: pointer;
+}
+.remove-attr:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+}
 .span-caption {
   grid-column: 1 / -1;
 }
@@ -3079,6 +3546,9 @@ h2 {
 .state-cells-title {
   margin: 0 0 6px;
   color: var(--text-dim);
+}
+.state-cells-title:last-child {
+  margin-bottom: 0;
 }
 .state-cells ul {
   margin: 0;

@@ -3,6 +3,25 @@
 sl-checkbox {
   display: inline-flex;
   flex-direction: row;
+  --uidx-fill: initial;
+  --uidx-stroke: initial;
+  --uidx-stroke-weight: initial;
+  --uidx-stroke-style: initial;
+  --uidx-stroke-top-weight: initial;
+  --uidx-stroke-right-weight: initial;
+  --uidx-stroke-bottom-weight: initial;
+  --uidx-stroke-left-weight: initial;
+  --uidx-radius: initial;
+  --uidx-radius-top-left: initial;
+  --uidx-radius-top-right: initial;
+  --uidx-radius-bottom-right: initial;
+  --uidx-radius-bottom-left: initial;
+  --uidx-opacity: initial;
+  --uidx-shadow: initial;
+  --uidx-padding-top: initial;
+  --uidx-padding-right: initial;
+  --uidx-padding-bottom: initial;
+  --uidx-padding-left: initial;
 }
 
 sl-checkbox::part(base) {
@@ -21,7 +40,9 @@ sl-checkbox::part(control) {
   justify-content: center;
   align-items: center;
   background-color: var(--color-surface);
-  border: 1px solid var(--color-border);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--color-border);
 }
 
 sl-checkbox::part(checked-icon) {
@@ -42,12 +63,13 @@ sl-checkbox [data-slot="default"] {
 
 sl-checkbox [data-node="text"] {
   font-size: calc(var(--type-md) * 1px);
-  color: var(--color-text);
+  color: var(--uidx-text-color, var(--color-text));
 }
 
 sl-checkbox[checked]::part(control) {
   background-color: var(--color-accent);
-  border: 1px solid var(--color-accent);
+  border-style: solid;
+  border-color: var(--color-accent);
 }
 
 sl-checkbox[checked]::part(checked-icon) {
@@ -55,7 +77,8 @@ sl-checkbox[checked]::part(checked-icon) {
 }
 
 sl-checkbox:focus-within::part(control) {
-  border: 1px solid var(--color-text);
+  border-style: solid;
+  border-color: var(--color-text);
 }
 
 sl-checkbox[disabled] {

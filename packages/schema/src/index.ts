@@ -42,6 +42,15 @@ export {
   type NodeLookup,
 } from './authorship.js'
 export { KNOWN_PROPS, PIN_PROPS, STRUCTURAL_PROPS, isKnownProp } from './known-props.js'
+export * from './instance-box.js'
+export {
+  instanceBase,
+  instancePreview,
+  type InstanceBase,
+  type InstanceBoxTarget,
+  type InstanceLayout,
+  type InstancePreviewUpdate,
+} from './instance-panel.js'
 export {
   pinFrom,
   pinWrites,

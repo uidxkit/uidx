@@ -196,7 +196,7 @@ export async function applyGated(
   const narrowed = narrowOps(raw as never)
   if (!narrowed.ok) return { ok: false, message: `not applied — ${narrowed.message}` }
   const index = buildIndexOf(opened)
-  const refusal = refuseBadOps(narrowed.value, index)
+  const refusal = refuseBadOps(narrowed.value, index, opened.workspace.docOf(file))
   if (refusal) return { ok: false, message: `not applied — ${refusal}` }
   const result = await applyOps(opened.apply, file, narrowed.value)
   if (!result.ok) return { ok: false, message: `not applied — ${result.error}` }

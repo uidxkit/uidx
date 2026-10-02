@@ -5,19 +5,51 @@ hwc-radio {
   flex-direction: row;
   gap: calc(var(--space-sm) * 1px);
   align-items: center;
-  padding-left: calc(var(--space-sm) * 1px);
-  padding-right: calc(var(--space-sm) * 1px);
-  padding-top: calc(var(--space-xs) * 1px);
-  padding-bottom: calc(var(--space-xs) * 1px);
-  border-radius: calc(var(--radius-md) * 1px);
-  background-color: var(--surface-control);
+  padding-left: var(--uidx-padding-left, calc(var(--space-sm) * 1px));
+  padding-right: var(--uidx-padding-right, calc(var(--space-sm) * 1px));
+  padding-top: var(--uidx-padding-top, calc(var(--space-xs) * 1px));
+  padding-bottom: var(--uidx-padding-bottom, calc(var(--space-xs) * 1px));
+  border-top-left-radius: var(--uidx-radius-top-left, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-top-right-radius: var(--uidx-radius-top-right, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-bottom-right-radius: var(--uidx-radius-bottom-right, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  border-bottom-left-radius: var(--uidx-radius-bottom-left, var(--uidx-radius, calc(var(--radius-md) * 1px)));
+  background-color: var(--uidx-fill, var(--surface-control));
+  border-top-width: var(--uidx-stroke-top-weight, var(--uidx-stroke-weight, 1px));
+  border-right-width: var(--uidx-stroke-right-weight, var(--uidx-stroke-weight, 1px));
+  border-bottom-width: var(--uidx-stroke-bottom-weight, var(--uidx-stroke-weight, 1px));
+  border-left-width: var(--uidx-stroke-left-weight, var(--uidx-stroke-weight, 1px));
+  border-style: var(--uidx-stroke-style, none);
+  border-color: var(--uidx-stroke, transparent);
+  opacity: var(--uidx-opacity, 1);
+  box-shadow: var(--uidx-shadow, none);
+  --uidx-fill: initial;
+  --uidx-stroke: initial;
+  --uidx-stroke-weight: initial;
+  --uidx-stroke-style: initial;
+  --uidx-stroke-top-weight: initial;
+  --uidx-stroke-right-weight: initial;
+  --uidx-stroke-bottom-weight: initial;
+  --uidx-stroke-left-weight: initial;
+  --uidx-radius: initial;
+  --uidx-radius-top-left: initial;
+  --uidx-radius-top-right: initial;
+  --uidx-radius-bottom-right: initial;
+  --uidx-radius-bottom-left: initial;
+  --uidx-opacity: initial;
+  --uidx-shadow: initial;
+  --uidx-padding-top: initial;
+  --uidx-padding-right: initial;
+  --uidx-padding-bottom: initial;
+  --uidx-padding-left: initial;
 }
 
 hwc-radio [data-node="ring"] {
   width: 16px;
   height: 16px;
   border-radius: calc(var(--radius-full) * 1px);
-  border: 1px solid var(--border-default);
+  border-width: 1px;
+  border-style: solid;
+  border-color: var(--border-default);
   background-color: var(--surface-control);
   display: flex;
   flex-direction: row;
@@ -39,16 +71,17 @@ hwc-radio [data-node="who"] {
 
 hwc-radio [data-node="name"] {
   font-size: 14px;
-  color: var(--text-default);
+  color: var(--uidx-text-color, var(--text-default));
 }
 
 hwc-radio [data-node="email"] {
   font-size: 12px;
-  color: var(--text-muted);
+  color: var(--uidx-text-color, var(--text-muted));
 }
 
 hwc-radio[checked] [data-node="ring"] {
-  border: 1px solid var(--surface-accent);
+  border-style: solid;
+  border-color: var(--surface-accent);
 }
 
 hwc-radio[checked] hwc-radio-checked-indicator {
@@ -60,7 +93,8 @@ hwc-radio:hover {
 }
 
 hwc-radio:focus-visible [data-node="ring"] {
-  border: 1px solid var(--border-focus);
+  border-style: solid;
+  border-color: var(--border-focus);
 }
 
 hwc-radio[disabled] {

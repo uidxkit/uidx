@@ -7,6 +7,7 @@ import {
   STRUCTURAL_PROPS,
   isKnownProp,
 } from '../src/index.js'
+import { INSTANCE_CASCADE_PROPS } from '../src/known-props.js'
 
 /**
  * `known-props.ts` is a hand-maintained copy of the vocabulary, kept free of
@@ -24,6 +25,9 @@ describe('KNOWN_PROPS', () => {
     // engine (ADR 0011 §2). A prop with no scene field cannot be echoed back
     // into the file by a reflow, which is the whole point of keeping them out.
     ...PIN_PROPS,
+    // `textFills` is an instance's and reaches the texts its component draws,
+    // never a field of its own node (ADR 0018 §4), so it has no row either.
+    ...INSTANCE_CASCADE_PROPS,
   ])
 
   it('lists exactly what the prop table supports, plus the structural two', () => {
@@ -41,6 +45,12 @@ describe('KNOWN_PROPS', () => {
     expect([...PIN_PROPS]).toEqual(['right', 'bottom', 'centerX', 'centerY'])
   })
 
+  it('keeps the cascade props out of the prop table', () => {
+    const mapped = new Set(PROP_TABLE.map((m) => m.uidx))
+    for (const prop of INSTANCE_CASCADE_PROPS) expect(mapped.has(prop)).toBe(false)
+    expect([...INSTANCE_CASCADE_PROPS]).toEqual(['textFills'])
+  })
+
   it('has no duplicates', () => {
     expect(new Set(KNOWN_PROPS).size).toBe(KNOWN_PROPS.length)
   })
@@ -48,6 +58,7 @@ describe('KNOWN_PROPS', () => {
   it('answers lookups', () => {
     expect(isKnownProp('cornerRadius')).toBe(true)
     expect(isKnownProp('strokeAlign')).toBe(true)
+    expect(isKnownProp('textFills')).toBe(true)
     expect(isKnownProp('borderRadius')).toBe(false)
   })
 })

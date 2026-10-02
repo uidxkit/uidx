@@ -1,5 +1,7 @@
 import { aliasTarget, type JsonValue, type UidxDocument } from '@uidx/format'
 import { buildTokenIndex, defaultTuple, mergeModes, TokenResolver } from '@uidx/schema'
+import { INSTANCE_BOX_HOOKS } from '@uidx/schema/design-system'
+import { INSTANCE_CASCADE_PROPS } from '@uidx/schema/instance-box'
 
 /**
  * UIDX properties as CSS (ADR 0017 §3).
@@ -67,7 +69,7 @@ export function cssLength(value: JsonValue): string | null {
 }
 
 /** A unitless number or a token used as one (opacity, flex-grow). */
-function cssNumber(value: JsonValue): string | null {
+export function cssNumber(value: JsonValue): string | null {
   if (typeof value === 'number') return round(value)
   const target = typeof value === 'string' ? aliasTarget(value) : null
   return target === null ? null : `var(${cssVariable(target)})`
@@ -99,12 +101,49 @@ export function cssPaint(value: JsonValue): string | null {
 
 export type CssKind = 'container' | 'text' | 'vector'
 
+/**
+ * `base`: a node's whole look, as its resting rule states it. `row`: only
+ * what a styles-table row states, laid over that rule — so a row that
+ * changes a stroke's colour keeps the weight the base gave it.
+ */
+export type CssMode = 'base' | 'row'
+
 const STROKE_SIDES = [
-  'strokeTopWeight',
-  'strokeRightWeight',
-  'strokeBottomWeight',
-  'strokeLeftWeight',
+  ['top', 'strokeTopWeight'],
+  ['right', 'strokeRightWeight'],
+  ['bottom', 'strokeBottomWeight'],
+  ['left', 'strokeLeftWeight'],
 ] as const
+
+const CORNERS = [
+  ['top-left', 'topLeftRadius'],
+  ['top-right', 'topRightRadius'],
+  ['bottom-right', 'bottomRightRadius'],
+  ['bottom-left', 'bottomLeftRadius'],
+] as const
+
+/** A dash pattern with dashes in it draws dashed; an empty one is solid. */
+function borderStyle(dashPattern: JsonValue | undefined): string {
+  return Array.isArray(dashPattern) && dashPattern.length > 0 ? 'dashed' : 'solid'
+}
+
+/**
+ * The border widths a node states: the uniform weight, then each side that
+ * has its own — longhands after the shorthand, so a side wins as the canvas
+ * draws it. In `base` mode a stroke with no weight draws at Figma's 1.
+ */
+function borderWidths(
+  attrs: Record<string, JsonValue>,
+  mode: CssMode,
+  out: Record<string, string>,
+): void {
+  const uniform = attrs.strokeWeight === undefined ? null : cssLength(attrs.strokeWeight)
+  if (uniform !== null || mode === 'base') out['border-width'] = uniform ?? '1px'
+  for (const [side, prop] of STROKE_SIDES) {
+    const weight = attrs[prop] === undefined ? null : cssLength(attrs[prop]!)
+    if (weight !== null) out[`border-${side}-width`] = weight
+  }
+}
 
 /**
  * Whether an auto-layout frame sizes `axis` to its content (Figma's Hug). The
@@ -124,15 +163,23 @@ function hugs(attrs: Record<string, JsonValue>, axis: 'width' | 'height'): boole
  * a frame's fill is its background, a text's fill is its colour. A vector's
  * paths paint with `currentColor`, so its fill — or, when it is only
  * outlined, its stroke — is its colour, never a box border.
+ *
+ * A border is written as longhands — width, style, colour — rather than the
+ * `border` shorthand, so a row that states only a colour (`mode: 'row'`)
+ * changes only the colour, and so each part can read its own hook (ADR 0018
+ * §6).
  */
 export function cssDeclarations(
   attrs: Record<string, JsonValue>,
   kind: CssKind,
+  mode: CssMode = 'base',
 ): Record<string, string> {
   const out: Record<string, string> = {}
   const set = (prop: string, value: string | null) => {
     if (value !== null) out[prop] = value
   }
+  // Written once, at the first attribute that bears on it.
+  let widths = false
   for (const [name, value] of Object.entries(attrs)) {
     switch (name) {
       case 'fills':
@@ -145,18 +192,30 @@ export function cssDeclarations(
           break
         }
         if (color) {
-          const weight = attrs.strokeWeight === undefined ? '1px' : cssLength(attrs.strokeWeight)
-          set('border', `${weight ?? '1px'} solid ${color}`)
-          // Weights set per side (the panel writes all four when the weight
-          // is typed) win over the uniform one, as the canvas draws them.
-          const sides = STROKE_SIDES.map((side) =>
-            attrs[side] === undefined ? (weight ?? '1px') : cssLength(attrs[side]!),
-          )
-          if (STROKE_SIDES.some((side) => attrs[side] !== undefined) && sides.every(Boolean))
-            set('border-width', sides.join(' '))
+          if (mode === 'base' && !widths) {
+            borderWidths(attrs, mode, out)
+            widths = true
+          }
+          out['border-style'] = borderStyle(attrs.dashPattern)
+          out['border-color'] = color
         }
         break
       }
+      // A row may change the weight or the dashes alone; a base draws them
+      // only with a stroke, above.
+      case 'strokeWeight':
+      case 'strokeTopWeight':
+      case 'strokeRightWeight':
+      case 'strokeBottomWeight':
+      case 'strokeLeftWeight':
+        if (mode === 'row' && kind !== 'vector' && !widths) {
+          borderWidths(attrs, mode, out)
+          widths = true
+        }
+        break
+      case 'dashPattern':
+        if (mode === 'row' && kind !== 'vector') out['border-style'] = borderStyle(value)
+        break
       case 'cornerRadius':
         set('border-radius', cssLength(value))
         break
@@ -280,6 +339,123 @@ export function cssRule(selector: string, declarations: Record<string, string>):
   const entries = Object.entries(declarations)
   if (entries.length === 0) return ''
   return `${selector} {\n${entries.map(([prop, value]) => `  ${prop}: ${value};`).join('\n')}\n}\n`
+}
+
+/* --------------------------------------------------------- the instance box */
+
+/**
+ * The instance attribute whose hook each box declaration reads (ADR 0018
+ * §6), then the shorthand's: a side or a corner falls back to the uniform
+ * hook before the component's own value, which is §5's rule that a use's
+ * `cornerRadius` replaces the component's corners.
+ */
+const BOX_READS: Readonly<Record<string, readonly string[]>> = {
+  'background-color': ['fills'],
+  ...Object.fromEntries(
+    STROKE_SIDES.map(([side, prop]) => [`border-${side}-width`, [prop, 'strokeWeight']]),
+  ),
+  'border-style': ['dashPattern'],
+  'border-color': ['strokes'],
+  ...Object.fromEntries(
+    CORNERS.map(([corner, prop]) => [`border-${corner}-radius`, [prop, 'cornerRadius']]),
+  ),
+  'padding-top': ['paddingTop'],
+  'padding-right': ['paddingRight'],
+  'padding-bottom': ['paddingBottom'],
+  'padding-left': ['paddingLeft'],
+  opacity: ['opacity'],
+  'box-shadow': ['effects'],
+}
+
+/**
+ * `value` read through the hook its property takes:
+ * `var(--uidx-radius-top-left, var(--uidx-radius, 999px))`. A property no use
+ * can set is returned as it is.
+ */
+export function boxDeclaration(cssProp: string, value: string): string {
+  const reads = BOX_READS[cssProp] ?? []
+  return reads.reduceRight(
+    (fallback, prop) => `var(${INSTANCE_BOX_HOOKS[prop]}, ${fallback})`,
+    value,
+  )
+}
+
+/**
+ * A box node's declarations, each read through its hook. The `border-width`
+ * and `border-radius` shorthands become their longhands, since each side and
+ * corner has a hook of its own.
+ *
+ * `fallbacks`, for a resting rule, adds every box property the node leaves
+ * unset at the value CSS draws without it (`boxFallbacks`), so a use can set
+ * a hook the component never wrote.
+ */
+export function withBoxHooks(
+  declarations: Record<string, string>,
+  fallbacks?: Record<string, string>,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  const read = (prop: string, value: string) => {
+    out[prop] = boxDeclaration(prop, value)
+  }
+  for (const [prop, value] of Object.entries(declarations)) {
+    if (prop === 'border-width')
+      for (const [side] of STROKE_SIDES) read(`border-${side}-width`, value)
+    else if (prop === 'border-radius')
+      for (const [corner] of CORNERS) read(`border-${corner}-radius`, value)
+    else read(prop, value)
+  }
+  for (const [prop, value] of Object.entries(fallbacks ?? {})) if (!(prop in out)) read(prop, value)
+  return out
+}
+
+/**
+ * What a box draws for each property it leaves unset: nothing. Except the
+ * border width, which is the weight a stroke would draw at — the node's
+ * own, or Figma's 1 — so a use that adds only a stroke gets the border the
+ * canvas draws; with no stroke the style is `none` and the width moot.
+ *
+ * Padding only where the box lays out, as the canvas draws it (`laysOut`):
+ * anywhere else a use's padding does nothing on the canvas, and UIDX155 says
+ * so (ADR 0018 §6).
+ */
+export function boxFallbacks(
+  attrs: Record<string, JsonValue>,
+  laysOut: boolean,
+): Record<string, string> {
+  const weight = (attrs.strokeWeight === undefined ? null : cssLength(attrs.strokeWeight)) ?? '1px'
+  const out: Record<string, string> = { 'background-color': 'transparent' }
+  for (const [side, prop] of STROKE_SIDES)
+    out[`border-${side}-width`] =
+      (attrs[prop] === undefined ? null : cssLength(attrs[prop]!)) ?? weight
+  out['border-style'] = 'none'
+  out['border-color'] = 'transparent'
+  for (const [corner] of CORNERS) out[`border-${corner}-radius`] = '0px'
+  if (laysOut) for (const side of ['top', 'right', 'bottom', 'left']) out[`padding-${side}`] = '0px'
+  out.opacity = '1'
+  out['box-shadow'] = 'none'
+  return out
+}
+
+/**
+ * Every box hook set to `initial`, for a component's root: a hook set on an
+ * outer component then stops at this one, whose own box is its own use's to
+ * style. `--uidx-text-color` is left out — it inherits, which is the cascade
+ * (ADR 0018 §4).
+ */
+export const BOX_HOOK_RESETS: Readonly<Record<string, string>> = Object.fromEntries(
+  Object.entries(INSTANCE_BOX_HOOKS)
+    .filter(([prop]) => !INSTANCE_CASCADE_PROPS.includes(prop))
+    .map(([, hook]) => [hook, 'initial']),
+)
+
+/**
+ * A text's colour read through `--uidx-text-color`, over the colour it states.
+ * A text that states none takes the hook alone, which is no colour at all
+ * until a use sets one, so it inherits as it did.
+ */
+export function textColor(own: string | undefined): string {
+  const hook = INSTANCE_BOX_HOOKS.textFills!
+  return own === undefined ? `var(${hook})` : `var(${hook}, ${own})`
 }
 
 /**

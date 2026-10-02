@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { FieldIcon } from './field-icons'
-import type { JsonValue } from '@uidx/format'
+import { aliasTarget, toAlias, type JsonValue } from '@uidx/format'
 import type { EditableProp } from './editable'
 import ColorPickerDialog from './ColorPickerDialog.vue'
 import AssignPopup from './AssignPopup.vue'
@@ -32,7 +32,9 @@ import {
  *
  * Every edit computes the next whole value in `paint-edit.ts` and emits it;
  * add-vs-set, D4 and the burst batching all happen downstream, exactly as
- * they do for a number scrub.
+ * they do for a number scrub. That is also what makes an instance's inherited
+ * stack copy-on-write (ADR 0018 §7): the first edit writes the whole stack,
+ * so the use owns a copy rather than a patch on the component's.
  */
 const props = defineProps<{
   field: EditableProp
@@ -41,6 +43,20 @@ const props = defineProps<{
   tokens?: ReadonlyMap<string, JsonValue>
   /** Declared token data, for the scope filter (G8). */
   tokenIndex?: TokenIndex
+  /**
+   * Where the stack comes from on an instance. `component` draws it dimmed:
+   * the use has not set it yet. Omitted outside an instance.
+   */
+  origin?: 'own' | 'component' | 'engine'
+  /** The texts this colour reaches disagree, so there is no one stack to show. */
+  mixed?: boolean
+  /**
+   * Text color: one SOLID paint or one token, never a stack. A token is
+   * written as the whole attribute (`textFills="{text#onAccent}"`, ADR 0018
+   * §4), and there is no eye or remove — reset is how it goes back, and an
+   * empty or hidden text colour would only make the text vanish.
+   */
+  single?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -58,7 +74,38 @@ function pickTokens(index: number, event: MouseEvent): void {
   openVariables.value = openVariables.value === index ? null : index
 }
 
-const paints = (): PaintLike[] => asPaints(props.field.value) ?? []
+/**
+ * The stack as rows. In single mode a whole-attribute token is one SOLID paint
+ * that reads it — how it renders, and what an edit over it starts from.
+ */
+const paints = (): PaintLike[] => {
+  const value = props.field.value
+  if (props.single && typeof value === 'string' && aliasTarget(value)) {
+    return [{ type: 'SOLID', color: value }]
+  }
+  return asPaints(value) ?? []
+}
+
+/**
+ * The one row that stands in for the stack: a mix has no stack to show, and a
+ * single colour with no value still needs something to pick from, because its
+ * section offers no `+`.
+ */
+const placeholder = computed<'Mixed' | 'None' | null>(() =>
+  props.mixed ? 'Mixed' : props.single && paints().length === 0 ? 'None' : null,
+)
+
+/** What a placeholder's first colour writes: one SOLID, with opacity only when moved. */
+function freshPaints(color: Rgba, opacity: number): JsonValue {
+  return [{ type: 'SOLID', color, ...(opacity === 1 ? {} : { opacity }) }] as unknown as JsonValue
+}
+
+/** What picking a token writes: the whole attribute in single mode, else the paint's colour. */
+function tokenValue(index: number, address: string): JsonValue {
+  if (props.single) return toAlias(address)
+  if (placeholder.value) return [{ type: 'SOLID', color: toAlias(address) }]
+  return setPaintColorAlias(paints(), index, address)
+}
 
 /** COLOR variables the Libraries tab lists, grouped by collection there. */
 const colorVariables = computed(() =>
@@ -127,6 +174,11 @@ function commitColor(index: number, color: Rgba, opacity: number): void {
   commit(nextPaints(index, color, opacity), false)
 }
 
+function previewFresh(color: Rgba, opacity: number): void {
+  if (!props.editable) return
+  emit('preview', props.field.name, freshPaints(color, opacity))
+}
+
 function onOpacity(index: number, event: Event): void {
   const pct = Number((event.target as HTMLInputElement).value.trim().replace(/%$/, ''))
   if (!Number.isFinite(pct)) return
@@ -135,9 +187,58 @@ function onOpacity(index: number, event: Event): void {
 </script>
 
 <template>
-  <div class="paints" :data-authored="field.authored">
+  <div class="paints" :data-authored="field.authored" :data-origin="origin">
+    <div v-if="placeholder" class="paint-row" data-placeholder>
+      <button
+        type="button"
+        class="paint-swatch"
+        data-picker-trigger
+        :data-split="placeholder === 'Mixed'"
+        :disabled="!editable"
+        :title="placeholder === 'Mixed' ? 'the texts inside use more than one colour' : 'none'"
+        :aria-label="`Edit ${field.label.toLowerCase()} color`"
+        @click="open = open === 0 ? null : 0"
+      />
+      <span class="paint-readonly">{{ placeholder }}</span>
+      <button
+        v-if="editable"
+        type="button"
+        class="paint-variables"
+        data-popup-trigger
+        :title="`Apply token to ${field.label.toLowerCase()}`"
+        :aria-label="`Apply token to ${field.label.toLowerCase()}`"
+        :aria-expanded="openVariables === 0"
+        @click="pickTokens(0, $event)"
+      >
+        <FieldIcon name="variables-grid" />
+      </button>
+      <AssignPopup
+        v-if="openVariables === 0"
+        :candidates="null"
+        :component-name="null"
+        :variables="colorVariables"
+        :bound-to="null"
+        :trigger="variablesTrigger"
+        icon="variable"
+        @variable="(address) => commit(tokenValue(0, address))"
+        @close="openVariables = null"
+      />
+      <ColorPickerDialog
+        v-if="open === 0"
+        :color="{ r: 0.5, g: 0.5, b: 0.5, a: 1 }"
+        :opacity="1"
+        :swatches="swatches"
+        :editable="editable"
+        :libraries="colorVariables"
+        :current-token="null"
+        @preview="previewFresh"
+        @commit="(c, o) => commit(freshPaints(c, o), false)"
+        @close="open = null"
+        @pick="(a) => commit(tokenValue(0, a), false)"
+      />
+    </div>
     <div
-      v-for="(paint, i) in paints()"
+      v-for="(paint, i) in placeholder ? [] : paints()"
       :key="i"
       class="paint-row"
       :data-hidden="paint.visible === false"
@@ -209,6 +310,7 @@ function onOpacity(index: number, event: Event): void {
       <span v-else class="paint-readonly">{{ label(paint) }}</span>
 
       <button
+        v-if="!single"
         type="button"
         class="paint-eye"
         :disabled="!editable"
@@ -219,6 +321,7 @@ function onOpacity(index: number, event: Event): void {
         <FieldIcon :name="paint.visible === false ? 'eye-off' : 'eye'" />
       </button>
       <button
+        v-if="!single"
         type="button"
         class="paint-remove"
         :disabled="!editable"
@@ -237,7 +340,7 @@ function onOpacity(index: number, event: Event): void {
         :bound-to="paintColorAlias(paint)"
         :trigger="variablesTrigger"
         icon="variable"
-        @variable="(address) => commit(setPaintColorAlias(paints(), i, address))"
+        @variable="(address) => commit(tokenValue(i, address))"
         @close="openVariables = null"
       />
       <ColorPickerDialog
@@ -251,7 +354,7 @@ function onOpacity(index: number, event: Event): void {
         @preview="(c, o) => emitPreviewColor(i, c, o)"
         @commit="(c, o) => commitColor(i, c, o)"
         @close="open = null"
-        @pick="(a) => commit(setPaintColorAlias(paints(), i, a), false)"
+        @pick="(a) => commit(tokenValue(i, a), false)"
       />
     </div>
   </div>
@@ -272,6 +375,12 @@ function onOpacity(index: number, event: Event): void {
 .paint-row[data-hidden='true'] {
   opacity: 0.5;
 }
+/* The component's paints rather than the use's — InstancePropsSection's unset look. */
+.paints[data-origin='component']
+  :is(.paint-swatch, .paint-hex, .paint-opacity, .paint-token, .paint-readonly) {
+  color: var(--text-faint);
+  opacity: 0.7;
+}
 .paint-swatch {
   flex: none;
   width: 24px;
@@ -280,6 +389,13 @@ function onOpacity(index: number, event: Event): void {
   border-radius: var(--radius);
   cursor: pointer;
   padding: 0;
+}
+/* Two colours meeting on the diagonal: these disagree. */
+.paint-swatch[data-split='true'] {
+  background: linear-gradient(135deg, var(--text) 0 50%, var(--panel) 50% 100%);
+}
+[data-placeholder] .paint-swatch:not([data-split='true']) {
+  background: transparent;
 }
 .paint-hex {
   flex: 1;

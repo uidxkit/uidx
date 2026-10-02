@@ -15,14 +15,16 @@ import {
   setInstanceProp,
   unusedInstanceProps,
 } from './instance-prop-edits'
+import { overrideCount, resetAllPatches } from './instance-box-edits'
 
 /**
  * An instance's properties, at the top of the inspector (story F7).
  *
  * "Using a component is choosing its content rather than overriding its
  * insides" — so this is the first thing an author sees when they select an
- * instance, above the geometry, which is the only other thing they may change
- * about it.
+ * instance, above the geometry and its outer box, the only other things they
+ * may change about it (ADR 0018). The card counts what the use overrides of
+ * those, and hands it all back in one step.
  *
  * Everything written here lands on the `<Instance>`, which is on the page the
  * author has open. The component's own file is never touched by a use of it,
@@ -148,6 +150,18 @@ function reset(name: string): void {
   // not. `clearInstanceProp` decides that, not this.
   send(clearInstanceProp(props.doc, props.instance.address, name))
 }
+
+/** How many overrides the use states: its outer box, its text colour and its size. */
+const overrides = computed(() => overrideCount(props.instance))
+
+/**
+ * Every override at once, as one envelope, so one undo brings them all back.
+ * Never where the use sits, its props, slot fills or modes: those say which
+ * use this is, not how it looks.
+ */
+function resetAll(): void {
+  if (props.writable) send(resetAllPatches(props.instance))
+}
 </script>
 
 <template>
@@ -162,6 +176,18 @@ function reset(name: string): void {
       <span class="card-text">
         <span class="card-name">{{ componentName }}</span>
         <span class="card-note" :title="note || summary">{{ note || summary }}</span>
+        <span v-if="overrides" class="card-overrides" data-field="overrides">
+          {{ overrides }} override{{ overrides === 1 ? '' : 's' }} ·
+          <button
+            type="button"
+            class="reset-all"
+            :disabled="!writable"
+            :title="`Remove the outer box, text colour and size this use states — ${componentName}’s own show again`"
+            @click="resetAll"
+          >
+            Reset all
+          </button>
+        </span>
       </span>
       <button
         v-if="definition"
@@ -507,6 +533,27 @@ function reset(name: string): void {
   line-height: 14px;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+/* "3 overrides · Reset all": quiet, under what the component is for. */
+.card-overrides {
+  color: var(--text-faint);
+  font-size: var(--ui-size-sm);
+  line-height: 16px;
+}
+.reset-all {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.reset-all:hover:not(:disabled) {
+  text-decoration: underline;
+}
+.reset-all:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 .icon-button {
   display: inline-flex;

@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
-import { formatDiagnostic, parse } from '@uidx/format'
+import { formatDiagnostic, parse, type UidxDocument, type UidxNode } from '@uidx/format'
 import { contractJson } from '@uidx/schema/design-system'
 import type { Io } from '../cli.js'
 
@@ -11,6 +11,9 @@ import type { Io } from '../cli.js'
  * the contract, behaviour, models, examples and styles as written, source
  * spans dropped, plus each component's name, headless root, bound parts and
  * tree slots. A page that fails to parse is reported and the command exits 1.
+ *
+ * A composition's outer box is in the component it holds (ADR 0018 §2), so
+ * the pages are read first and each one's components are found across all.
  */
 export async function runContract(argv: string[], io: Io): Promise<number> {
   const files = argv.filter((arg) => !arg.startsWith('--'))
@@ -19,7 +22,7 @@ export async function runContract(argv: string[], io: Io): Promise<number> {
     return 1
   }
   const cwd = io.cwd ?? process.cwd()
-  const out: Record<string, unknown>[] = []
+  const pages: { file: string; doc: UidxDocument }[] = []
   let failed = false
   for (const file of files) {
     const source = await readFile(resolve(cwd, file), 'utf8')
@@ -29,8 +32,13 @@ export async function runContract(argv: string[], io: Io): Promise<number> {
       failed = true
       continue
     }
-    out.push({ file, ...contractJson(doc) })
+    pages.push({ file, doc })
   }
+  const components = new Map<string, UidxNode>()
+  for (const { doc } of pages)
+    for (const node of doc.tree.children)
+      if (node.element === 'Component') components.set(node.name, node)
+  const out = pages.map(({ file, doc }) => ({ file, ...contractJson(doc, components) }))
   io.out(`${JSON.stringify(out.length === 1 ? out[0] : out, null, 2)}\n`)
   return failed ? 1 : 0
 }

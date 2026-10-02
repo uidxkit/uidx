@@ -56,6 +56,7 @@ import {
   sizingFlipFor,
 } from './resize-writes'
 import { createWrappedFrame, type InstanceFraming } from './wrapped-frame'
+import { instanceBoxEdit } from './instance-box-edits'
 import type { PinFrame } from './pin-writes'
 import { provideEditor, useCanvas } from '@open-pencil/vue'
 import {
@@ -63,6 +64,7 @@ import {
   diffDocuments,
   createSpec,
   fromSceneChange,
+  instanceRole,
   isCreatable,
   isPositionAuthored,
   scenePropFor,
@@ -83,7 +85,7 @@ import { coverageForFont, fontGeneration, fontLibraryError, projectFonts } from 
 import { collapseBurst, novelPatches } from './patch-burst'
 import { drawnNode } from './derived-edits'
 import { useCanvasControls } from './useCanvasControls'
-import { hoverTargetFor } from './hover-map'
+import { hoverNodeFor, hoverTargetFor } from './hover-map'
 import { theme } from './theme'
 
 const props = defineProps<{
@@ -1542,8 +1544,17 @@ function render(doc: UidxDocument | null, rebuild = false): void {
  * The panel scrub in flight, so a remote document landing mid-scrub does not
  * leave the canvas showing the file's value while the field shows the author's.
  * The properties pane holds its own copy for the field; this is the canvas half.
+ *
+ * An instance's scrub of its outer box writes no fields of its own: the nodes
+ * it reaches are generated, so its framing finds them again over the new
+ * document. `id` is where the instance is drawn, when that is not its address.
  */
-let panelPreview: { address: string; fields: object; framing?: InstanceFraming } | null = null
+let panelPreview: {
+  address: string
+  id?: string
+  fields: object
+  framing?: InstanceFraming
+} | null = null
 
 /** Re-applies the in-flight gesture and panel scrub over a fresh document. */
 function reapplyLocalEdits(): void {
@@ -1552,11 +1563,12 @@ function reapplyLocalEdits(): void {
   if (!panelPreview) return
   const graph = scene.value?.graph
   const held = panelPreview
-  if (graph?.getNode(held.address)) {
+  const id = held.id ?? held.address
+  if (graph?.getNode(id)) {
     const saved = held.framing && current ? resolve(current.tree, held.address) : null
     graph.runPreviewUpdates(() => {
-      if (saved && held.framing) wrappedFrame.draw(saved, held.framing)
-      editor.updateNode(held.address, held.fields)
+      if (saved && held.framing) wrappedFrame.draw(saved, held.framing, id)
+      if (Object.keys(held.fields).length) editor.updateNode(id, held.fields)
     })
     canvas.renderNow()
   } else {
@@ -1717,6 +1729,18 @@ const isMoveOnly = (changes: Record<string, unknown>): boolean => {
 }
 
 /**
+ * The texts an instance's colour reaches in one build (ADR 0018 §4), which
+ * `fromSceneChange` asks before it writes a text's fills. Gathered once per
+ * build, not per event: a layout pass announces every node it moves.
+ */
+const cascadeTargets = new WeakMap<SceneResult, ReadonlySet<string>>()
+function cascadedIn(built: SceneResult): (sceneId: string) => boolean {
+  const texts = cascadeTargets.get(built) ?? new Set([...built.textTargets.values()].flat())
+  cascadeTargets.set(built, texts)
+  return (sceneId) => texts.has(sceneId)
+}
+
+/**
  * Explicit commits must include fields that already equal their preview. The
  * graph suppresses unchanged scalar events, but the file has not seen them.
  */
@@ -1731,6 +1755,7 @@ function recordSceneWrite(sceneId: string, changes: Record<string, unknown>): vo
     graph: built.graph,
     addresses: built.addresses,
     pins: built.pins,
+    cascaded: cascadedIn(built),
     ...(authoredWrite ? { authored: authoredWrite.props, authoredFor: authoredWrite.address } : {}),
   })
   const novel = novelPatches([...pending, ...burst], patches)
@@ -1851,15 +1876,21 @@ function layoutAbove(node: { parentId: string | null }): SceneNode['layoutMode']
 
 /**
  * The frame a styles table wraps an instance's component in, drawn for the
- * size a preview gives the instance (`wrapped-frame.ts`). A build was the only
- * thing that put the size there, so a resize moved the box and left the pill
- * at its old size until the file's echo.
+ * size or the outer box a preview gives the instance (`wrapped-frame.ts`). A
+ * build was the only thing that put either there, so a resize moved the box
+ * and left the pill at its old size until the file's echo.
+ *
+ * Asked with the root font size the page was built with, as the echo's
+ * `applyChanges` asks, so a length in `rem` previews as it lands.
  */
+const instanceOptions = () => ({ ...sceneOptions(), rootFontSize: scene.value?.rootFontSize })
 const wrappedFrame = createWrappedFrame({
   graph: () => editor.graph,
-  scope: sceneOptions,
+  scope: instanceOptions,
   saved: (address) => (current ? resolve(current.tree, address) : null),
+  tree: () => current?.tree ?? null,
   update: (id, fields) => editor.updateNode(id, fields),
+  textTargets: (id) => scene.value?.textTargets.get(id),
 })
 
 /**
@@ -2183,6 +2214,14 @@ function applyProp(
   if (props.writable === false) return
   const graph = scene.value?.graph
   if (!graph) return
+  // An instance's outer box and its text colour are the `<Instance>`'s to
+  // state, wherever it is drawn (`restyleInstance`), so this asks the file
+  // before anything below reads the address as a node to write.
+  const layer = current ? resolve(current.tree, address) : null
+  if (layer?.element === 'Instance' && restyles(prop)) {
+    restyleInstance(layer, prop, value, mode)
+    return
+  }
   // The panel names a base layer of a derived component — or the component
   // itself — when the rail chose it. The canvas draws it as its default-state
   // twin (the component as that variant's root, not the set around the
@@ -2340,13 +2379,76 @@ function applyProp(
   canvas.renderNow()
 }
 
+/** Whether a row restyles an instance from outside: its outer box or its text colour (ADR 0018 §1). */
+function restyles(prop: string): boolean {
+  const role = instanceRole(prop)
+  return role === 'box' || role === 'cascade'
+}
+
+/**
+ * A row of an instance's outer box, or its text colour, from the panel (ADR
+ * 0018 §7).
+ *
+ * The node that draws it is generated — the frame a styles table wraps the
+ * component in, the texts inside — and the instance's own node is only the
+ * wrapper around it. Written to the scene, a fill painted that wrapper, a
+ * square box behind the pill, and the commit's patch went through it too. So
+ * the scrub is drawn as a resize is (`wrappedFrame`), from the build's own
+ * functions with the instance as the edit would leave the file, and the
+ * commit is a patch on the `<Instance>`: in the burst, so the rows a compound
+ * control commits travel as one envelope.
+ *
+ * The panel sends the release here as well as the scrub, because this is
+ * where the scrub is held: kept past it, the hold is drawn again over every
+ * document that lands, ↺, Reset all and undo among them. A release lets it
+ * go whatever the file then says, and writes its patch even for a use drawn
+ * nowhere, since the file is what it is for.
+ */
+function restyleInstance(
+  instance: UidxNode,
+  prop: string,
+  value: JsonValue,
+  mode: 'preview' | 'commit',
+): void {
+  if (!current) return
+  const id = drawnId(instance.address)
+  const drawn = id !== undefined && editor.graph.getNode(id) !== undefined
+  if (!drawn && mode === 'preview') return
+  // A compound control previews several rows per step — the padding axis
+  // both its sides — so they accrue, as a scrub's fields do.
+  const held = panelPreview?.address === instance.address ? panelPreview : null
+  const framing: InstanceFraming = {
+    size: {},
+    removals: [],
+    box: { ...held?.framing?.box, [prop]: value },
+  }
+  panelPreview = mode === 'preview' ? { address: instance.address, id, fields: {}, framing } : null
+  if (drawn) {
+    editor.graph.runPreviewUpdates(() => wrappedFrame.draw(instance, framing, id))
+    // Drawn for the commit, then let go: the echo makes the same update.
+    if (mode === 'commit') wrappedFrame.settle()
+  }
+  if (mode === 'commit') {
+    // The edit is asked for its patch alone; what it draws is drawn above.
+    const edit = instanceBoxEdit(current, instance.address, prop, value, { scope: sceneOptions() })
+    if (edit?.patches.length) {
+      if (!burst.length) queueMicrotask(flushBurst)
+      burst.push(...edit.patches)
+    }
+  }
+  canvas.renderNow()
+}
+
 /**
  * The panel's cursor, drawn on the canvas. Figma answers a hovered padding
  * field by tinting that band on the frame; the SDK already draws every one of
- * these overlays, so this only has to say which one and on what.
+ * these overlays, so this only has to say which one and on what — for a row
+ * of an instance's outer box, the node that draws it (`hoverNodeFor`).
  */
 function applyHover(address: string, prop: string | null): void {
-  const id = drawnId(address)
+  const drawn = drawnId(address)
+  const layer = current ? resolve(current.tree, address) : null
+  const id = drawn && prop ? hoverNodeFor(prop, drawn, layer, instanceOptions()) : drawn
   const target = prop ? hoverTargetFor(prop) : null
   if (!id || !target) {
     editor.setAutoLayoutHover(null)

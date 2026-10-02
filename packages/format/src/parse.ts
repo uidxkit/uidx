@@ -1060,12 +1060,13 @@ export class Lowerer {
 
   private checkInstance(element: UidxElement, attrs: Record<string, UidxAttr>, loc: Range): void {
     if (element !== 'Instance') {
-      // Either of these on another element is almost always an `<Instance>`
-      // typed as the wrong tag. Said rather than ignored: both are in
+      // Any of these on another element is almost always an `<Instance>`
+      // typed as the wrong tag. Said rather than ignored: all are in
       // `KNOWN_PROPS` so the §3.3 lint would let them through silently, and a
       // property that is spelled correctly and does nothing is the worst of the
-      // three outcomes.
-      for (const own of ['component', 'overrides']) {
+      // three outcomes. `textFills` (ADR 0018 §4) recolours the texts a
+      // component draws; a Frame's or a Text's own colour is its `fills`.
+      for (const own of ['component', 'overrides', 'textFills']) {
         const stray = attrs[own]
         if (!stray) continue
         this.error(

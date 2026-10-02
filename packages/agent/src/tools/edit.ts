@@ -10,8 +10,9 @@ import { overflowNotice } from '../edit/overflow.js'
 import { overlapNotice } from '../edit/overlaps.js'
 import { fixedWithoutSizeNotice } from '../edit/sizing.js'
 import { editOpsSchema, narrowOps, type EditOp, type NodeInput } from '../edit/ops.js'
-import { METADATA_ATTRS, TOKEN_ELEMENTS } from '@uidx/format'
-import { KNOWN_PROPS, PIN_PROPS, STRUCTURAL_PROPS } from '@uidx/schema'
+import { METADATA_ATTRS, resolve, TOKEN_ELEMENTS, type UidxDocument } from '@uidx/format'
+import { KNOWN_PROPS, PIN_PROPS, propUiFor, STRUCTURAL_PROPS, styleTarget } from '@uidx/schema'
+import { INSTANCE_CASCADE_PROPS, INSTANCE_LOCKED_PROPS } from '@uidx/schema/instance-box'
 
 import type { DocumentIndex } from '../index/types.js'
 
@@ -116,6 +117,10 @@ const MEANT: Record<string, string> = {
   padding: 'paddingTop, paddingRight, paddingBottom, paddingLeft',
   gap: 'itemSpacing',
   direction: 'layoutMode',
+  // A placed component's label colour: every text inside takes it, the way
+  // CSS `color` inherits (ADR 0018 §4). On a Text it is the text's own fills.
+  textcolor: 'textFills',
+  fontcolor: 'textFills',
 }
 
 /**
@@ -155,9 +160,11 @@ function badEnumValue(prop: string, value: unknown): string | null {
 }
 
 /** The closest allowed prop names to what was written, for a did-you-mean. */
-function nearest(prop: string): string[] {
+function nearest(prop: string, element: string): string[] {
   const lower = prop.toLowerCase()
   const meant = MEANT[lower]
+  // A Text's colour is its own fills; `textFills` is what a use hands down.
+  if (meant === 'textFills' && element === 'Text') return ['fills']
   if (meant) return [meant]
   return [...ALLOWED_PROPS]
     .filter(
@@ -166,6 +173,45 @@ function nearest(prop: string): string[] {
         lower.startsWith(known.toLowerCase().slice(0, 3)),
     )
     .slice(0, MAX_SUGGESTIONS)
+}
+
+/**
+ * The component's inside, written on an `<Instance>` (ADR 0018 §1): its
+ * layout, how its strokes end and join, every text and vector property. They
+ * parse, since the format may lead the tool, but every target ignores them on
+ * an instance — a page that renders otherwise than it reads, with zero
+ * errors, which is the failure an unknown prop is and gets the same refusal.
+ */
+const LOCKED_ON_INSTANCE = new Set(INSTANCE_LOCKED_PROPS)
+
+/** What only an `<Instance>` carries: `textFills`, handed down to every text inside. */
+const CASCADE = new Set(INSTANCE_CASCADE_PROPS)
+
+/** What a use may change instead, in the words a refusal uses. */
+const RESTYLES =
+  'an instance restyles its outer box (fills, strokes, cornerRadius, opacity, effects, padding) and textFills'
+
+/**
+ * Why `element` may not carry `prop` though another element may, or null.
+ *
+ * `element` is empty when the op does not say — a `set_prop` on a node the
+ * page does not have yet — and then only the name is judged. `component`
+ * names what an instance draws, so the refusal says whose inside it is.
+ */
+function misplacedProp(element: string, prop: string, component = 'the component'): string | null {
+  if (element === 'Instance' && LOCKED_ON_INSTANCE.has(prop)) {
+    const inside =
+      propUiFor(prop)?.group === 'layout' ? `${component}'s own layout` : `inside ${component}`
+    return `${prop} is ${inside} — ${RESTYLES}; change the component or detach`
+  }
+  if (CASCADE.has(prop) && element !== '' && element !== 'Instance') {
+    const own =
+      element === 'Text'
+        ? 'a Text takes its colour from its own fills'
+        : `inside a ${element}, set fills on each Text`
+    return `${prop} goes on an Instance, where it colours every text the component draws — ${own}`
+  }
+  return null
 }
 
 /**
@@ -185,9 +231,13 @@ function nearest(prop: string): string[] {
  * harness answered "applied" three times, because an unknown prop parsed
  * happily and reached the scene as nothing. The page stayed valid, rendered
  * blank, and reported zero errors.
+ *
+ * A known prop can still be on the wrong element: an instance's inside
+ * belongs to its component, and `textFills` belongs to an instance.
  */
 export function isAllowedProp(element: string, prop: string): boolean {
-  return UNCHECKED_ELEMENTS.has(element) || ALLOWED_PROPS.has(prop)
+  if (UNCHECKED_ELEMENTS.has(element)) return true
+  return ALLOWED_PROPS.has(prop) && misplacedProp(element, prop) === null
 }
 
 /**
@@ -215,15 +265,45 @@ export function isAllowedProp(element: string, prop: string): boolean {
  * tool refuses, and for a while they did not — a surface that skipped these
  * would happily write layoutMode="vertical" and bring back a closed failure
  * class.
+ *
+ * `doc` is the page the ops land on, so a `set_prop` is judged against the
+ * element it addresses — an instance's inside is refused only on an instance.
  */
-export function refuseBadOps(ops: readonly EditOp[], index?: DocumentIndex): string | null {
-  return unknownProp(ops) ?? unknownComponent(index, ops)
+export function refuseBadOps(
+  ops: readonly EditOp[],
+  index?: DocumentIndex,
+  doc?: UidxDocument | null,
+): string | null {
+  return unknownProp(ops, doc) ?? unknownComponent(index, ops)
 }
 
-function unknownProp(ops: readonly EditOp[]): string | null {
-  const check = (element: string, prop: string, value: unknown, where: string): string | null => {
+/** The component an instance draws, by name, for a refusal to mention. */
+function componentOf(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+/**
+ * The node a styles-table cell on `doc` styles (ADR 0016 §2): the page's
+ * component itself for `root`, else the part or node of that name inside it.
+ */
+function styleCellTarget(doc: UidxDocument | null | undefined, target: string) {
+  const component = doc?.tree.children.find((node) => node.element === 'Component')
+  if (!component) return undefined
+  return target === 'root' ? component : styleTarget(component, target)
+}
+
+function unknownProp(ops: readonly EditOp[], doc?: UidxDocument | null): string | null {
+  const check = (
+    element: string,
+    prop: string,
+    value: unknown,
+    where: string,
+    component?: string,
+  ): string | null => {
     if (!isAllowedProp(element, prop)) {
-      const near = nearest(prop)
+      const misplaced = misplacedProp(element, prop, component)
+      if (misplaced) return `${where}: ${misplaced}`
+      const near = nearest(prop, element)
       const hint = near.length > 0 ? ` — did you mean ${near.join(', ')}?` : ''
       return `${where} sets ${JSON.stringify(prop)}, which is not a uidx prop${hint}`
     }
@@ -236,20 +316,30 @@ function unknownProp(ops: readonly EditOp[]): string | null {
   for (const [i, op] of ops.entries()) {
     const at = `op ${i + 1}`
     if (op.kind === 'set_prop') {
-      // `set_prop` names no element, so the strictest reading applies: a prop
-      // nothing carries is wrong wherever it lands.
-      const refusal = check('', op.prop, op.value, at)
+      // `set_prop` names no element, so it is read off the page. A node the
+      // page does not have yet — inserted earlier in this batch — gets the
+      // strictest reading that needs none: a prop nothing carries is wrong
+      // wherever it lands.
+      const node = doc ? resolve(doc.tree, op.address) : null
+      const component = componentOf(node?.attrs.component?.value)
+      const refusal = check(node?.element ?? '', op.prop, op.value, at, component)
       if (refusal) return refusal
     }
     if (op.kind === 'set_style' && op.value !== undefined) {
-      // A styles cell carries a scene prop of its target, so the same gate.
-      const refusal = check('', op.prop, op.value, at)
+      // A styles cell carries a scene prop of its target, so the same gate,
+      // judged on that node as a `set_prop` on it would be: `root` is the
+      // component's own frame, anything else a part or a node it holds. A
+      // target the page does not have yet gets the reading that needs none.
+      const target = styleCellTarget(doc, op.target)
+      const component = componentOf(target?.attrs.component?.value)
+      const refusal = check(target?.element ?? '', op.prop, op.value, at, component)
       if (refusal) return refusal
     }
     if (op.kind === 'insert_node') {
       const walk = (node: NodeInput, path: string): string | null => {
+        const component = componentOf(node.attrs?.component)
         for (const [prop, value] of Object.entries(node.attrs ?? {})) {
-          const refusal = check(node.element, prop, value, `${at}'s ${path}`)
+          const refusal = check(node.element, prop, value, `${at}'s ${path}`, component)
           if (refusal) return refusal
         }
         for (const child of node.children ?? []) {
@@ -371,7 +461,7 @@ export function editTools(deps: EditDeps): {
       // takes the same route a refused edit does: text the model can act on.
       const narrowed = narrowOps(ops)
       if (!narrowed.ok) return `${NOT_APPLIED_PREFIX}${narrowed.message}`
-      const badProp = unknownProp(narrowed.value)
+      const badProp = unknownProp(narrowed.value, deps.workspace.docOf(file))
       if (badProp) return `${NOT_APPLIED_PREFIX}${badProp}`
       const unknown = unknownComponent(deps.index, narrowed.value)
       if (unknown) return `${NOT_APPLIED_PREFIX}${unknown}`

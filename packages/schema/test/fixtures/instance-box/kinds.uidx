@@ -1,0 +1,55 @@
+---
+id: "kinds"
+---
+
+The component shapes the examples lack, for the instance-box tests (ADR 0018
+§2). Each puts a use's outer box on a different node: Chip lays itself out,
+so the box is the instance's own node; Tag only wraps one laid-out frame, so
+the box is that frame; Badge's authored variants each wrap one frame, so the
+box is the chosen variant's frame. None has a styles table, so none derives
+a variant set.
+
+## Visual Contract
+
+<Page>
+  <Component name="Chip" status="draft"
+    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+    counterAxisAlignItems="CENTER" itemSpacing={4}
+    paddingLeft={8} paddingRight={8} paddingTop={4} paddingBottom={4}
+    cornerRadius={6} fills="{surface#raised}">
+    <Vector name="dot" width={6} height={6} fills="{surface#accent}"
+      vectorPaths={[{ windingRule: 'NONZERO', data: 'M3 0 L6 3 L3 6 L0 3 Z' }]} />
+    <Text name="label" characters="{label}" fontSize={12} fontWeight="MEDIUM" />
+  </Component>
+  <Component name="Tag" status="draft">
+    <Frame name="box" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+      paddingLeft={6} paddingRight={6} paddingTop={2} paddingBottom={2} cornerRadius={4}
+      fills="{surface#raised}" strokes="{border#default}" strokeWeight={1}>
+      <Text name="label" characters="{label}" fontSize={12} fills="{text#muted}" />
+    </Frame>
+  </Component>
+  <Component name="Badge" status="draft" variants={{ tone: ['info', 'warn'] }}>
+    <Variant tone="info">
+      <Frame name="badge" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+        paddingLeft={8} paddingRight={8} paddingTop={2} paddingBottom={2}
+        topLeftRadius={8} bottomRightRadius={8} fills="{surface#accent}"
+        strokes="{border#focus}" strokeBottomWeight={2}>
+        <Text name="label" characters="Info" fontSize={12} fills="{text#onAccent}" />
+      </Frame>
+    </Variant>
+    <Variant tone="warn">
+      <Frame name="badge" layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"
+        paddingLeft={8} paddingRight={8} paddingTop={2} paddingBottom={2}
+        topLeftRadius={8} bottomRightRadius={8} fills="{surface#danger}"
+        strokes="{border#default}" strokeBottomWeight={2}>
+        <Text name="label" characters="Warn" fontSize={12} fills="{text#onAccent}" />
+      </Frame>
+    </Variant>
+  </Component>
+</Page>
+
+## Contract
+
+<Props>
+  <Prop name="label" type="string" sample="Label">The words it shows.</Prop>
+</Props>

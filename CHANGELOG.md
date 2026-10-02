@@ -6,6 +6,43 @@ describe migrations when an existing document or integration is affected.
 
 ## Unreleased
 
+- **Restyle a placed component from outside (ADR 0018).** An `<Instance>` may
+  set its outer box (`fills`, `strokes` and their weights, `dashPattern`,
+  corner radii, `padding*`, `opacity`, `effects`) and `textFills`, which
+  colours every text the component draws, nested instances' too. The box lands
+  on the frame a wrapper-shaped component wraps, or on the instance a
+  composition holds, and on through any frame that only wraps another — so
+  the Shoelace example's Button takes it on its `base` part — together with a
+  stated size, and beneath the component's state rows, so a hover row still
+  wins. The Design tab shows the component's values dimmed until a use
+  changes one, with ↺ per row and per section and Reset all overrides; detach
+  bakes the restyle in; agents may set the same attributes and are refused
+  the inside, in a `set_style` cell as on the instance. `uidx check` warns on
+  an attribute of the component's inside written on an instance or onto one
+  by a `<Style>` row (UIDX154), and on a box value that does nothing or a
+  token collection named `uidx` (UIDX155); `textFills` anywhere but an
+  `<Instance>` is UIDX114. Generated CSS and React read the box through
+  `--uidx-*` custom properties (`--uidx-fill`, `--uidx-radius`,
+  `--uidx-padding-left`, `--uidx-text-color`, …), reset at every component
+  root except the text colour, and a component's stylesheet now styles what it
+  puts in the slots of the instances it holds, so slot text keeps the fills it
+  states and otherwise takes the use's colour; `uidx contract` gains
+  `instanceBox` and each component's `box` (with the `part` it binds) and
+  `laysOut`, and the `cem` target lists the hooks as `cssProperties`. Over a
+  shadow-DOM library, code reads only the hooks for what the design states on
+  the box node, so a use's box does nothing in code on the Shoelace
+  Checkbox, Switch and Input. **Migration:** box attributes written by hand
+  on an instance of a wrapper-shaped component (one with a styles table, or a
+  bare component around one frame or one instance) now land on what it wraps
+  instead of painting an invisible wrapper behind it, and layout, text and
+  vector attributes on an instance stop drawing. Generated stylesheets gain
+  the hooks and split each `border` shorthand into longhands; they draw as
+  before, since every fallback is the old value.
+- **Fixed: a bare component with a styles table drew in a 100×100 box.** A
+  `<Component>` that states no layout or size hugs what it holds, but once it
+  declared a visual prop each of its variants sat in the engine's default
+  100×100 frame with the content in its corner, and so did every use of it.
+  The variants now hug as the component does.
 - **Fixed: token refactors missed the styles table.** A token used only in
   `<Style>` rows showed 0 uses, a rename left those rows dangling, a delete
   did not inline them, and `uidx check` stayed green while codegen emitted an

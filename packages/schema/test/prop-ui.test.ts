@@ -12,6 +12,7 @@ import {
   propUiFor,
   sectionOrderFor,
 } from '../src/index.js'
+import { INSTANCE_CASCADE_PROPS, instanceRole } from '../src/instance-box.js'
 
 /**
  * `prop-ui.ts` is the second home of the vocabulary the spec asks for
@@ -23,8 +24,15 @@ describe('PROP_UI', () => {
   // The pin offsets are known to the vocabulary and absent from the table on
   // purpose (ADR 0011 §2) — a prop with no scene field cannot be echoed back
   // into the file by a reflow. The panel is the one place they are a control,
-  // so this set is "props the schema knows", not "props it maps".
-  const KNOWN = new Set([...IDENTITY_PROPS, ...PROP_TABLE.map((m) => m.uidx), ...PIN_PROPS])
+  // so this set is "props the schema knows", not "props it maps". The same
+  // goes for `textFills`, which an instance hands down to the texts inside
+  // rather than setting on a node of its own (ADR 0018 §4).
+  const KNOWN = new Set([
+    ...IDENTITY_PROPS,
+    ...PROP_TABLE.map((m) => m.uidx),
+    ...PIN_PROPS,
+    ...INSTANCE_CASCADE_PROPS,
+  ])
 
   it('every key names a prop the schema actually knows', () => {
     for (const key of Object.keys(PROP_UI)) {
@@ -100,10 +108,6 @@ describe('PROP_UI', () => {
       'itemSpacing',
       'counterAxisSpacing',
       'itemReverseZIndex',
-      'paddingLeft',
-      'paddingRight',
-      'paddingTop',
-      'paddingBottom',
       'clipsContent',
     ]
     for (const prop of AUTO_LAYOUT) {
@@ -112,6 +116,16 @@ describe('PROP_UI', () => {
       // add children to". The *fill* side owns none of this, but that is a
       // question about position rather than element — `sectionsFor` asks it.
       expect(propUiFor(prop)?.appliesTo, prop).toEqual(['Frame', 'Component', 'Slot'])
+    }
+  })
+
+  /**
+   * Padding is the one auto-layout prop a use may state: it is part of the
+   * outer box, as in CSS, and lands on the frame that lays out (ADR 0018 §2).
+   */
+  it('lets an instance pad its outer box', () => {
+    for (const prop of ['paddingLeft', 'paddingRight', 'paddingTop', 'paddingBottom']) {
+      expect(propUiFor(prop)?.appliesTo, prop).toEqual(['Frame', 'Component', 'Slot', 'Instance'])
     }
   })
 
@@ -125,9 +139,22 @@ describe('PROP_UI', () => {
       'maxHeight',
       'layoutGrow',
       'layoutAlign',
-      'strokesIncludedInLayout',
     ]) {
       expect(propUiFor(prop)?.appliesTo, prop).toBeUndefined()
+    }
+  })
+
+  /**
+   * How a stroke ends, joins and counts in layout is the component's inside
+   * (ADR 0018 §1). Every other element keeps the rows it had.
+   */
+  it('keeps the inside of a stroke off an instance, and on every other element', () => {
+    for (const prop of ['strokeCap', 'strokeJoin', 'strokeMiterLimit', 'strokesIncludedInLayout']) {
+      const appliesTo = propUiFor(prop)?.appliesTo
+      expect(appliesTo, prop).not.toContain('Instance')
+      for (const element of ['Page', 'Component', 'Frame', 'Text', 'Rectangle', 'Slot'] as const) {
+        expect(appliesTo, `${prop} on ${element}`).toContain(element)
+      }
     }
   })
 
@@ -196,6 +223,60 @@ describe('PROP_UI', () => {
       'x',
       'y',
     ])
+  })
+})
+
+/**
+ * An instance is a black box with a styleable outer box (ADR 0018). The panel
+ * offers exactly what the role table lets a use state, and the two tables are
+ * kept from drifting here: a row for a locked prop would write an attribute
+ * every target ignores, and a missing row would hide one the file can hold.
+ */
+describe('instance rows follow the role table', () => {
+  // Placement, but never written by the editor (ADR 0018 §1): a stated width
+  // already says Fixed, so the panel offers W/H and Fixed/Hug instead.
+  const EDITOR_NEVER_WRITES = new Set(['primaryAxisSizingMode', 'counterAxisSizingMode'])
+
+  it('admits Instance exactly where a use may state the prop', () => {
+    for (const [prop, ui] of Object.entries(PROP_UI)) {
+      const admits = !ui.appliesTo || ui.appliesTo.includes('Instance')
+      const role = instanceRole(prop)
+      const stated =
+        (role === 'placement' || role === 'box' || role === 'cascade') &&
+        !EDITOR_NEVER_WRITES.has(prop)
+      expect(admits, `${prop} (${role}) ${admits ? 'admits' : 'excludes'} Instance`).toBe(stated)
+    }
+  })
+
+  it("keeps the component's layout off an instance", () => {
+    for (const prop of [
+      'layoutMode',
+      'itemSpacing',
+      'counterAxisSpacing',
+      'primaryAxisAlignItems',
+      'counterAxisAlignItems',
+      'counterAxisAlignContent',
+      'layoutWrap',
+      'clipsContent',
+    ]) {
+      expect(propUiFor(prop)?.appliesTo, prop).not.toContain('Instance')
+    }
+  })
+
+  it('gives textFills a paint row of its own, on instances only', () => {
+    expect(propUiFor('textFills')).toMatchObject({
+      group: 'textColor',
+      label: 'Text color',
+      control: 'paint',
+      appliesTo: ['Instance'],
+    })
+  })
+
+  it('puts Text color straight after Fill', () => {
+    expect(SECTION_ORDER.indexOf('textColor')).toBe(SECTION_ORDER.indexOf('fill') + 1)
+    expect(SECTION_LABEL.textColor).toBe('Text color')
+    const order = sectionOrderFor('Instance')
+    expect(order.indexOf('textColor')).toBe(order.indexOf('fill') + 1)
   })
 })
 

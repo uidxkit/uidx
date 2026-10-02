@@ -5,21 +5,51 @@
   flex-direction: column;
   justify-content: flex-start;
   align-items: flex-start;
-  padding-left: 16px;
-  padding-right: 16px;
-  padding-top: 16px;
-  padding-bottom: 16px;
-  border-radius: 6px;
-  background-color: var(--color-surface-raised);
+  padding-left: var(--uidx-padding-left, 16px);
+  padding-right: var(--uidx-padding-right, 16px);
+  padding-top: var(--uidx-padding-top, 16px);
+  padding-bottom: var(--uidx-padding-bottom, 16px);
+  border-top-left-radius: var(--uidx-radius-top-left, var(--uidx-radius, 6px));
+  border-top-right-radius: var(--uidx-radius-top-right, var(--uidx-radius, 6px));
+  border-bottom-right-radius: var(--uidx-radius-bottom-right, var(--uidx-radius, 6px));
+  border-bottom-left-radius: var(--uidx-radius-bottom-left, var(--uidx-radius, 6px));
+  background-color: var(--uidx-fill, var(--color-surface-raised));
   gap: calc(var(--space-xs) * 1px);
+  border-top-width: var(--uidx-stroke-top-weight, var(--uidx-stroke-weight, 1px));
+  border-right-width: var(--uidx-stroke-right-weight, var(--uidx-stroke-weight, 1px));
+  border-bottom-width: var(--uidx-stroke-bottom-weight, var(--uidx-stroke-weight, 1px));
+  border-left-width: var(--uidx-stroke-left-weight, var(--uidx-stroke-weight, 1px));
+  border-style: var(--uidx-stroke-style, none);
+  border-color: var(--uidx-stroke, transparent);
+  opacity: var(--uidx-opacity, 1);
+  box-shadow: var(--uidx-shadow, none);
+  --uidx-fill: initial;
+  --uidx-stroke: initial;
+  --uidx-stroke-weight: initial;
+  --uidx-stroke-style: initial;
+  --uidx-stroke-top-weight: initial;
+  --uidx-stroke-right-weight: initial;
+  --uidx-stroke-bottom-weight: initial;
+  --uidx-stroke-left-weight: initial;
+  --uidx-radius: initial;
+  --uidx-radius-top-left: initial;
+  --uidx-radius-top-right: initial;
+  --uidx-radius-bottom-right: initial;
+  --uidx-radius-bottom-left: initial;
+  --uidx-opacity: initial;
+  --uidx-shadow: initial;
+  --uidx-padding-top: initial;
+  --uidx-padding-right: initial;
+  --uidx-padding-bottom: initial;
+  --uidx-padding-left: initial;
 }
 
 .person-card [data-node="name"] {
   font-size: calc(var(--type-lg) * 1px);
-  color: var(--color-text);
+  color: var(--uidx-text-color, var(--color-text));
 }
 
 .person-card [data-node="role"] {
-  color: var(--color-accent);
+  color: var(--uidx-text-color, var(--color-accent));
   font-size: calc(var(--type-sm) * 1px);
 }

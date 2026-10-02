@@ -27,6 +27,14 @@ const props = defineProps<{
   smoothing: number
   editable: boolean
   tokenSource?: TokenBindingSource
+  /**
+   * The corner props an instance has not set — `cornerRadius`, the four
+   * corners and `cornerSmoothing` (ADR 0018 §7): their boxes show the
+   * component's value, dimmed, and still edit. `cornerRadius` covers every
+   * corner, so a box dims only while the shorthand is listed too. Omitted
+   * outside an instance.
+   */
+  inherited?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -52,6 +60,17 @@ const CORNERS = [
 
 const lengthContext = inject(LENGTH_FIELD_CONTEXT, undefined)
 const model = computed(() => cornerModel(props.corners))
+
+/**
+ * `component` when every prop a box shows is inherited; one set corner keeps
+ * it bright. A corner box shows the shorthand as well as its own corner: a use
+ * that states `cornerRadius` has set every corner without writing one.
+ */
+function origin(names: readonly string[]): 'component' | undefined {
+  const inherited = props.inherited
+  return inherited && names.every((name) => inherited.includes(name)) ? 'component' : undefined
+}
+
 const forced = computed(
   () =>
     new Set(CORNERS.map((c) => parseLength(lengthContext?.valueFor(c.prop))?.unit ?? 'px')).size >
@@ -150,6 +169,7 @@ function commitSmoothing(percent: JsonValue): void {
         >
           <span
             class="corner-box"
+            :data-origin="origin(['cornerRadius', ...CORNERS.map((corner) => corner.prop)])"
             @mouseenter="emit('hover', 'cornerRadius')"
             @mouseleave="emit('hover', null)"
           >
@@ -215,6 +235,7 @@ function commitSmoothing(percent: JsonValue): void {
           <span
             class="corner-box"
             :data-corner="corner.side"
+            :data-origin="origin(['cornerRadius', corner.prop])"
             @mouseenter="emit('hover', corner.prop)"
             @mouseleave="emit('hover', null)"
           >
@@ -293,7 +314,7 @@ function commitSmoothing(percent: JsonValue): void {
         @update:model-value="previewSmoothing"
         @commit="commitSmoothing"
       >
-        <span class="corner-smoothing" v-bind="attrs">
+        <span class="corner-smoothing" :data-origin="origin(['cornerSmoothing'])" v-bind="attrs">
           <span
             class="prefix field-glyph"
             :class="{ disabled: !editable }"
@@ -378,6 +399,12 @@ function commitSmoothing(percent: JsonValue): void {
 .corner-box:focus-within,
 .corner-smoothing:focus-within {
   border-color: var(--accent);
+}
+/* The component's value rather than the use's — InstancePropsSection's unset look. */
+.corner-box[data-origin='component'] .scrub,
+.corner-smoothing[data-origin='component'] .scrub {
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 .field-glyph {
   display: inline-flex;

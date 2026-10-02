@@ -13,7 +13,7 @@ Elements (scene): `Page Component Frame Text Rectangle Ellipse Vector Instance V
 - `Component` children: that same set, plus `Slot`, and a `Variant` only for an axis value that changes the anatomy (see below).
 - `Instance` children: **only** `Slot`. An instance's other children are generated from its component, not authored.
 
-**A component is an identity (ADRs 0012–0017).** One file per component: the tree draws its anatomy once, and everything else is declared beside it — never computed, never duplicated per state.
+**A component is an identity (ADRs 0012–0018).** One file per component: the tree draws its anatomy once, and everything else is declared beside it — never computed, never duplicated per state.
 
 ```
 ---
@@ -77,6 +77,17 @@ A `<Slot>` fill (the one legal `Instance` child) supplies real content for a dec
 </Instance>
 ```
 Omit the `<Slot>` and the component's own default content shows instead.
+
+**Restyle an instance from outside** (ADR 0018). An instance is a black box with a styleable outer box: write the look on the `<Instance>` itself, with a token wherever one exists.
+```
+<Instance name="cancel" component="Button" props={{ label: 'Cancel plan', variant: 'secondary' }}
+  cornerRadius="{radius#full}" paddingLeft="{space#lg}" paddingRight="{space#lg}" textFills="{text#danger}" />
+```
+- **The box:** `fills`; `strokes` with `strokeWeight`, `strokeAlign`, `dashPattern` and the side weights; `cornerRadius` or the four corners, and `cornerSmoothing`; `opacity`; `effects`; `paddingTop/Right/Bottom/Left`. It lands on the frame that draws the component's look — its own frame, a styles table's `root`, or, through a frame that only wraps another, the part inside, as the Shoelace example's Button takes it on `base` — beneath the component's state rows: a hover row still wins. Over a shadow-DOM library, generated code reads only what the design states on that node, so where it states none (the Shoelace Checkbox, Switch and Input) a look its uses vary belongs in a visual prop.
+- **`textFills`** colours every text inside, nested instances' texts too. It takes a `fills` value and `TEXT_FILL` tokens, and goes only on an `<Instance>`: a `Text`'s colour is its own `fills`.
+- **The inside is the component's.** Besides where it sits (`x`, `y`, `width`, …), its `props`, `modes` and slot fills, an instance carries only the box and `textFills`: `layoutMode`, `itemSpacing`, alignment, text and vector props on one draw nothing (UIDX154). Never edit an instance's inner layers, reach in with `overrides`, or copy or rebuild a component to change its colour.
+- **A look many uses share** (destructive, compact, on a dark surface) is a `visual` prop plus `<Styles>` rows on the component, not the same restyle on every use.
+- Values are literals or tokens; a `{prop}` binding is dropped (UIDX155). `fills={[]}` means none, and removing the attribute resets it.
 
 **Older files** may declare `props={{ label: { type: 'TEXT', … } }}` and `variants={{ … }}` with one full `<Variant>` per combination. They still parse; don't write new ones that way — `uidx check` reports a variant tree that differs only in token values as derivable.
 

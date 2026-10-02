@@ -20,6 +20,8 @@ import PropertyLink from './PropertyLink.vue'
 import AssignPopup from './AssignPopup.vue'
 import { FieldIcon, OPTION_ICON, PROP_ICON } from './field-icons'
 import type { VariableCandidate } from './variable-binding'
+import OverrideMark from './OverrideMark.vue'
+import type { OverrideContext, OverrideState } from './override-state'
 
 /** Kinds that render their own label and span the full row. */
 const STRUCTURED: ReadonlySet<string> = new Set([
@@ -78,6 +80,18 @@ const props = defineProps<{
   tokens?: ReadonlyMap<string, JsonValue>
   /** Declared token data, for the picker's scope filter (G8). */
   tokenIndex?: TokenIndex
+  /**
+   * Where this row stands against the instance's component (ADR 0018 §7):
+   * an inherited value draws dimmed, a set or shadowed one wears the override
+   * mark in its caption. Omitted outside an instance.
+   */
+  override?: OverrideState
+  /** What the override mark names: the component, its value, the winning state. */
+  overrideContext?: OverrideContext
+  /** Text color's one-colour mode: always the paint stack, which handles its token too. */
+  single?: boolean
+  /** Passed to a paint stack: the texts it reaches disagree. */
+  mixed?: boolean
 }>()
 
 /** The letter Figma puts inside the box. Only the paired props have one. */
@@ -106,7 +120,23 @@ const emit = defineEmits<{
    * this one structurally instead.
    */
   detach: [prop: string, value: JsonValue]
+  /** Take the instance's value away, so the component's shows again. */
+  reset: [prop: string]
 }>()
+
+/** Kinds that draw their own label get none here, and so no caption mark either. */
+const captioned = computed(
+  () =>
+    !props.compact &&
+    !props.single &&
+    props.field.control !== 'boolean' &&
+    !STRUCTURED.has(props.field.control),
+)
+const marked = computed(() => props.override === 'set' || props.override === 'shadowed')
+/** `component` dims the value; the paint stack takes the same word. */
+const origin = computed(() =>
+  props.override === undefined ? undefined : props.override === 'inherited' ? 'component' : 'own',
+)
 
 /**
  * Props the file keeps as a 0–1 fraction and Figma shows as a percentage.
@@ -251,8 +281,21 @@ const segmented = computed(
 </script>
 
 <template>
+  <!-- A button may not sit inside a label, so a marked caption wraps both. -->
+  <div v-if="captioned && marked" class="field-caption marked" :class="{ bound: field.boundTo }">
+    <label :for="`f-${field.name}`">{{ field.label }}</label>
+    <OverrideMark
+      :state="override!"
+      :component="overrideContext?.component ?? ''"
+      :inherited="overrideContext?.inherited ?? null"
+      :shadowed-by="overrideContext?.shadowedBy ?? null"
+      :label="field.label"
+      :writable="editable"
+      @reset="emit('reset', field.name)"
+    />
+  </div>
   <label
-    v-if="!compact && field.control !== 'boolean' && !STRUCTURED.has(field.control)"
+    v-else-if="captioned"
     :for="`f-${field.name}`"
     class="field-caption"
     :class="{ bound: field.boundTo }"
@@ -286,7 +329,7 @@ const segmented = computed(
     a detach (spec §4). Clicking the pill switches; the trailing icon detaches
     to the resolved literal.
   -->
-  <div v-else-if="field.boundTo" class="value bound-value">
+  <div v-else-if="field.boundTo && !single" class="value bound-value" :data-origin="origin">
     <button
       ref="variablesTrigger"
       type="button"
@@ -317,7 +360,7 @@ const segmented = computed(
     into, wired to the actions the primitive hands back.
   -->
   <LengthFieldRoot
-    v-else-if="field.control === 'number'"
+    v-else-if="field.control === 'number' && !single"
     v-slot="{ attrs, actions, state, displayValue, draftValue, unit, selectUnit }"
     :model-value="numberValue()"
     :length-property="field.name"
@@ -328,7 +371,7 @@ const segmented = computed(
     @update:model-value="onNumberPreview"
     @commit="onNumberCommit"
   >
-    <span class="value number" :data-field="field.name">
+    <span class="value number" :data-field="field.name" :data-origin="origin">
       <span class="number-control">
         <span class="length-number-content" v-bind="attrs">
           <span
@@ -483,6 +526,7 @@ const segmented = computed(
   <SegmentedControlRoot
     v-else-if="field.control === 'enum' && segmented"
     class="value enum-segmented"
+    :data-origin="origin"
     :aria-label="field.name"
     :disabled="!editable"
     :model-value="typeof field.value === 'string' ? field.value : undefined"
@@ -513,6 +557,7 @@ const segmented = computed(
     :id="`f-${field.name}`"
     :aria-label="field.label"
     class="value enum-select"
+    :data-origin="origin"
     :disabled="!editable"
     :value="typeof field.value === 'string' ? field.value : ''"
     @change="onEnum(($event.target as HTMLSelectElement).value)"
@@ -524,14 +569,22 @@ const segmented = computed(
     </option>
   </select>
 
+  <!--
+    Text color holds a token as the whole attribute, which `editableProps`
+    reads as a token row; it stays in its one-colour stack all the same,
+    because the generic pill's detach would write a bare colour, not a paint.
+  -->
   <PaintStackField
-    v-else-if="field.control === 'paint'"
+    v-else-if="field.control === 'paint' || single"
     class="structured"
     :field="field"
     :editable="editable"
     :swatches="swatches ?? []"
     :tokens="tokens"
     :token-index="tokenIndex"
+    :origin="origin"
+    :single="single"
+    :mixed="mixed"
     @preview="(p, v) => emit('preview', p, v)"
     @commit="(p, v) => emit('commit', p, v)"
   />
@@ -628,6 +681,19 @@ const segmented = computed(
 }
 .field-caption.bound {
   color: var(--bound);
+}
+.field-caption.marked {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* The component's value rather than the use's — InstancePropsSection's unset look. */
+.number[data-origin='component'] .scrub,
+.bound-value[data-origin='component'] .token-pill,
+.enum-select[data-origin='component'],
+.enum-segmented[data-origin='component'] {
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 .value {
   min-width: 0;

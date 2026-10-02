@@ -283,6 +283,154 @@ try {
     )
   })
 
+  await journey(
+    'an instance’s padding, scrubbed and handed back, draws as the file says',
+    async () => {
+      // ADR 0018 §7: the canvas draws a scrub of an instance's outer box on the
+      // frame its component wraps, and holds it there so a document landing
+      // mid-scrub does not undo it. The release has to let go: a hold the pane
+      // never handed back kept the pill wide after ↺, Reset all or undo had
+      // taken the padding out of the file. A component of the journey's own,
+      // with a styles table, so its box is the derived frame inside a wrapper.
+      await writeFile(
+        join(docroot, 'tag.uidx'),
+        [
+          '---',
+          'id: tag',
+          '---',
+          '',
+          '## Visual Contract',
+          '',
+          '<Page>',
+          '  <Component name="Tag" status="draft"',
+          '    layoutMode="HORIZONTAL" primaryAxisSizingMode="AUTO" counterAxisSizingMode="AUTO"',
+          '    primaryAxisAlignItems="CENTER" counterAxisAlignItems="CENTER"',
+          '    paddingLeft={12} paddingRight={12} paddingTop={8} paddingBottom={8} cornerRadius={999}',
+          "    fills={[{ type: 'SOLID', color: { r: 0.1, g: 0.6, b: 0.3, a: 1 } }]}>",
+          `    <Text name="label" characters="{label}" fontSize={14} fills={[{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }]} />`,
+          '  </Component>',
+          '</Page>',
+          '',
+          '<Styles>',
+          `  <Style state="hover" root:fills={[{ type: 'SOLID', color: { r: 0.05, g: 0.4, b: 0.2, a: 1 } }]} />`,
+          '</Styles>',
+          '',
+          '## Contract',
+          '',
+          '<Props>',
+          '  <Prop name="label" type="string" sample="Tag">The words it shows.</Prop>',
+          '</Props>',
+          '',
+        ].join('\n'),
+      )
+      const file = join(docroot, 'restyle-page.uidx')
+      await writeFile(
+        file,
+        [
+          '---',
+          'id: restyle-page',
+          '---',
+          '',
+          '## Visual Contract',
+          '',
+          '<Page>',
+          `  <Instance name="restyled" component="Tag" x={0} y={0} props={{ label: 'Hugging' }} />`,
+          '  <Frame name="spacer" x={-200} y={-150} width={10} height={10} />',
+          '  <Frame name="spacer-2" x={500} y={200} width={10} height={10} />',
+          '</Page>',
+          '',
+        ].join('\n'),
+      )
+      const layer = page.getByText('restyled', { exact: true })
+      await until(async () => {
+        await open('?page=restyle-page.uidx')
+        return (await layer.count()) > 0
+      })
+      const canvas = await page.locator('canvas').last().boundingBox()
+      const area = {
+        x: canvas.x + 24,
+        y: canvas.y + 24,
+        width: canvas.width - 24,
+        height: canvas.height - 120,
+      }
+      /** The tag's box on screen: the pixels painted in its green, read back from a screenshot. */
+      const tag = async () => {
+        // Off the panel first: a hovered padding field tints the band it governs.
+        await page.mouse.move(4, 4)
+        await page.waitForTimeout(200)
+        const png = await page.screenshot({ clip: area })
+        return page.evaluate(async (data) => {
+          const bitmap = await createImageBitmap(
+            await (await fetch(`data:image/png;base64,${data}`)).blob(),
+          )
+          const surface = new OffscreenCanvas(bitmap.width, bitmap.height)
+          const context = surface.getContext('2d')
+          context.drawImage(bitmap, 0, 0)
+          const pixels = context.getImageData(0, 0, bitmap.width, bitmap.height).data
+          const box = { left: Infinity, right: -Infinity }
+          for (let y = 0; y < bitmap.height; y++) {
+            for (let x = 0; x < bitmap.width; x++) {
+              const at = (y * bitmap.width + x) * 4
+              const [r, g, b] = [pixels[at], pixels[at + 1], pixels[at + 2]]
+              if (!(g > 120 && g < 190 && g - r > 40 && g - b > 30)) continue
+              box.left = Math.min(box.left, x)
+              box.right = Math.max(box.right, x)
+            }
+          }
+          return { ...box, width: box.right - box.left + 1 }
+        }, png.toString('base64'))
+      }
+      const line = async () =>
+        (await readFile(file, 'utf8')).split('\n').find((text) => text.includes('name="restyled"'))
+      await layer.first().click()
+      await page.waitForTimeout(300)
+      const before = await tag()
+      assert.ok(before.width > 40, `no tag on the canvas: ${JSON.stringify(before)}`)
+
+      /** Scrubs the horizontal padding wider and lets go: the file states it, and the tag grows. */
+      const scrub = async () => {
+        const handle = await page
+          .locator('[data-field="instance-padding"] .padding-box[data-axis="horizontal"] .scrub')
+          .boundingBox()
+        const grip = { x: handle.x + handle.width / 2, y: handle.y + handle.height / 2 }
+        await page.mouse.move(grip.x, grip.y)
+        await page.mouse.down()
+        for (let step = 1; step <= 12; step++) await page.mouse.move(grip.x + step * 2, grip.y)
+        await page.mouse.up()
+        await until(async () => /paddingLeft=\{\d+\}/.test(await line()))
+        await page.waitForTimeout(500)
+        const grown = await tag()
+        assert.ok(
+          grown.width > before.width + 10,
+          `the tag drew ${grown.width} wide after its padding grew, ${before.width} before: ${await line()}`,
+        )
+      }
+      /** The file states no padding again, and the tag draws at its own width. */
+      const handedBack = async (how) => {
+        await until(async () => !/padding/.test(await line()))
+        await page.waitForTimeout(500)
+        const after = await tag()
+        assert.ok(
+          Math.abs(after.width - before.width) <= 2,
+          `after ${how} the tag drew ${after.width} wide, ${before.width} before the scrub`,
+        )
+      }
+
+      await scrub()
+      await page.locator('[data-field="instance-padding"] button.reset').click()
+      await handedBack('↺ on Padding')
+
+      await scrub()
+      await page.locator('[data-field="overrides"] button.reset-all').click()
+      await handedBack('Reset all')
+
+      await scrub()
+      await page.evaluate(() => document.activeElement?.blur?.())
+      await page.keyboard.press('Control+z')
+      await handedBack('undo')
+    },
+  )
+
   await journey('no page raised an uncaught error', async () => {
     assert.deepEqual(errors, [])
   })

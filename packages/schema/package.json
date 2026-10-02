@@ -15,6 +15,11 @@
       "types": "./dist/known-props.d.ts",
       "default": "./dist/known-props.js"
     },
+    "./instance-box": {
+      "development": "./src/instance-box.ts",
+      "types": "./dist/instance-box.d.ts",
+      "default": "./dist/instance-box.js"
+    },
     "./design-system": {
       "development": "./src/design-system.ts",
       "types": "./dist/design-system.d.ts",
@@ -24,6 +29,11 @@
       "development": "./src/design-system-audit.ts",
       "types": "./dist/design-system-audit.d.ts",
       "default": "./dist/design-system-audit.js"
+    },
+    "./instance-box-audit": {
+      "development": "./src/instance-box-audit.ts",
+      "types": "./dist/instance-box-audit.d.ts",
+      "default": "./dist/instance-box-audit.js"
     },
     "./dtcg": {
       "development": "./src/dtcg.ts",

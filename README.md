@@ -192,7 +192,7 @@ The CLI also supports reading, creating, editing, and rendering pages. See the
 
 A `.uidx` file can be the identity of a component, and the components you
 ship — on the canvas, in Figma, as HTML/CSS, as React — are renders of it
-(ADRs 0012–0017). Nothing in the file computes; implementation is a renderer's
+(ADRs 0012–0018). Nothing in the file computes; implementation is a renderer's
 job. One checkbox, top to bottom:
 
 ```mdx
@@ -250,6 +250,17 @@ the label comes from a Field.
   once, named by a prop's type, sampled for the canvas, never derived. Any
   layer repeats over a list with `repeat="{items}"`; nested, that is a tree.
   The viewer's Models face edits every model of the document in one place.
+
+A placed component can restyle its outer box (fill, stroke, corners, padding,
+opacity, shadow) and colour every text inside with `textFills`, while its
+layout and layers stay the component's and its state rows still win
+(ADR 0018):
+
+```mdx
+<Instance name="cancel" component="Button" props={{ label: 'Cancel plan', variant: 'secondary' }}
+  cornerRadius="{radius#full}" paddingLeft="{space#lg}" paddingRight="{space#lg}"
+  textFills="{text#danger}" />
+```
 
 Then `uidx check` audits the regions against the tree, and `uidx codegen`
 renders HTML/CSS and React over the headless library, checking each contract

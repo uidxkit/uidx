@@ -1,0 +1,60 @@
+---
+id: "overrides"
+---
+
+Instances restyled from outside (ADR 0018): the box attributes and
+`textFills` on every component shape there is, beside a control that states
+none. Button1, Chip, Tag and Badge are this folder's own; Button, Checkbox,
+CheckboxField and Field come from examples/design-system, which the
+scene-regression test loads as this folder's library. Two uses state a size
+as well, so size and look are seen landing together. The last one fills a
+slot with restyled content of its own. Every use sits on the page itself, so
+a use that grows moves nothing else.
+
+## Visual Contract
+
+<Page>
+  <Instance name="styled" component="Button1" x={0} y={0} props={{ label: 'Delete' }}
+    fills="{surface#danger}"
+    strokes={[{ type: 'SOLID', color: { r: 0.2, g: 0.2, b: 0.2, a: 1 } }]} strokeWeight={2}
+    cornerRadius={4} paddingLeft={24} textFills="{text#onAccent}" />
+  <Instance name="hovered" component="Button1" x={0} y={60} props={{ label: 'Hover', state: 'hover' }}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }]} />
+  <Instance name="destructive" component="Button" x={0} y={120}
+    props={{ label: 'Remove', variant: 'destructive' }}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 0.5, b: 0, a: 1 } }]} />
+  <Instance name="checked" component="Checkbox" x={0} y={180} props={{ checked: true }}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }]} />
+  <Instance name="field" component="CheckboxField" x={0} y={240}
+    fills={[{ type: 'SOLID', color: { r: 0.9, g: 0.9, b: 0.9, a: 1 } }]}
+    textFills={[{ type: 'SOLID', color: { r: 0, g: 0, b: 1, a: 1 } }]} />
+  <Instance name="control" component="Button1" x={0} y={320} props={{ label: 'Control' }} />
+  <Instance name="sized" component="Button1" x={0} y={380} width={199} height={33}
+    props={{ label: 'Sized' }} paddingLeft={24}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 0, b: 0, a: 1 } }]} />
+  <Instance name="wide" component="CheckboxField" x={0} y={440} width={300}
+    fills={[{ type: 'SOLID', color: { r: 0.9, g: 0.95, b: 1, a: 1 } }]} />
+  <Instance name="chip" component="Chip" x={0} y={520} props={{ label: 'Faded' }}
+    fills="{surface#accent}" opacity={0.5} textFills="{text#onAccent}"
+    effects={[{ type: 'DROP_SHADOW', color: { r: 0, g: 0, b: 0, a: 0.25 }, offset: { x: 0, y: 2 }, radius: 4, spread: 0, visible: true }]} />
+  <Instance name="tag" component="Tag" x={0} y={580} props={{ label: 'Spaced' }}
+    fills={[{ type: 'SOLID', color: { r: 1, g: 0.95, b: 0.8, a: 1 } }]}
+    paddingLeft="{space#lg}" paddingRight="{space#lg}"
+    strokes="{border#hover}" strokeBottomWeight={3} dashPattern={[4, 2]} />
+  <Instance name="badge" component="Badge" x={0} y={640} props={{ tone: 'warn' }}
+    fills={[{ type: 'SOLID', color: { r: 0.5, g: 0, b: 0.5, a: 1 } }]}
+    cornerRadius={2} strokeWeight={1} textFills="{text#default}" />
+  <Instance name="labelled" component="Field" x={0} y={700}
+    props={{ label: 'Status', description: 'Shown beside your name' }}
+    fills={[{ type: 'SOLID', color: { r: 0.95, g: 0.95, b: 0.95, a: 1 } }]}
+    textFills={[{ type: 'SOLID', color: { r: 0, g: 0.4, b: 0, a: 1 } }]}>
+    <Slot name="control">
+      <Instance name="chip" component="Chip" props={{ label: 'Own colour' }}
+        fills="{surface#control}" textFills="{text#danger}" />
+      <Instance name="tag" component="Tag" props={{ label: 'Inherits' }}
+        fills={[{ type: 'SOLID', color: { r: 1, g: 1, b: 1, a: 1 } }]} />
+      <Text name="bare" characters="Inherits too" fontSize={12} />
+      <Text name="own" characters="Keeps its own" fontSize={12} fills="{text#muted}" />
+    </Slot>
+  </Instance>
+</Page>

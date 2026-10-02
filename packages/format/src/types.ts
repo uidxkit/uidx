@@ -310,6 +310,15 @@ export interface UidxAttr {
   loc: Range
   /** Delimited value span. `source.slice(valueLoc.start, valueLoc.end) === raw`. */
   valueLoc: Range
+  /**
+   * The state whose style row wrote this value, on an attribute of a derived
+   * node (ADR 0018 §3) — `'hover'`, `'checked'`. A marker the schema writes,
+   * like `UidxNode.derived`, and never parsed or printed. A row keyed only by
+   * visual enums, or by `state="default"`, is the component's resting look
+   * and leaves none. A stamped value sits above an instance's outer box, so
+   * the instance's layer leaves it alone.
+   */
+  stateRow?: string
 }
 
 export interface UidxNode {

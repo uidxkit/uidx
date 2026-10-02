@@ -23,6 +23,12 @@ const props = defineProps<{
   values: SideValues
   editable: boolean
   tokenSource?: TokenBindingSource
+  /**
+   * The padding props an instance has not set (ADR 0018 §7): their boxes show
+   * the component's value, dimmed. Dimmed is not read-only — editing one is
+   * how the override starts. Omitted outside an instance.
+   */
+  inherited?: readonly string[]
 }>()
 
 const emit = defineEmits<{
@@ -60,8 +66,18 @@ watch(forced, (isForced) => {
 })
 
 const AXES = [
-  { axis: 'horizontal' as const, icon: 'padding-h' as IconName, label: 'horizontal padding' },
-  { axis: 'vertical' as const, icon: 'padding-v' as IconName, label: 'vertical padding' },
+  {
+    axis: 'horizontal' as const,
+    icon: 'padding-h' as IconName,
+    label: 'horizontal padding',
+    sides: ['paddingLeft', 'paddingRight'],
+  },
+  {
+    axis: 'vertical' as const,
+    icon: 'padding-v' as IconName,
+    label: 'vertical padding',
+    sides: ['paddingTop', 'paddingBottom'],
+  },
 ]
 
 const SIDES = [
@@ -70,6 +86,15 @@ const SIDES = [
   { side: 'top' as const, prop: 'paddingTop', icon: 'padding-top' as IconName },
   { side: 'bottom' as const, prop: 'paddingBottom', icon: 'padding-bottom' as IconName },
 ]
+
+/**
+ * `component` when every side a box shows is inherited. An axis with one side
+ * set holds a value of the use's, so it stays bright.
+ */
+function origin(sides: readonly string[]): 'component' | undefined {
+  const inherited = props.inherited
+  return inherited && sides.every((side) => inherited.includes(side)) ? 'component' : undefined
+}
 
 const axisValue = (axis: 'horizontal' | 'vertical'): number =>
   (axis === 'horizontal' ? model.value.horizontal : model.value.vertical) ?? 0
@@ -121,11 +146,7 @@ function commitSide(prop: string, value: JsonValue): void {
         <TokenBinding
           v-for="entry in AXES"
           :key="entry.axis"
-          :properties="
-            entry.axis === 'horizontal'
-              ? ['paddingLeft', 'paddingRight']
-              : ['paddingTop', 'paddingBottom']
-          "
+          :properties="entry.sides"
           :label="entry.label"
           :source="tokenSource"
           :editable="editable"
@@ -145,6 +166,7 @@ function commitSide(prop: string, value: JsonValue): void {
             <span
               class="padding-box"
               :data-axis="entry.axis"
+              :data-origin="origin(entry.sides)"
               @mouseenter="
                 emit('hover', entry.axis === 'horizontal' ? 'paddingLeft' : 'paddingTop')
               "
@@ -214,6 +236,7 @@ function commitSide(prop: string, value: JsonValue): void {
             <span
               class="padding-box"
               :data-side="entry.side"
+              :data-origin="origin([entry.prop])"
               @mouseenter="emit('hover', entry.prop)"
               @mouseleave="emit('hover', null)"
             >
@@ -307,6 +330,11 @@ function commitSide(prop: string, value: JsonValue): void {
 }
 .padding-box:focus-within {
   border-color: var(--accent);
+}
+/* The component's value rather than the use's — InstancePropsSection's unset look. */
+.padding-box[data-origin='component'] .scrub {
+  color: var(--text-faint);
+  opacity: 0.7;
 }
 .field-glyph {
   display: inline-flex;

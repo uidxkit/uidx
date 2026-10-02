@@ -122,6 +122,11 @@ export const CODES = {
   CONFORMANCE: 'UIDX152',
   /** Variant trees that differ only in values: a styles table would derive them (ADR 0016 §5). */
   DERIVABLE_VARIANTS: 'UIDX153',
+  // instance outer box (ADR 0018)
+  /** A locked attribute on an `<Instance>`: it parses, and every target ignores it. */
+  INSTANCE_LOCKED_PROP: 'UIDX154',
+  /** A box value that does nothing: padding with no layout, `textFills` with no text, a binding. */
+  INSTANCE_BOX_HINT: 'UIDX155',
   // attribute grammar
   BAD_VALUE: 'UIDX200',
   SHORTHAND_ATTR: 'UIDX201',

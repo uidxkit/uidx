@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises'
 import { join, relative, resolve } from 'node:path'
-import type { JsonValue, UidxDocument } from '@uidx/format'
+import type { JsonValue, UidxDocument, UidxNode } from '@uidx/format'
 import {
   buildTokenIndex,
   contractJson,
@@ -8,6 +8,8 @@ import {
   mergeModes,
   TokenResolver,
 } from '@uidx/schema'
+import { componentBox, INSTANCE_BOX_HOOKS, type ComponentBox } from '@uidx/schema/design-system'
+import { INSTANCE_BOX_PROPS, INSTANCE_CASCADE_PROPS } from '@uidx/schema/instance-box'
 
 /**
  * The design system as a coding agent consumes it while building a product
@@ -31,11 +33,11 @@ export interface ComponentSummary {
 }
 
 function componentsOf(docs: ReadonlyMap<string, UidxDocument>) {
-  const out: { file: string; doc: UidxDocument; name: string }[] = []
+  const out: { file: string; doc: UidxDocument; name: string; node: UidxNode }[] = []
   for (const [file, doc] of docs) {
     if (doc.tree.element !== 'Page') continue
     for (const node of doc.tree.children)
-      if (node.element === 'Component') out.push({ file, doc, name: node.name })
+      if (node.element === 'Component') out.push({ file, doc, name: node.name, node })
   }
   return out.sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -87,6 +89,22 @@ export interface ComponentDetail {
   import: string | null
   /** A usage line with every required prop given its sample. */
   usage: string
+  /** How one use is restyled without touching the component (ADR 0018). */
+  styling: ComponentStyling
+}
+
+/**
+ * What a use may change from outside: its outer box and the colour of its
+ * texts, never its layout or inner layers, which are the component's.
+ */
+export interface ComponentStyling extends ComponentBox {
+  /** What an `<Instance>` may restyle: the outer box, and `textFills` for every text inside. */
+  attributes: string[]
+  /**
+   * The custom property generated code reads each of those through, e.g.
+   * `fills` → `--uidx-fill`, set in `style` or a class on the component.
+   */
+  hooks: Record<string, string>
 }
 
 /**
@@ -101,15 +119,19 @@ export async function describeComponent(
   name: string,
   from?: string,
 ): Promise<ComponentDetail> {
-  const found = componentsOf(docs).find((entry) => entry.name === name)
+  const all = componentsOf(docs)
+  const found = all.find((entry) => entry.name === name)
   if (!found) {
-    const names = componentsOf(docs).map((entry) => entry.name)
+    const names = all.map((entry) => entry.name)
     throw new Error(
       `no component named "${name}"; the document declares ${names.join(', ') || 'none'}`,
     )
   }
   const { file, doc } = found
-  const contract = contractJson(doc)
+  // A composition's box is the box of the component it holds, which may be
+  // declared on another page.
+  const components = new Map(all.map((entry) => [entry.name, entry.node] as const))
+  const contract = contractJson(doc, components)
   const out = await codegenOut(root)
   const identifier = name.replace(
     /[^A-Za-z0-9]+(.)?/g,
@@ -139,6 +161,11 @@ export async function describeComponent(
     contract,
     import: importLine,
     usage: `<${identifier}${attrs.length ? ` ${attrs.join(' ')}` : ''} />`,
+    styling: {
+      ...componentBox(found.node, components),
+      attributes: [...INSTANCE_BOX_PROPS, ...INSTANCE_CASCADE_PROPS],
+      hooks: { ...INSTANCE_BOX_HOOKS },
+    },
   }
 }
 

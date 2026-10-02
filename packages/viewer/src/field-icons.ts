@@ -71,6 +71,8 @@ export const ICON_PATHS = {
   'eye-off': 'M1.5 6 C 3 3.5, 9 3.5, 10.5 6 C 9 8.5, 3 8.5, 1.5 6 Z M2.5 9.5 L9.5 2.5',
   expand: 'M2 5 V2 H5 M7 2 H10 V5 M10 7 V10 H7 M5 10 H2 V7',
   droplet: 'M6 1.5 C 8 4.5, 9.5 6.5, 9.5 8 A 3.5 3.5 0 0 1 2.5 8 C 2.5 6.5, 4 4.5, 6 1.5 Z',
+  // An instance's inside is its component's (ADR 0018 §1): the locked layout line.
+  lock: 'M3 5.5 H9 V10.5 H3 Z M4.3 5.5 V4 A1.7 1.7 0 0 1 7.7 4 V5.5',
   // The UI3 pass (spec §5): the popup's chrome and the variable glyphs.
   search: 'M5.2 1.8 A 3.4 3.4 0 1 1 5.2 8.6 A 3.4 3.4 0 1 1 5.2 1.8 M7.8 7.8 L10.5 10.5',
   close: 'M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5',

@@ -1007,6 +1007,19 @@ D4's protection against computed geometry reaching the file. Making that absence
 sometimes mean "patch the owning instance instead" is worth doing deliberately
 rather than in passing.
 
+**Answered for the outer box: ADR 0018 (2026-10-01).** A use may override
+what CSS lets a consumer set on an element's box: fills, strokes and their
+weights, corner radii, padding, opacity and effects. It may also set
+`textFills`, which colours every text inside, as `color` inherits. These are
+plain attributes on the `<Instance>`, not keys in the `overrides` map, and
+they land on the node that draws the component's box, beneath its state rows,
+so a hover row still wins. Everything inside stays the component's: its
+layout, its text and vector properties, its strokes' caps and joins. The panel
+shows the component's value dimmed until the use sets one, then a dot and ↺.
+That answers the question for restyling only. Per-layer overrides from the
+editor (F3b), which would make a generated node selectable and write
+`overrides`, stay open.
+
 *(An earlier draft of this entry said the hard part was that the patch lands in
 a different file. That was wrong: the `overrides` map is on the `<Instance>`,
 which is on the page you have open. It is the component definition that is
@@ -1188,7 +1201,9 @@ is no reordering or grouping in the picker beyond alphabetical, and no preview
 of what you are about to place; both are worth having and neither is this story.
 (Since 2026-10-01 an instance *can* carry a size: one that states `width` or
 `height` is Fixed on that axis, a resize writes exactly that, and Hug in the
-panel removes it. Placing still writes none, so the click stays the gesture.)
+panel removes it. Placing still writes none, so the click stays the gesture.
+ADR 0018 puts the size where the look goes: on the frame a wrapper-shaped
+component wraps, or on the instance a composition holds.)
 
 **Where it lives.** `PickComponentDialog.vue`, the `placing` prop through
 `App.vue` → `EditToolbar.vue` / `CanvasPane.vue`, and the `Instance` branch of
