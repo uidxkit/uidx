@@ -223,11 +223,11 @@
 }
 
 /* Component rows share the inspector's gutters and leave room for 32px fields. */
-.properties .editor :is(.component-props, .instance-props, .variants, .contract) {
+.properties .editor :is(.component-props, .instance-props, .variants) {
   margin: 0 calc(-1 * var(--section-pad));
   padding: 0 var(--section-pad) 12px;
 }
-.properties .editor :is(.component-props, .instance-props, .variants, .contract) > .head {
+.properties .editor :is(.component-props, .instance-props, .variants) > .head {
   height: 44px;
   align-items: center;
 }
@@ -292,4 +292,182 @@
   width: 14px;
   height: 14px;
   accent-color: var(--accent);
+}
+
+/*
+ * The controls every inspector face shares: Design, Contract, Connect and
+ * Code draw their header icons, text links, buttons, path chips and problem
+ * marks from these rules, so one fault or one action looks the same on every
+ * tab. Unscoped (not `.editor`) where the tab shell's status line and empty
+ * state, which sit outside the editor, use them too.
+ */
+
+/* One box for every header icon: 24px hit target, 12px glyph, quiet at
+   rest, a raised pill on hover — Figma's header cluster buttons. */
+.properties .cluster-btn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--row-h);
+  height: var(--row-h);
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+.properties .cluster-btn:hover:not(:disabled) {
+  background: var(--raised);
+  color: var(--text);
+}
+.properties .cluster-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+/* A toggle in a tab's section header (wrap lines, the (i) tip) reads as on. */
+.properties .inspector-tab .cluster-btn:is([aria-pressed='true'], [aria-expanded='true']) {
+  background: var(--raised);
+  color: var(--text);
+}
+
+/* An action that reads as text: accent, underlined only under the pointer. */
+.properties .link-button {
+  padding: 0;
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.properties .link-button:hover:not(:disabled) {
+  text-decoration: underline;
+}
+
+/* A command: raised, never accent-filled, so a tab's one primary action
+   does not shout over the canvas selection colour. */
+.properties .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--field-h);
+  padding: 0 12px;
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  color: var(--text);
+  font: 500 var(--ui-size) / 1 var(--ui-font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.properties .btn:hover:not(:disabled) {
+  border-color: var(--text-faint);
+}
+.properties .btn.block {
+  width: 100%;
+}
+.properties .btn.primary {
+  font-weight: 600;
+}
+.properties .btn.compact {
+  height: 24px;
+  padding: 0 8px;
+  font-size: var(--ui-size-sm);
+}
+
+.properties .sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* A file or folder path: monospace, one line, the full path in its title. */
+.properties .path-chip {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0 4px;
+  overflow: hidden;
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+  color: var(--text-dim);
+  font: 11px var(--mono-font);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+/* The one problem mark: a 6px dot in the tone's colour. */
+.properties .tone-dot {
+  display: inline-block;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+.properties .tone-dot[data-tone='warn'] {
+  background: var(--warn);
+}
+.properties .tone-dot[data-tone='danger'] {
+  background: var(--danger);
+}
+.properties .tone-dot[data-tone='info'] {
+  background: var(--text-faint);
+}
+
+/* Why a field's value was refused, under the field. */
+.properties .field-error {
+  display: flex;
+  gap: 6px;
+  margin: 4px 0 0;
+  color: var(--text-dim);
+  font-size: var(--ui-size-sm);
+  line-height: 16px;
+}
+.properties .field-error::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: var(--danger);
+}
+
+/* An inline finding in a section body: dot, sentence, optional action. */
+.properties .issue {
+  display: grid;
+  grid-template-columns: 6px minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: start;
+  padding: 4px 0;
+  color: var(--text-dim);
+  font-size: var(--ui-size-sm);
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+.properties .issue > .tone-dot {
+  margin-top: 5px;
+}
+.properties .issue > .link-button {
+  white-space: nowrap;
+}
+
+.properties .editor :is(.reset, .stale-name, .layer, .link-button, .btn, .cluster-btn):disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+/* Checkboxes sit on the gutter, like every other control's left edge. */
+.properties .inspector-tab input[type='checkbox'] {
+  margin: 0;
 }

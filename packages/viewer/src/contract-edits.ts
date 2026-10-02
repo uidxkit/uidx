@@ -651,6 +651,23 @@ export function contractIssues(view: ContractView): number {
   return 0
 }
 
+/**
+ * What the tab's warning dot counts: bindings code generation will refuse,
+ * not progress. An unbound part is work not yet done and stays out of it;
+ * a layer bound to a part nothing declares is a fault, and so is a part
+ * layer whose value the implemented element does not offer — `uidx codegen`
+ * stops on both. Without a library, or while the component implements no
+ * element the library knows, there is nothing to check a binding or a part
+ * value against, and code generation checks neither.
+ */
+export function contractProblems(view: ContractView, library: HeadlessLibrary | null): number {
+  if (view.kind === 'component') return view.element ? view.strayParts.length : 0
+  if (view.kind !== 'part' || view.partValue === null || library === null) return 0
+  const element = implementedElement(view.component, library)
+  if (!element) return 0
+  return element.parts.some((part) => part.name === view.partValue) ? 0 : 1
+}
+
 /* ------------------------------------------------------------ writes */
 
 function setAttr(node: UidxNode, prop: string, value: string | number | null): UidxPatch[] {

@@ -52,3 +52,46 @@ actions. Distinct bindings keep padding sides and corners expanded even when
 their resolved numbers match. Binding and detaching use structural patches;
 symmetric edits form one patch envelope, and pending literal gestures cannot
 replace a new binding.
+
+## Contract, Connect and Code
+
+The other three tabs split a component's way to code by owner. Each links to
+the tab that owns a fix rather than repeating its controls: Contract's Code
+binding offers Open Connect when no library is set, Connect's parts line
+offers Bind parts, and Code's problems offer Open contract and Set folder.
+
+| Tab | Owns | Saved in |
+| --- | --- | --- |
+| Contract | What an instance can change (properties, states, styles, slots, accessibility and forms) and the code binding: the element it implements and the layer that draws each part | The component's `.uidx` |
+| Connect | The headless element, the names the library spells differently, a React component to render with, and Project: the library, its naming, the output folder and targets | The element in the `.uidx`; the rest in `uidx.json` |
+| Code | A live preview of the generated files, and Write code, which writes every component into the output folder | The output folder |
+
+All three are built from the same three pieces, so they read like the Design
+tab and like each other. Every title, hint, (i) text and action is worded in
+`inspector-messages.ts`.
+
+- **Section header.** A full-bleed section with a rule below, as in Design:
+  the title, a faint meta (a count, "of Button" for a layer inside it,
+  "Updating…"), actions on the right, and an (i) that shows the section's
+  explanation, and where it saves, on demand. Accessibility and forms, Code
+  binding, Names in the library, React component and Project collapse.
+- **Status line.** The first row of the tab, one line until opened: the
+  worst item's title and a count. Opened, each item shows a short detail, the
+  path it is about, up to three rows (then "+N more"), its actions, and the
+  server's own words behind Details, with Copy. One fault reads the same on
+  every tab: an unreadable library is "Library file not found" on all three,
+  and only the detail and actions differ (Choose library on Connect, Fix in
+  Connect elsewhere). While the server is unreachable, the tabs leave that to
+  the app banner and the lock chip.
+- **Empty state.** A title, a one-line hint and at most one action: "No
+  component selected", "2 layers selected", or Connect's "Instance of List"
+  with Open List. Only the nothing-selected state adds an About disclosure
+  with the tab's longer explanation, and it remembers whether it was open.
+  Connect keeps Project below its empty state, since project settings need
+  no selection.
+
+A tab wears a 6px dot only for a real problem: Contract for parts bound to
+unknown names (unbound parts are progress, counted under Parts), Connect for
+a library or `uidx.json` it cannot read, and Code for a render or a write
+that stopped. Read-only shows once, as a lock chip at the end of the identity
+row, for all four tabs.

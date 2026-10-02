@@ -407,8 +407,11 @@ button.chip:hover {
   background: none;
   color: var(--accent);
   font: inherit;
-  text-decoration: underline;
   cursor: pointer;
+}
+/* Underlined under the pointer only, as every other text action in the inspector. */
+.link:hover:not(:disabled) {
+  text-decoration: underline;
 }
 code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;

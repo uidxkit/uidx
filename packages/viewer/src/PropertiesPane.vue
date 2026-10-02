@@ -15,17 +15,52 @@ import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import CodeSection from './CodeSection.vue'
 import ConnectSection from './ConnectSection.vue'
-import { connection, connectionError, connectionGeneration, saveConnection } from './headless'
+import InspectorEmpty from './InspectorEmpty.vue'
+import InspectorStatus from './InspectorStatus.vue'
 import {
-  contractIssues,
+  connection,
+  connectionError,
+  connectionErrorKey,
+  connectionGeneration,
+  headlessFailure,
+  loadConnection,
+  refreshHeadless,
+  saveConnection,
+} from './headless'
+import {
+  contractProblems,
   contractView,
   fieldBindingCandidates,
   textBindingCandidates,
 } from './contract-edits'
 import { describe as describeDerived } from './derived-edits'
 import type { CodegenState, HeadlessCandidate, HeadlessLibrary } from './headless'
+import {
+  ABOUT,
+  ACTION,
+  COPY,
+  EMPTY,
+  classifyFailure,
+  configLoadItem,
+  contractProblemItem,
+  fieldErrorText,
+  instanceEmpty,
+  layersSelected,
+  libraryItem,
+  problems,
+  saveItem,
+  sortByTone,
+  writeItem,
+  type EmptyCopy,
+  type Face,
+  type Failure,
+  type MessageAction,
+  type StatusItem,
+  type Tone,
+} from './inspector-messages'
+import { resolveSubject } from './inspector-subject'
 
-import { computed, ref, shallowRef, watch } from 'vue'
+import { computed, reactive, ref, shallowRef, watch } from 'vue'
 import { vectorEndpoints } from '@open-pencil/core/vector'
 import {
   PropertySectionContent,
@@ -156,13 +191,13 @@ import type { VariableCandidate } from './variable-binding'
 const props = defineProps<{
   doc: UidxDocument | null
   selection?: string[]
-  /** The headless library the Contract tab offers choices from (ADR 0013 §3). */
+  /** The headless library the Contract and Connect tabs offer choices from (ADR 0013 §3). */
   headless?: HeadlessLibrary | null
-  /** Why the library could not be read, shown in the Contract tab. */
+  /** Why the library could not be read, as the server said it; the tabs' status line words it. */
   headlessError?: string
-  /** Libraries the project's dependencies ship, offered while none is named. */
+  /** Libraries the project's dependencies ship, offered in Connect while none is named. */
   headlessCandidates?: HeadlessCandidate[]
-  /** Where generated code goes and how the last run went, for the Contract tab's button. */
+  /** Where generated code goes and how the last run went, for the Code tab's Write code. */
   codegen?: CodegenState
   /** Token address -> literal, so a bound row can show what it resolves to. */
   tokens?: Map<string, JsonValue>
@@ -285,28 +320,287 @@ const emit = defineEmits<{
   previewSample: [index: number]
   /** The Contract tab names layers; choosing one selects it, as the rail would. */
   select: [address: string]
-  /** The Contract tab chose a headless library; the shell has the server write it. */
+  /** Connect › Project chose a headless library; the shell has the server write it. */
   chooseLibrary: [path: string]
-  /** The Contract tab asked for the code targets to be rendered. */
+  /** The Code tab's Write code: render every component into the output folder. */
   generateCode: []
 }>()
 
 /**
- * Which face the inspector shows: Design, the scene properties, or Contract,
- * the bindings to the code render (ADR 0013 §3). Two tabs rather than one
- * more section, because they answer different questions about the same layer
- * — what it looks like, and what it is to the headless library — and Figma's
- * Design / Dev split is the precedent authors already know. Pane-local: the
- * choice is about how to look, not what is open.
+ * Which face the inspector shows. Design is the scene properties; Contract,
+ * Connect and Code are what the layer is to code — what its component
+ * declares, how it is wired to a library, and what the generator makes of it
+ * (ADR 0013 §3). Faces rather than more sections, because they answer
+ * different questions about the same layer, and Figma's Design / Dev split is
+ * the precedent authors already know. Pane-local: the choice is about how to
+ * look, not what is open.
  */
-const face = ref<'design' | 'contract' | 'connect' | 'code'>('design')
+const face = ref<'design' | Face>('design')
 
-/** Unbound or stray parts on the selected component, for the tab's badge. */
-const contractIssueCount = computed(() =>
-  contractIssues(
-    contractView(props.doc, active.value, props.headless ?? null, props.models, props.components),
-  ),
+/** The tab strip, in order. */
+const FACES = [
+  { id: 'design', label: 'Design' },
+  { id: 'contract', label: 'Contract' },
+  { id: 'connect', label: 'Connect' },
+  { id: 'code', label: 'Code' },
+] as const
+const TABS: readonly Face[] = ['contract', 'connect', 'code']
+
+/**
+ * What Contract, Connect and Code are about, answered once for all three: an
+ * instance of PersonRow is PersonRow on every tab, and a layer inside List is
+ * List's (`inspector-subject`).
+ */
+const subject = computed(() =>
+  resolveSubject(props.doc, active.value, props.selection?.length ?? 0, props.components),
 )
+
+/** The component the Code tab renders, whichever page declares it. */
+const codeComponent = computed(() =>
+  ['component', 'inside', 'instance'].includes(subject.value.kind) ? subject.value.name : null,
+)
+
+/** The component the Connect tab edits: only one this file declares. */
+const connectComponent = computed(() => subject.value.local)
+
+/**
+ * The file that declares the Code tab's component, so its diagnostics split
+ * into its own and those of the files it uses. This page when it declares
+ * the component; otherwise whichever loaded page does.
+ */
+const codeFile = computed(() => {
+  const { local, definition } = subject.value
+  if (local) return props.file
+  if (!definition) return undefined
+  for (const [file, page] of props.pages ?? [])
+    if (
+      page.tree.children.some(
+        (child) => child.element === 'Component' && child.name === definition.name,
+      )
+    )
+      return file
+  return undefined
+})
+
+/** Moves with every edit and every saved uidx.json change: what the Code tab renders from. */
+const codeStamp = computed(() => `${props.doc?.sourceHash ?? ''}:${connectionGeneration.value}`)
+
+/**
+ * Why the headless library cannot be read, by class: the shell's own record
+ * of the fetch, or else the `headlessError` prop classified here, so a pane
+ * handed only the prop words it alike.
+ */
+const libraryFailure = computed<Failure | null>(
+  () =>
+    headlessFailure.value ?? (props.headlessError ? classifyFailure(props.headlessError) : null),
+)
+
+/**
+ * Stray part bindings and bad part values on the selection: what codegen
+ * refuses, so the Contract tab's one warning. Unbound parts are progress, not
+ * problems; and nothing is checked while the library cannot be read.
+ */
+const contractProblemCount = computed(() =>
+  libraryFailure.value
+    ? 0
+    : contractProblems(
+        contractView(
+          props.doc,
+          active.value,
+          props.headless ?? null,
+          props.models,
+          props.components,
+        ),
+        props.headless ?? null,
+      ),
+)
+
+/** Whether each tab's status line is expanded, kept per tab while the pane lives. */
+const statusOpen = reactive<Record<Face, boolean>>({ contract: false, connect: false, code: false })
+/** An action asked Connect to open Project at a field; `n` makes a repeated ask new. */
+const projectFocus = ref<{ target: 'library' | 'output'; n: number } | null>(null)
+/** An action asked Contract to show the parts. */
+const contractFocus = ref<{ target: 'parts'; n: number } | null>(null)
+/** Moves on the Code tab's Retry, so it renders again. */
+const codeReload = ref(0)
+
+/** What the Code tab last found for a component. */
+interface CodeReport {
+  component: string
+  state: 'live' | 'updating' | 'blocked' | 'failed'
+  items: StatusItem[]
+}
+const codeReport = shallowRef<CodeReport | null>(null)
+
+/**
+ * The Code tab's report. A re-render of the same component keeps the last
+ * findings until it lands, so the status line does not blink on every edit.
+ */
+function onCodeStatus(report: CodeReport): void {
+  const last = codeReport.value
+  if (report.state === 'updating' && last?.component === report.component) return
+  codeReport.value = report
+}
+
+/*
+ * The Code tab only reports while it shows. An edit made on another face may
+ * have fixed what it found, so the report is dropped rather than left to mark
+ * the tab with a fault that may be gone.
+ */
+watch(codeStamp, () => {
+  if (face.value !== 'code') codeReport.value = null
+})
+
+/**
+ * Every tab's status line, from one set of facts so the three tabs cannot
+ * contradict each other: the library on all three, uidx.json on the two that
+ * read it, Contract's stray parts, and Code's own render and last write. A
+ * dead socket is left to the app banner and the lock chip rather than said
+ * three more times.
+ */
+const tabItems = computed<Record<Face, StatusItem[]>>(() => {
+  const items: Record<Face, StatusItem[]> = { contract: [], connect: [], code: [] }
+  const offline = props.writable === false
+  const library = libraryFailure.value
+  if (library && !(offline && library.code === 'network'))
+    for (const tab of TABS)
+      items[tab].push(libraryItem(library, tab, connection.value.headless?.manifest ?? null))
+  const raw = connectionError.value
+  if (raw && !connectionErrorKey.value) {
+    const load = classifyFailure(raw)
+    const item = configLoadItem(load)
+    // A dead server fails both fetches; say it once.
+    const said = items.connect.some((other) => other.title === item.title)
+    if (!said && !(offline && load.code === 'network')) {
+      items.connect.push(item)
+      items.code.push(item)
+    }
+  }
+  // Connect shows a refused change under its field; the naming profile has none.
+  if (raw && connectionErrorKey.value === 'profile') items.connect.push(saveItem(raw))
+  if (contractProblemCount.value > 0)
+    items.contract.push(contractProblemItem(contractProblemCount.value))
+  const report = codeReport.value
+  if (report && report.component === codeComponent.value) items.code.push(...report.items)
+  const written = writeItem(props.codegen?.result)
+  if (written) items.code.push(written)
+  return items
+})
+
+/** A tab's 6px dot: its tone, the status title it stands for, and words for a screen reader. */
+interface TabDot {
+  tone: Tone
+  title: string
+  label: string
+}
+
+/**
+ * A dot only for a real problem. Contract marks stray parts, never unbound
+ * ones, which are progress and show under Parts; Connect marks a library or
+ * uidx.json it cannot read; Code marks a render or a write that stopped.
+ */
+const tabDot = computed<Record<Face, TabDot | null>>(() => {
+  const dot = (tab: Face, tone: Tone, count?: number): TabDot => {
+    const top = sortByTone(tabItems.value[tab])[0]
+    return {
+      tone,
+      title: top?.title ?? '',
+      label: count ? problems(count) : (top?.count ?? problems(tabItems.value[tab].length)),
+    }
+  }
+  const unread = tabItems.value.connect.filter(
+    (item) => item.id === 'library' || item.id === 'config',
+  ).length
+  const report = codeReport.value
+  const rendering =
+    report?.component === codeComponent.value &&
+    (report.state === 'blocked' || report.state === 'failed')
+  const writing =
+    props.codegen?.result?.kind === 'blocked' || props.codegen?.result?.kind === 'failed'
+  return {
+    contract:
+      contractProblemCount.value > 0 ? dot('contract', 'warn', contractProblemCount.value) : null,
+    connect: unread ? dot('connect', 'danger', unread) : null,
+    code: rendering || writing ? dot('code', 'danger') : null,
+  }
+})
+
+/** An empty state: its `data-empty`, its words, and what it offers. */
+interface EmptyState extends EmptyCopy {
+  kind: string
+  action?: MessageAction
+  about?: { label: string; text: string }
+}
+
+/**
+ * What a tab shows instead of its body, or null when it has a subject. The
+ * shell owns these so the three tabs say "nothing selected" and "several
+ * layers" alike, and explains the tab (About) only when nothing is selected.
+ * A layer outside every component is Contract's own view, since it can still
+ * draw a slot; and only Connect cannot use an instance whose component
+ * another page declares.
+ */
+function emptyFor(tab: Face): EmptyState | null {
+  const { kind, name, local, definition } = subject.value
+  if (kind === 'multi')
+    return {
+      kind,
+      title: layersSelected(props.selection?.length ?? 2),
+      hint: EMPTY[tab].multi.hint,
+    }
+  if (kind === 'none') return { kind, ...EMPTY[tab].none, about: ABOUT[tab] }
+  if (kind === 'outside' && tab !== 'contract')
+    return {
+      kind,
+      ...EMPTY[tab].outside,
+      ...(props.canMakeComponent ? { action: ACTION.makeComponent } : {}),
+    }
+  if (kind === 'instance' && !local && name && tab === 'connect') {
+    const { action, ...copy } = instanceEmpty(tab, name)
+    return { kind, ...copy, ...(definition ? { action } : {}) }
+  }
+  return null
+}
+const tabEmpty = computed(() => (face.value === 'design' ? null : emptyFor(face.value)))
+
+/**
+ * Runs what a status line, an empty state or a tab's link asked for. Actions
+ * are data (`inspector-messages`), so one tab can point at another's control
+ * without knowing where it lives.
+ */
+function act(action: MessageAction): void {
+  switch (action.run) {
+    case 'retry-library':
+      void refreshHeadless()
+      break
+    case 'retry-config':
+      void loadConnection()
+      break
+    case 'retry-code':
+      codeReload.value += 1
+      break
+    case 'open-project':
+      face.value = 'connect'
+      projectFocus.value = {
+        target: action.arg === 'output' ? 'output' : 'library',
+        n: Date.now(),
+      }
+      break
+    case 'open-contract':
+      face.value = 'contract'
+      contractFocus.value = { target: 'parts', n: Date.now() }
+      break
+    case 'select':
+      if (action.arg) emit('select', action.arg)
+      break
+    case 'open-component':
+      if (action.arg) emit('openComponent', action.arg)
+      break
+    case 'make-component':
+      emit('makeComponent')
+      break
+  }
+}
 
 function onHover(prop: string | null): void {
   const address = active.value?.address
@@ -317,30 +611,6 @@ function onHover(prop: string | null): void {
 const swatches = computed(() => (props.doc ? documentSwatches(props.doc.tree) : []))
 
 /** The `<Component>` an instance names, from the document-wide index (F7). */
-/**
- * The component the Code tab shows: the selection itself, the component an
- * instance uses, or the component the selected layer sits inside.
- */
-const codeComponent = computed<string | null>(() => {
-  const node = active.value
-  if (!node || !props.doc) return null
-  if (node.element === 'Component') return node.name
-  const used = node.attrs.component?.value
-  if (node.element === 'Instance' && typeof used === 'string') return used
-  const entity = node.address.split('#')[0]!
-  const top = props.doc.tree.children.find((child) => child.address === entity)
-  return top?.element === 'Component' ? top.name : null
-})
-
-/** The component the Connect tab edits: one declared in this file, holding the selection. */
-const connectComponent = computed<UidxNode | null>(() => {
-  const node = active.value
-  if (!node || !props.doc) return null
-  const entity = node.address.split('#')[0]!
-  const top = props.doc.tree.children.find((child) => child.address === entity)
-  return top?.element === 'Component' ? top : null
-})
-
 function definitionFor(node: UidxNode): UidxNode | undefined {
   const named = node.attrs.component?.value
   return typeof named === 'string' ? props.components?.get(named) : undefined
@@ -1953,124 +2223,134 @@ function onDetach(prop: string, value: JsonValue): void {
       <div class="inspector-title">
         <nav class="face-toggle" aria-label="Inspector view">
           <button
+            v-for="tab in FACES"
+            :key="tab.id"
             type="button"
-            :data-tour="`tab-design`"
-            :aria-pressed="face === 'design'"
-            @click="face = 'design'"
+            :data-tour="`tab-${tab.id}`"
+            :aria-pressed="face === tab.id"
+            :title="
+              tab.id !== 'design' && tabDot[tab.id]
+                ? `${tab.label}: ${tabDot[tab.id]!.title}`
+                : tab.label
+            "
+            @click="face = tab.id"
           >
-            Design
-          </button>
-          <button
-            type="button"
-            :data-tour="`tab-contract`"
-            :aria-pressed="face === 'contract'"
-            @click="face = 'contract'"
-          >
-            Contract
+            <span class="face-label">{{ tab.label }}</span>
             <span
-              v-if="contractIssueCount"
+              v-if="tab.id !== 'design' && tabDot[tab.id]"
               class="badge"
-              :title="`${contractIssueCount} part${contractIssueCount === 1 ? '' : 's'} to bind`"
-              >{{ contractIssueCount }}</span
+              :data-tone="tabDot[tab.id]!.tone"
+              :title="tabDot[tab.id]!.title"
+              ><span class="sr-only">{{ tabDot[tab.id]!.label }}</span></span
             >
           </button>
-          <button
-            type="button"
-            :data-tour="`tab-connect`"
-            :aria-pressed="face === 'connect'"
-            @click="face = 'connect'"
-          >
-            Connect
-          </button>
-          <button
-            type="button"
-            :data-tour="`tab-code`"
-            :aria-pressed="face === 'code'"
-            @click="face = 'code'"
-          >
-            Code
-          </button>
         </nav>
-        <span v-if="writable === false" class="read-only-badge">Read only</span>
       </div>
-      <div v-if="active" class="node-head">
-        <span class="element">{{ active.element }}</span>
-        <span class="name">{{ active.name }}</span>
-        <span
-          v-for="chip in meta"
-          :key="chip.name"
-          class="meta"
-          :data-meta="chip.name"
-          :data-value="chip.value"
-          :title="chip.name"
-          >{{ chip.value }}</span
+      <div v-if="active || (selection?.length ?? 0) > 1 || writable === false" class="node-head">
+        <template v-if="active">
+          <span class="element">{{ active.element }}</span>
+          <span class="name" :title="active.name">{{ active.name }}</span>
+          <span
+            v-for="chip in meta"
+            :key="chip.name"
+            class="meta"
+            :data-meta="chip.name"
+            :data-value="chip.value"
+            :title="`${chip.name}: ${chip.value}`"
+            >{{ chip.value }}</span
+          >
+          <select
+            v-if="statusEditable"
+            class="meta status-pick"
+            data-meta="status"
+            :data-value="status"
+            :value="status"
+            aria-label="Component status"
+            title="Draft while it is worked out; stable once others may rely on it; deprecated on its way out"
+            @change="setStatus(($event.target as HTMLSelectElement).value)"
+          >
+            <option value="">no status</option>
+            <option v-for="option in STATUSES" :key="option" :value="option">{{ option }}</option>
+          </select>
+        </template>
+        <span v-else-if="(selection?.length ?? 0) > 1" class="name multi">{{
+          COPY.layers(selection!.length)
+        }}</span>
+        <span v-if="writable === false" class="read-only-badge" :title="COPY.readOnly"
+          ><FieldIcon name="lock" /><span class="sr-only">{{ COPY.readOnly }}</span></span
         >
-        <select
-          v-if="statusEditable"
-          class="meta status-pick"
-          data-meta="status"
-          :data-value="status"
-          :value="status"
-          aria-label="Component status"
-          title="Draft while it is worked out; stable once others may rely on it; deprecated on its way out"
-          @change="setStatus(($event.target as HTMLSelectElement).value)"
-        >
-          <option value="">no status</option>
-          <option v-for="option in STATUSES" :key="option" :value="option">{{ option }}</option>
-        </select>
       </div>
     </header>
 
-    <ConnectSection
-      v-if="face === 'connect'"
-      :doc="doc"
-      :component="connectComponent"
-      :library="headless ?? null"
-      :candidates="headlessCandidates"
-      :config="connection"
-      :error="connectionError || headlessError"
-      :writable="writable !== false"
-      @patches="emit('patches', $event)"
-      @save="saveConnection"
-      @choose-library="emit('chooseLibrary', $event)"
-      @open-contract="face = 'contract'"
-    />
-    <CodeSection
-      v-else-if="face === 'code'"
-      :component="codeComponent"
-      :stamp="`${doc?.sourceHash ?? ''}:${connectionGeneration}`"
-      :codegen="codegen"
-      :writable="writable !== false"
-      @generate-code="emit('generateCode')"
-    />
-    <template v-else-if="face === 'contract'">
-      <p v-if="(selection?.length ?? 0) > 1" class="note">
-        Select a single layer to see what it binds.
-      </p>
-      <p v-else-if="writable === false" class="note warn">
-        Reconnect to edit. You can still inspect the bindings.
-      </p>
-      <section class="editor">
+    <!-- Contract, Connect and Code share one frame: the status line, the empty
+         state, then the tab itself inside the editor that styles its controls. -->
+    <template v-if="face !== 'design'">
+      <InspectorStatus
+        :key="face"
+        v-model:open="statusOpen[face]"
+        :items="tabItems[face]"
+        @act="act"
+      />
+      <InspectorEmpty v-if="tabEmpty" v-bind="tabEmpty" @act="act" />
+      <section v-if="face === 'connect' || !tabEmpty" class="editor inspector-tab">
+        <ConnectSection
+          v-if="face === 'connect'"
+          :doc="doc"
+          :component="connectComponent"
+          :library="headless ?? null"
+          :candidates="headlessCandidates"
+          :config="connection"
+          :writable="writable !== false"
+          :relation="subject.relation"
+          :focus="projectFocus"
+          :library-failed="!!libraryFailure"
+          :field-error="
+            connectionErrorKey && connectionError
+              ? {
+                  key: connectionErrorKey,
+                  text: fieldErrorText(connectionErrorKey, connectionError),
+                }
+              : null
+          "
+          @patches="emit('patches', $event)"
+          @save="saveConnection"
+          @choose-library="emit('chooseLibrary', $event)"
+          @open-contract="act(ACTION.openContract)"
+          @act="act"
+        />
+        <CodeSection
+          v-else-if="face === 'code'"
+          :component="codeComponent"
+          :relation="subject.kind === 'component' ? null : subject.relation"
+          :file="codeFile"
+          :reload="codeReload"
+          :stamp="codeStamp"
+          :codegen="codegen"
+          :writable="writable !== false"
+          @generate-code="emit('generateCode')"
+          @status="onCodeStatus"
+          @act="act"
+        />
         <ContractSection
+          v-else
           :doc="doc"
           :node="active"
           :library="headless ?? null"
-          :library-error="headlessError"
-          :candidates="headlessCandidates"
-          :codegen="codegen"
+          :library-error="libraryFailure?.raw ?? ''"
           :models="models"
           :components="components"
           :pages="pages"
           :file="file"
           :writable="writable !== false"
+          :focus="contractFocus"
+          :can-make-component="canMakeComponent"
           @patches="emit('patches', $event)"
           @remap="emit('remap', $event)"
           @refused="emit('refused', $event)"
           @select="emit('select', $event)"
           @open-model="emit('openModel', $event)"
-          @choose-library="emit('chooseLibrary', $event)"
-          @generate-code="emit('generateCode')"
           @bind-names="bindNames"
+          @act="act"
         />
       </section>
     </template>
@@ -2081,9 +2361,6 @@ function onDetach(prop: string, value: JsonValue): void {
             ? 'Select a single layer to edit its properties.'
             : 'Select a layer to adjust its size, layout, and appearance.'
         }}
-      </p>
-      <p v-else-if="writable === false" class="note warn">
-        Reconnect to edit. You can still inspect properties and export.
       </p>
 
       <section v-if="stateCells.length" class="state-cells" aria-label="What this state sets">
@@ -2998,7 +3275,10 @@ function onDetach(prop: string, value: JsonValue): void {
 }
 
 .properties {
-  overflow: auto;
+  /* Nothing in the pane may scroll it sideways; a wide value scrolls or
+     ellipsizes inside its own box. */
+  overflow-x: hidden;
+  overflow-y: auto;
   min-width: 0;
   padding: 0 var(--section-pad);
   background: var(--panel);
@@ -3021,22 +3301,32 @@ function onDetach(prop: string, value: JsonValue): void {
   border-bottom: 1px solid var(--line);
 }
 .inspector-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  min-width: 0;
 }
-h2 {
-  font-size: 12px;
-  font-weight: 600;
-  margin: 0;
-}
+/* The lock chip: read-only said once, at the end of the identity row, for
+   every face. Its words are its title and its screen-reader text. */
 .read-only-badge {
-  color: var(--warn);
-  font-size: var(--ui-size-sm);
+  display: inline-flex;
+  flex: none;
+  order: 3;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  border-radius: var(--radius-lg);
+  background: var(--raised);
+  color: var(--text-dim);
 }
-/* The same toggle the left rail uses for Elements / Tokens / Fonts. */
+/*
+ * The same toggle the left rail uses for Elements / Tokens / Fonts, the
+ * pane's width: four tabs share it, each its label's width plus an equal
+ * share of the rest, and a label ellipsizes before the strip overflows.
+ */
 .face-toggle {
   display: flex;
+  box-sizing: border-box;
+  width: 100%;
   gap: 2px;
   padding: 3px;
   background: var(--bg);
@@ -3044,10 +3334,13 @@ h2 {
 }
 .face-toggle button {
   display: inline-flex;
+  flex: 1 1 auto;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  gap: 4px;
   min-width: 0;
-  padding: 4px 10px;
+  padding: 4px 6px;
+  overflow: hidden;
   border: 0;
   border-radius: 5px;
   background: none;
@@ -3055,35 +3348,42 @@ h2 {
   font: inherit;
   font-size: 11px;
   font-weight: 500;
+  /* A 28px strip: the header is 52px tall, 84px with the identity row. */
+  line-height: 14px;
+  white-space: nowrap;
   cursor: pointer;
 }
+.face-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .face-toggle button[aria-pressed='true'] {
-  background: var(--raised);
+  background: var(--segment-on);
   color: var(--text);
   box-shadow: var(--shadow-sm);
 }
 .face-toggle button:hover {
   color: var(--text);
 }
+/* A tab with a real problem: a dot in the problem's tone, no count. */
 .face-toggle .badge {
-  min-width: 14px;
-  padding: 0 4px;
-  border-radius: 999px;
+  flex: none;
+  width: 6px;
+  height: 6px;
+  padding: 0;
+  border-radius: 50%;
   background: var(--warn);
-  color: var(--bg);
-  font-size: 9px;
-  font-weight: 600;
-  line-height: 14px;
-  text-align: center;
+  font-size: 0;
+}
+.face-toggle .badge[data-tone='danger'] {
+  background: var(--danger);
 }
 .note {
   color: var(--text-faint);
   font-size: var(--ui-size);
   line-height: 1.5;
   margin: 12px 0;
-}
-.note.warn {
-  color: var(--warn);
 }
 .section-link {
   position: relative;
@@ -3125,6 +3425,13 @@ h2 {
   position: relative;
   margin-bottom: 8px;
 }
+/* Connect's Project under an empty state: the same full-bleed rule that
+   separates sections, so the empty state reads as one and not as a header. */
+.empty-state + .inspector-tab {
+  margin-inline: calc(-1 * var(--section-pad));
+  padding-inline: var(--section-pad);
+  border-top: 1px solid var(--line);
+}
 .section {
   /* Full-bleed separators: the rule runs edge to edge of the pane, UI3's
      section boundary, so the margins undo the pane's own padding. */
@@ -3142,30 +3449,6 @@ h2 {
   font-size: var(--ui-size);
   font-weight: 600;
   color: var(--text);
-}
-/* One box for every header icon: 24px hit target, 12px glyph, quiet at
-   rest, a raised pill on hover — Figma's header cluster buttons. */
-.cluster-btn {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  width: var(--row-h);
-  height: var(--row-h);
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-dim);
-  cursor: pointer;
-}
-.cluster-btn:hover:not(:disabled) {
-  background: var(--raised);
-  color: var(--text);
-}
-.cluster-btn:disabled {
-  opacity: 0.5;
-  cursor: default;
 }
 .section-toggle {
   display: flex;
@@ -3323,24 +3606,45 @@ h2 {
 .field > :deep(.structured) {
   grid-column: 1 / -1;
 }
+/* The identity row: one line at any width. What does not fit ellipsizes,
+   the name and chips alike, each keeping its full text in its title. */
 .node-head {
   display: flex;
-  gap: var(--gap);
+  flex-wrap: nowrap;
+  gap: 6px;
   align-items: center;
-  flex-wrap: wrap;
-  padding-top: 12px;
+  box-sizing: border-box;
+  min-width: 0;
+  min-height: 32px;
+  padding-top: 8px;
 }
 .element {
   order: 2;
-  color: var(--text-dim);
-  font-size: var(--ui-size-sm);
-  padding: 2px 6px;
+  flex: none;
+  box-sizing: border-box;
+  max-width: 40%;
+  height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
+  color: var(--text-dim);
+  font-size: var(--ui-size-sm);
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .name {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--text);
-  font-weight: 700;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.name.multi {
+  color: var(--text-dim);
 }
 /*
  * A maturity chip, coloured by what the status means rather than by a palette
@@ -3348,21 +3652,26 @@ h2 {
  * same amber as a warning, deprecated the same red as a rejection.
  */
 .meta {
-  padding: 0 var(--gap-sm);
+  flex: 0 1 auto;
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 45%;
+  height: 20px;
+  padding: 0 6px;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: var(--radius-lg);
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
-}
-.link-button {
-  padding: 0;
-  font: inherit;
-  color: var(--accent);
-  background: none;
-  border: 0;
-  cursor: pointer;
+  line-height: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .status-pick {
+  flex: none;
+  /* As wide as the chosen status, not the longest option: the name needs
+     the room more. Browsers without it keep the native width. */
+  field-sizing: content;
   background: none;
   font: inherit;
   font-size: var(--ui-size-sm);

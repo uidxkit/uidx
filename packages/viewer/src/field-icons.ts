@@ -77,6 +77,12 @@ export const ICON_PATHS = {
   search: 'M5.2 1.8 A 3.4 3.4 0 1 1 5.2 8.6 A 3.4 3.4 0 1 1 5.2 1.8 M7.8 7.8 L10.5 10.5',
   close: 'M2.5 2.5 L9.5 9.5 M9.5 2.5 L2.5 9.5',
   plus: 'M6 2 V10 M2 6 H10',
+  // The inspector tabs' status line and section headers: what a section is
+  // for, what went wrong, and the code block's copy confirmation.
+  info: 'M6 1.5 A4.5 4.5 0 1 1 6 10.5 A4.5 4.5 0 1 1 6 1.5 M6 5.5 V8.5 M6 3.6 V3.7',
+  'alert-circle': 'M6 1.5 A4.5 4.5 0 1 1 6 10.5 A4.5 4.5 0 1 1 6 1.5 M6 3.5 V6.5 M6 8.3 V8.4',
+  copy: 'M4 4 H10 V10 H4 Z M2 8 V2 H8',
+  check: 'M2.5 6.5 L5 9 L9.5 3.5',
   trash: 'M2 3 H10 M4.5 3 V1.5 H7.5 V3 M3 3 L3.5 10.5 H8.5 L9 3 M5 5 V8.5 M7 5 V8.5',
   variable: 'M2.5 2.5 H9.5 V9.5 H2.5 Z M4.8 4 L4.2 8 M7.8 4 L7.2 8 M3.5 5.2 H8.7 M3.3 6.8 H8.5',
   'variables-grid':

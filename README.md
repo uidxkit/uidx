@@ -108,9 +108,9 @@ The separate `.uidx/uidx.json` manifest controls which files belong to the docum
 `headless` is optional. It names the headless library's `custom-elements.json`,
 relative to `uidx.json`; with it, the viewer's Contract tab offers the library's
 elements and parts as choices, and `uidx codegen` checks contracts against it.
-Leave it out and the Contract tab offers the libraries your dependencies ship
-(any package whose `package.json` has a `customElements` field) and writes your
-choice here. The object form binds the same designs to a library that spells
+Leave it out and the Project section of the viewer's Connect tab offers the
+libraries your dependencies ship (any package whose `package.json` has a
+`customElements` field) and writes your choice here. The object form binds the same designs to a library that spells
 things differently, without editing a design:
 
 ```json
@@ -136,7 +136,7 @@ library's. Both default to the conventions `@hwc/components` follows.
 
 `codegen` is optional too: `{ "out": "../generated", "targets": ["html", "react", "contract"] }` (add `"stories"` for Storybook CSF files beside the React components)
 says where `uidx codegen` writes without `--out`, and gives the viewer's
-Contract tab a Generate button that renders the same output from the server.
+Code tab a Write code button that writes the same output from the server.
 
 A team whose components already exist in a React library maps identities
 onto them instead of onto custom elements: `codegen.react` names, per

@@ -6,6 +6,15 @@ describe migrations when an existing document or integration is affected.
 
 ## Unreleased
 
+- The inspector's Contract, Connect and Code tabs share one frame: the same
+  section header (title, faint meta, actions, an (i) for what the section is
+  for), one status line per tab that stays a single line until opened, and
+  one empty state with a short hint and at most one action. A fault reads the
+  same on every tab ("Library file not found"), offers the fix where it lives
+  (Choose library on Connect, Fix in Connect elsewhere) and keeps the
+  server's own words behind Details. Tab dots mark only real problems, the
+  read-only lock is one chip in the identity row, and the library chooser
+  and Write code moved from Contract to Connect and Code.
 - **Restyle a placed component from outside (ADR 0018).** An `<Instance>` may
   set its outer box (`fills`, `strokes` and their weights, `dashPattern`,
   corner radii, `padding*`, `opacity`, `effects`) and `textFills`, which
@@ -197,7 +206,7 @@ describe migrations when an existing document or integration is affected.
   declares what the implemented element exposes and the contract lacks. The
   new `contract` patch op writes one declaration in canonical form.
 - `uidx.json` gains an optional `codegen` (`out`, `targets`): `uidx codegen`
-  needs no `--out`, and the Contract tab's Generate button renders the code
+  needs no `--out`, and the Code tab's Write code button renders the code
   targets from the server into that folder, reporting what it wrote.
 - The inspector gains a **Contract** tab beside Design. A component chooses
   the headless element it implements from the library; its parts are bound to
@@ -211,8 +220,9 @@ describe migrations when an existing document or integration is affected.
   through `::part()`. `headless` may also be an object with a `profile` (how
   the library reflects props, its own states and parts) and `bindings` (its
   names per component), so one design renders over libraries that spell
-  things differently; when nothing is named, the Contract tab offers the
-  libraries the project's dependencies ship and writes the choice.
+  things differently; when nothing is named, the Connect tab's Project
+  section offers the libraries the project's dependencies ship and writes the
+  choice.
 
 ## 0.1.6 — 2026-09-25
 

@@ -188,9 +188,11 @@ describe('the headless route', () => {
     await start({ headless: 'missing/custom-elements.json' })
     const response = await fetch(`${server!.url}/__uidx/headless`)
     expect(response.status).toBe(400)
-    expect(((await response.json()) as { error: string }).error).toMatch(
-      /missing\/custom-elements\.json/,
-    )
+    const body = (await response.json()) as { error: string; code?: string; path?: string }
+    expect(body.error).toMatch(/missing\/custom-elements\.json/)
+    // The class and the configured path, so the viewer words the failure itself.
+    expect(body.code).toBe('ENOENT')
+    expect(body.path).toBe('missing/custom-elements.json')
   })
 
   it('answers only GET and PUT', async () => {

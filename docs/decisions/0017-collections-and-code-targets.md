@@ -120,8 +120,9 @@ same bytes.
     own drawing under that node serves the canvas and Figma. That is how such
     a library works, not a finding, so conformance says nothing about it. The
     inspector marks such parts so the author knows which kind they bound.
-  - `uidx.json`'s `codegen` names the output folder and the targets; the
-    command line and the viewer's Generate button write the same files there.
+  - `uidx.json`'s `codegen` names the output folder and the targets, which
+    the Project section of the Connect tab sets; the command line and the
+    Code tab's "Write code" button write the same files there.
   - parts with their own element are emitted as compound sub-components
     (`Field.Label`) so a consumer may compose below the pattern level.
   Emitted as readable source.

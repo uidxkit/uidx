@@ -62,6 +62,10 @@
   --ok: #14ae5c;
   /* A value that comes from a design token rather than a literal. */
   --bound: #c08bff;
+  /* Code, paths and file names. */
+  --mono-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Pressed segment of a segmented control. */
+  --segment-on: var(--raised);
   /* Scrim behind an overlay that must stay readable over the canvas. */
   --overlay: rgba(12, 14, 18, 0.9);
 
@@ -110,6 +114,7 @@
   --warn: #b77900;
   --ok: #0f9150;
   --bound: #8a3ffc;
+  --segment-on: var(--panel);
   --overlay: rgba(250, 251, 252, 0.94);
   --shadow: 0 4px 16px rgb(16 24 40 / 0.12);
   --shadow-sm: 0 1px 2px rgb(16 24 40 / 0.08);

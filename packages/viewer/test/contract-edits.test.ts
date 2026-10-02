@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow, resolve, type UidxPatch } from '@uidx/format'
 import { defaultVariantAddress, derivedDocument, modelIndex } from '@uidx/schema'
 import ContractSection from '../src/ContractSection.vue'
@@ -7,6 +7,7 @@ import PropertiesPane from '../src/PropertiesPane.vue'
 import {
   bindPart,
   contractIssues,
+  contractProblems,
   contractType,
   contractView,
   scaffoldFromLibrary,
@@ -82,6 +83,9 @@ const CHECKBOX = page(
 </Parts>
 `,
 )
+
+/** CHECKBOX with a layer bound to a part neither the library nor the contract declares. */
+const STRAY = CHECKBOX.replace('<Vector name="dash"', '<Vector name="dash" part="spinner"')
 
 const LIST = page(
   'list',
@@ -196,6 +200,8 @@ describe('what the tab shows', () => {
     // Bound layers leave the candidate list; instances never enter it.
     expect(view.candidates.map((c) => c.name)).toEqual(['dash', 'ring'])
     expect(contractIssues(view)).toBe(1)
+    // One part still to bind is progress, not a problem: no warning for it.
+    expect(contractProblems(view, LIBRARY)).toBe(0)
   })
 
   it('keeps an element the library lacks as a choice, marked', () => {
@@ -834,31 +840,72 @@ describe('the Contract section', () => {
     expect(mountFor(bare, 'loose').text()).toContain('Only layers inside a component')
     expect(mountFor(LIST, 'List#option/row').text()).toContain('no component called “Row”')
   })
-})
 
-describe('choosing a library', () => {
-  it('offers the dependencies that ship one, or a path, and asks the shell to write it', async () => {
-    const doc = parseOrThrow(bare)
+  it('names a binding nothing declares, and shows its layer', async () => {
+    const section = mountFor(STRAY, 'Checkbox')
+    const issue = section.find('[data-field="code-binding"] .issue')
+    expect(issue.text()).toContain('“dash” is bound to “spinner”, which nothing declares.')
+    await issue.find('button').trigger('click')
+    expect(section.emitted('select')).toEqual([['Checkbox#dash']])
+  })
+
+  it('says when a layer draws a part its element does not offer', () => {
+    expect(mountFor(STRAY, 'Checkbox#dash').find('.issue').text()).toBe(
+      'Not a part of hwc-checkbox. Code generation stops here.',
+    )
+  })
+
+  it('pauses the part checks while the library cannot be read, and keeps the Element select', () => {
+    // The fault itself is the shell's status line; here only what waits on it.
+    const doc = parseOrThrow(STRAY)
     const section = mount(ContractSection, {
       props: {
         doc,
-        node: null,
+        node: resolve(doc.tree, 'Checkbox'),
         library: null,
-        candidates: [{ package: '@acme/kit', path: 'node_modules/@acme/kit/custom-elements.json' }],
+        libraryError: 'Could not read the headless library: ENOENT',
         writable: true,
       },
     })
-    const pick = section.find('[data-field="choose-library"] select')
-    expect(pick.findAll('option').map((o) => o.text().trim())).toEqual(['Choose…', '@acme/kit'])
-    await pick.setValue('node_modules/@acme/kit/custom-elements.json')
-    expect(section.emitted('chooseLibrary')).toEqual([
-      ['node_modules/@acme/kit/custom-elements.json'],
-    ])
-    await section
-      .find('[data-field="choose-library"] input')
-      .setValue('../lib/custom-elements.json')
+    expect(section.text()).toContain('Not checked while the library is unavailable.')
+    expect(section.find('.issue').exists()).toBe(false)
+    expect(section.find('[data-field="choose-library"]').exists()).toBe(false)
+    expect(
+      section.findAll('[data-field="implements"] select option').map((o) => o.text().trim()),
+    ).toEqual(['None', 'hwc-checkbox · library unavailable'])
+  })
+
+  it('opens Code binding when the shell asks to show the parts, once per request', async () => {
+    const fresh = page(
+      'fresh',
+      `  <Component name="Plain" status="draft" width={10} height={10} />`,
+    )
+    const section = mountFor(fresh, 'Plain')
+    const folded = section.find('details[data-field="code-binding"]')
+    expect(folded.attributes('open')).toBeUndefined()
+    await section.setProps({ focus: { target: 'parts', n: 42 } })
+    await flushPromises()
+    expect((folded.element as HTMLDetailsElement).open).toBe(true)
+    // Back on the tab later, the same request is not served again.
+    const again = mount(ContractSection, {
+      props: { ...section.props(), focus: { target: 'parts', n: 42 } },
+    })
+    await flushPromises()
+    expect(again.find('details[data-field="code-binding"]').attributes('open')).toBeUndefined()
+  })
+})
+
+describe('choosing a library', () => {
+  it('points to Connect, where the project names its library', async () => {
+    // The chooser is Connect › Project's (connect-section.test.ts covers the path).
+    const doc = parseOrThrow(CHECKBOX)
+    const section = mount(ContractSection, {
+      props: { doc, node: resolve(doc.tree, 'Checkbox'), library: null, writable: true },
+    })
     await section.find('[data-field="choose-library"] button').trigger('click')
-    expect(section.emitted('chooseLibrary')![1]).toEqual(['../lib/custom-elements.json'])
+    expect(section.emitted('act')).toEqual([
+      [{ label: 'Open Connect', run: 'open-project', arg: 'library' }],
+    ])
   })
 
   it('says which tag uidx.json binds a component to', () => {
@@ -1012,28 +1059,6 @@ describe('editing the contract from the tab (ADR 0013 §2)', () => {
   })
 })
 
-describe('generating code from the tab', () => {
-  it('offers the configured folder and asks the shell to generate', async () => {
-    const doc = parseOrThrow(CHECKBOX)
-    const section = mount(ContractSection, {
-      props: {
-        doc,
-        node: resolve(doc.tree, 'Checkbox'),
-        library: LIBRARY,
-        codegen: { out: '../generated', running: false, notice: 'Wrote 3 files to ../generated' },
-        writable: true,
-      },
-    })
-    const button = section.find('[data-field="generate"] button')
-    expect(button.text()).toBe('Generate → ../generated')
-    await button.trigger('click')
-    expect(section.emitted('generateCode')).toEqual([[]])
-    expect(section.find('[data-field="generate-notice"]').text()).toBe(
-      'Wrote 3 files to ../generated',
-    )
-  })
-})
-
 describe('the inspector tabs', () => {
   it('points the Design face at the Contract tab for props, instead of a second editor', async () => {
     const pane = mount(PropertiesPane, {
@@ -1061,18 +1086,20 @@ describe('the inspector tabs', () => {
     ])
   })
 
-  it('switches between Design and Contract, and counts parts to bind on the tab', async () => {
+  it('switches between Design and Contract, and marks the tab only for a real problem', async () => {
     const doc = parseOrThrow(CHECKBOX)
     const pane = mount(PropertiesPane, {
       props: { doc, selection: ['Checkbox'], writable: true, headless: LIBRARY },
     })
     const tabs = pane.findAll('.face-toggle button')
+    // One part still to bind is progress, shown under Parts, not a mark on the tab.
     expect(tabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual([
       'Design',
-      'Contract 1',
+      'Contract',
       'Connect',
       'Code',
     ])
+    expect(tabs[1]!.find('.badge').exists()).toBe(false)
     expect(tabs[0]!.attributes('aria-pressed')).toBe('true')
     expect(pane.find('.contract').exists()).toBe(false)
     await tabs[1]!.trigger('click')
@@ -1080,6 +1107,17 @@ describe('the inspector tabs', () => {
     expect(pane.find('[data-field="implements"] select').exists()).toBe(true)
     await pane.find('[data-part="checked-indicator"] .layer').trigger('click')
     expect(pane.emitted('select')).toEqual([['Checkbox#check']])
+
+    // A layer bound to a part nothing declares is one: codegen refuses it.
+    const warned = mount(PropertiesPane, {
+      props: {
+        doc: parseOrThrow(STRAY),
+        selection: ['Checkbox'],
+        writable: true,
+        headless: LIBRARY,
+      },
+    })
+    expect(warned.find('.face-toggle .badge[data-tone="warn"]').exists()).toBe(true)
   })
 })
 

@@ -18,15 +18,27 @@ export {
   type HeadlessPart,
 } from '@uidx/schema/headless'
 import { parseHeadless, type HeadlessCandidate, type HeadlessLibrary } from '@uidx/schema/headless'
+import { classifyFailure, type Failure } from './inspector-messages'
 
 /** `null` until loaded, and when the document declares no library. */
 export const headlessLibrary = shallowRef<HeadlessLibrary | null>(null)
 /** Why the library could not be read, or `''`. Shown in the tab, never thrown. */
 export const headlessError = shallowRef('')
+/**
+ * The same failure by class, for the inspector tabs' status line: they word
+ * a missing file, an unreadable one and a dead server differently, and the
+ * raw `headlessError` stays for the app bar and the error banner.
+ */
+export const headlessFailure = shallowRef<Failure | null>(null)
 /** Libraries the project's dependencies ship, while the document names none. */
 export const headlessCandidates = shallowRef<HeadlessCandidate[]>([])
 
-function unavailable(response: Response): void {
+/**
+ * Throws when the response is not the uidx server's JSON — an HTML error
+ * page from a proxy, or a dev server without the route — so the caller
+ * reports a missing service instead of a JSON parse error.
+ */
+export function unavailable(response: Response): void {
   if (!response.headers.get('content-type')?.includes('application/json')) {
     throw new Error('The headless library service is unavailable.')
   }
@@ -39,15 +51,48 @@ interface HeadlessPayload {
   candidates?: HeadlessCandidate[]
   codegen?: { out: string }
   error?: string
+  /** The errno (`ENOENT`, `EACCES`…) or `EJSON` behind `error`, from newer servers. */
+  code?: string
 }
+
+/** The server's refusal as an error that keeps its `code`, for `classifyFailure`. */
+function failure(data: { error?: string; code?: string }, fallback: string): Error {
+  return Object.assign(new Error(data.error ?? fallback), { code: data.code })
+}
+
+/** One finding of the code generator, as the server reports it. */
+export interface Diagnostic {
+  file: string
+  line: number
+  column: number
+  message: string
+  severity: string
+}
+
+/**
+ * How the last Write code run ended: files written, stopped by the
+ * generator's own diagnostics, or failed on the way (server, disk).
+ */
+export type WriteResult =
+  | { kind: 'ok'; written: number; out: string; at: number }
+  | { kind: 'blocked'; diagnostics: Diagnostic[] }
+  | { kind: 'failed'; failure: Failure }
 
 /** Where `uidx.json` says generated code goes (`codegen.out`), and how the last run went. */
 export interface CodegenState {
   out: string | null
   running: boolean
+  /** The last run as one sentence, for the app bar. */
   notice: string
+  /** The last run as data, for the Code tab; null before the first. */
+  result: WriteResult | null
 }
-export const codegenState = shallowRef<CodegenState>({ out: null, running: false, notice: '' })
+export const codegenState = shallowRef<CodegenState>({
+  out: null,
+  running: false,
+  notice: '',
+  result: null,
+})
 
 function adopt(data: HeadlessPayload): void {
   headlessLibrary.value =
@@ -62,7 +107,7 @@ function adopt(data: HeadlessPayload): void {
  * and the command line never disagree about what the code looks like.
  */
 export async function generateCode(): Promise<void> {
-  codegenState.value = { ...codegenState.value, running: true, notice: '' }
+  codegenState.value = { ...codegenState.value, running: true, notice: '', result: null }
   try {
     const response = await fetch('/__uidx/codegen', {
       method: 'POST',
@@ -74,26 +119,25 @@ export async function generateCode(): Promise<void> {
     const data = (await response.json()) as {
       out?: string
       written?: string[]
-      diagnostics?: {
-        file: string
-        line: number
-        column: number
-        message: string
-        severity: string
-      }[]
+      diagnostics?: Diagnostic[]
       error?: string
     }
     if (!response.ok) throw new Error(data.error ?? 'Could not generate code.')
     const errors = (data.diagnostics ?? []).filter((d) => d.severity === 'error')
+    const out = data.out ?? codegenState.value.out
     const notice = errors.length
       ? `Not written: ${errors.map((d) => `${d.file}:${d.line} ${d.message}`).join('; ')}`
-      : `Wrote ${data.written?.length ?? 0} files to ${data.out ?? codegenState.value.out}`
-    codegenState.value = { ...codegenState.value, running: false, notice }
+      : `Wrote ${data.written?.length ?? 0} files to ${out}`
+    const result: WriteResult = errors.length
+      ? { kind: 'blocked', diagnostics: errors }
+      : { kind: 'ok', written: data.written?.length ?? 0, out: out ?? '', at: Date.now() }
+    codegenState.value = { ...codegenState.value, running: false, notice, result }
   } catch (error) {
     codegenState.value = {
       ...codegenState.value,
       running: false,
       notice: error instanceof Error ? error.message : String(error),
+      result: { kind: 'failed', failure: classifyFailure(error) },
     }
   }
 }
@@ -106,6 +150,7 @@ export async function generateCode(): Promise<void> {
  */
 export async function chooseHeadless(path: string): Promise<void> {
   headlessError.value = ''
+  headlessFailure.value = null
   try {
     const response = await fetch('/__uidx/headless', {
       method: 'PUT',
@@ -115,12 +160,13 @@ export async function chooseHeadless(path: string): Promise<void> {
     })
     unavailable(response)
     const data = (await response.json()) as HeadlessPayload
-    if (!response.ok) throw new Error(data.error ?? 'Could not choose the headless library.')
+    if (!response.ok) throw failure(data, 'Could not choose the headless library.')
     adopt(data)
     void loadConnection()
     connectionGeneration.value += 1
   } catch (error) {
     headlessError.value = error instanceof Error ? error.message : String(error)
+    headlessFailure.value = classifyFailure(error)
   }
 }
 
@@ -133,18 +179,22 @@ export async function chooseHeadless(path: string): Promise<void> {
  */
 export async function refreshHeadless(): Promise<void> {
   headlessError.value = ''
+  headlessFailure.value = null
   try {
     const response = await fetch('/__uidx/headless', { signal: AbortSignal.timeout(15_000) })
     unavailable(response)
     const data = (await response.json()) as HeadlessPayload
-    if (!response.ok) throw new Error(data.error ?? 'Could not read the headless library.')
+    if (!response.ok) throw failure(data, 'Could not read the headless library.')
     adopt(data)
-    void loadConnection()
   } catch (error) {
     headlessLibrary.value = null
     headlessCandidates.value = []
     headlessError.value = error instanceof Error ? error.message : String(error)
+    headlessFailure.value = classifyFailure(error)
   }
+  // Outside the try: uidx.json still loads when the library it names does
+  // not, so Connect can show the configured path and the output folder.
+  void loadConnection()
 }
 
 /**
@@ -189,14 +239,26 @@ export const connection = shallowRef<ConnectionConfig>({ headless: null, codegen
 /** Moves on every saved change, so what renders code from it refreshes. */
 export const connectionGeneration = shallowRef(0)
 export const connectionError = shallowRef('')
+/**
+ * Which change `connectionError` is about, when a save failed; null when it
+ * is a load error. The tab shows a save error under its field, and a load
+ * error in the status line.
+ */
+export const connectionErrorKey = shallowRef<ConfigChange['key'] | null>(null)
 
 export async function loadConnection(): Promise<void> {
+  connectionError.value = ''
+  connectionErrorKey.value = null
   try {
     const response = await fetch('/__uidx/config', { signal: AbortSignal.timeout(15_000) })
     unavailable(response)
     const data = (await response.json()) as ConnectionConfig & { error?: string }
     if (!response.ok) throw new Error(data.error ?? 'Could not read the code connection.')
     connection.value = { headless: data.headless, codegen: data.codegen }
+    // `adopt` sets the output folder from the library route; when that route
+    // failed, uidx.json is the only source left.
+    if (codegenState.value.out === null && data.codegen?.out)
+      codegenState.value = { ...codegenState.value, out: data.codegen.out }
   } catch (error) {
     connectionError.value = error instanceof Error ? error.message : String(error)
   }
@@ -205,6 +267,7 @@ export async function loadConnection(): Promise<void> {
 /** Writes one change to `uidx.json`; on success the library and codegen state follow. */
 export async function saveConnection(change: ConfigChange): Promise<boolean> {
   connectionError.value = ''
+  connectionErrorKey.value = null
   try {
     const response = await fetch('/__uidx/config', {
       method: 'PATCH',
@@ -221,6 +284,7 @@ export async function saveConnection(change: ConfigChange): Promise<boolean> {
     return true
   } catch (error) {
     connectionError.value = error instanceof Error ? error.message : String(error)
+    connectionErrorKey.value = change.key
     return false
   }
 }

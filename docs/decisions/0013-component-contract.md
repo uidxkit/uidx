@@ -90,9 +90,11 @@ shorthand rule of the visual contract does not apply here.
   binding it is. A `<Slot>` in the tree the contract does not
   declare is listed beside the declared ones, one click from declared. The
   tab never edits the contract's prose; it shows it beside the bindings.
-  When `uidx.json` names no library, the tab offers those the project's
-  dependencies ship — the Custom Elements Manifest convention of a
-  `customElements` field in `package.json` — and writes the choice.
+  When `uidx.json` names no library, the tab links to the Project section of
+  the **Connect** tab, which offers those the project's dependencies ship —
+  the Custom Elements Manifest convention of a `customElements` field in
+  `package.json` — and writes the choice. The Contract tab declares and
+  binds; what `uidx.json` says about the library is Connect's to edit.
 - The tab edits the contract too, through the `contract` patch op: one
   declaration at a time, written in canonical form into its list, the list
   and the region created when absent. "Fill from library" declares what the
@@ -109,7 +111,8 @@ shorthand rule of the visual contract does not apply here.
   component). The code target and conformance read both, so moving to a
   library that spells things differently is a new `headless` entry, not an
   edit to any design. Absent, both default to the conventions the example
-  library follows.
+  library follows. The Connect tab edits them: the profile under Project, and
+  a component's tag, attribute and event names under Names in the library.
 
 ### 4. Declaration in uidx, implementation in code
 

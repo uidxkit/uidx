@@ -132,6 +132,8 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
       response.end(JSON.stringify({ error: 'Open a uidx project to read its headless library.' }))
       return
     }
+    // The library file this request read, for the error body to name.
+    let attempted: string | undefined
     try {
       if (request.method === 'PUT') {
         const origin = request.headers.origin
@@ -149,6 +151,7 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
           response.end(JSON.stringify({ error: 'Name the custom-elements.json to use.' }))
           return
         }
+        attempted = input.path
         await readFile(resolve(found.dir, input.path), 'utf8')
         await writeHeadless(found, input.path)
       } else if (request.method !== 'GET') {
@@ -168,6 +171,7 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
         )
         return
       }
+      attempted = config.manifest
       const raw = await readFile(resolve(found.dir, config.manifest), 'utf8')
       const library: unknown = JSON.parse(raw)
       response.end(
@@ -182,11 +186,19 @@ export function headlessRoutePlugin(manifest: { current: FoundManifest | null })
       )
     } catch (error) {
       response.statusCode = 400
+      // `code` and `path` are for the viewer to word the failure by class
+      // (missing, unreadable, not JSON) instead of quoting the errno text;
+      // `error` stays as it was, for the CLI and older viewers.
+      const code =
+        (error as NodeJS.ErrnoException).code ??
+        (error instanceof SyntaxError ? 'EJSON' : undefined)
       response.end(
         JSON.stringify({
           error: `Could not read the headless library: ${
             error instanceof Error ? error.message : String(error)
           }`,
+          ...(code ? { code } : {}),
+          ...(attempted !== undefined ? { path: attempted } : {}),
         }),
       )
     }
