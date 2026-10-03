@@ -106,9 +106,9 @@ The separate `.uidx/uidx.json` manifest controls which files belong to the docum
 ```
 
 `headless` is optional. It names the headless library's `custom-elements.json`,
-relative to `uidx.json`; with it, the viewer's Contract tab offers the library's
+relative to `uidx.json`; with it, the viewer's Code › Setup view offers the library's
 elements and parts as choices, and `uidx codegen` checks contracts against it.
-Leave it out and the Project section of the viewer's Connect tab offers the
+Leave it out and the Project section of the viewer's Code › Setup view offers the
 libraries your dependencies ship (any package whose `package.json` has a
 `customElements` field) and writes your choice here. The object form binds the same designs to a library that spells
 things differently, without editing a design:
@@ -243,13 +243,15 @@ the label comes from a Field.
   state its look, and the canvas draws the whole set. Select a state on the
   canvas and change it: the viewer writes the row.
 - **Contract.** What the code render exposes, every declaration with its
-  words. The inspector's Contract tab binds components and parts to the
-  library named in `uidx.json`, and edits the contract in place.
+  words. The inspector's Code › Component API view edits the contract and connects
+  visual parts. Code › Setup selects the library element and configures mappings.
 - **Behaviour.** Short bullets that guide the logic without being code.
 - **Models.** For a list, a view model of what each row receives — declared
   once, named by a prop's type, sampled for the canvas, never derived. Any
   layer repeats over a list with `repeat="{items}"`; nested, that is a tree.
-  The viewer's Models face edits every model of the document in one place.
+  The inspector's Data tab connects models to components, repeats layers, and
+  maps fields to text. The Models view edits fields and sample items, with a
+  return action to the layer you were editing.
 
 A placed component can restyle its outer box (fill, stroke, corners, padding,
 opacity, shadow) and colour every text inside with `textFills`, while its

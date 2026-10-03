@@ -190,9 +190,12 @@ const button: Tutorial = {
     },
     {
       id: 'contract',
-      title: 'Open the Contract tab',
-      body: 'The contract says what each use of the Button can change. It already has `label` — the words it shows.',
-      target: '[data-tour="tab-contract"]',
+      title: 'Open the component API',
+      body: 'Open **Code › Component API**. The contract says what each use of the Button can change. It already has `label` — the words it shows.',
+      target: (state) =>
+        state.query('[data-tour="tab-contract"]')
+          ? '[data-tour="tab-contract"]'
+          : '[data-tour="tab-code"]',
       done: (state) => state.query('[data-tour="tab-contract"][aria-pressed="true"]') !== null,
     },
     {
@@ -352,11 +355,13 @@ const switchTutorial: Tutorial = {
     {
       id: 'checked',
       title: 'Add a checked property',
-      body: 'Select **Switch**, open **Contract**. In the add row choose **boolean**, name it `checked`, and click **+**.',
+      body: 'Select **Switch**, open **Code › Component API**. In the add row choose **boolean**, name it `checked`, and click **+**.',
       target: (state) =>
         state.query('[data-field="add-declaration"]')
           ? '[data-field="add-declaration"]'
-          : '[data-tour="tab-contract"]',
+          : state.query('[data-tour="tab-contract"]')
+            ? '[data-tour="tab-contract"]'
+            : '[data-tour="tab-code"]',
       done: (state, memory) =>
         !!madeComponent(state, memory)?.spec?.contract?.props.some(
           (prop) => prop.type === 'boolean',

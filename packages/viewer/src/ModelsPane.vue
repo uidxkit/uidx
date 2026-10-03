@@ -39,6 +39,7 @@ const props = defineProps<{
   pages: readonly { file: string; label: string; suggested: boolean }[]
   /** A model to scroll to and mark, when the author came from a repeat's row. */
   focus?: string | null
+  returnTo?: string
   writable: boolean
 }>()
 
@@ -50,6 +51,7 @@ const emit = defineEmits<{
   /** Renames that carry every type or binding naming them, across pages. */
   renameModel: [from: string, to: string]
   renameField: [model: string, from: string, to: string]
+  return: []
 }>()
 
 const renamingModel = ref<string | null>(null)
@@ -181,6 +183,9 @@ watch(
 <template>
   <div ref="paneEl" class="models-pane">
     <div class="models-content">
+      <button v-if="returnTo" type="button" class="back-to-layer" @click="emit('return')">
+        ← Back to {{ returnTo }}
+      </button>
       <header class="page-heading">
         <div>
           <div class="eyebrow">DESIGN SYSTEM / DATA</div>
@@ -188,9 +193,9 @@ watch(
             Models <span>{{ cards.length }}</span>
           </h1>
           <p>
-            The data your components show. A model has fields — the shape of one item — and items,
-            its content. Repeat a layer for each item of a model, then bind its texts and component
-            properties to the item's fields.
+            Define fields and sample data for your components. On the canvas, open the Data tab to
+            connect a model, repeat a layer, and choose which fields its text displays. Sample items
+            preview the design; your application supplies the data at runtime.
           </p>
         </div>
       </header>
@@ -229,7 +234,7 @@ watch(
         class="undeclared"
         aria-label="Models named but not declared"
       >
-        <div class="section-label"><span>NAMED BY A CONTRACT, DECLARED NOWHERE</span></div>
+        <div class="section-label"><span>MISSING MODELS</span></div>
         <div class="chips">
           <button
             v-for="entry in undeclared"
@@ -247,7 +252,7 @@ watch(
 
       <p v-if="!cards.length" class="empty">
         No models yet. Name one above — a list of contacts is a <code>Contact</code> model — then
-        add its fields and items, and repeat a layer over it.
+        add fields and sample items. Connect it to a component in the Data tab.
       </p>
 
       <section
@@ -334,7 +339,7 @@ watch(
             data-tab="items"
             @click="tabs[card.name] = 'items'"
           >
-            Items <span class="count">{{ itemsOf(card).length }}</span>
+            Sample items <span class="count">{{ itemsOf(card).length }}</span>
           </button>
           <button
             type="button"
@@ -540,6 +545,16 @@ watch(
 </template>
 
 <style scoped>
+.back-to-layer {
+  margin-bottom: 16px;
+  padding: 6px 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
 .tabs {
   display: flex;
   gap: 2px;

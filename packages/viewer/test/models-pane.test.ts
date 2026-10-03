@@ -53,7 +53,7 @@ describe('the Models pane', () => {
     expect(card.find('.where').text()).toBe('this page')
     expect(card.findAll('.uses .chip').map((chip) => chip.text())).toEqual(['ContactOption.item'])
     // Items first: the model's content, one row per item.
-    expect(card.find('[role="tab"][aria-selected="true"]').text()).toContain('Items')
+    expect(card.find('[role="tab"][aria-selected="true"]').text()).toContain('Sample items')
     expect(
       card.findAll('.items tbody input').map((input) => (input.element as HTMLInputElement).value),
     ).toEqual(['a', 'b'])

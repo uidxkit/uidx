@@ -2604,8 +2604,15 @@ id: list
   }
   const json = (body: unknown): Response =>
     new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } })
-  const tab = (wrapper: VueWrapper, name: string) => wrapper.get(`[data-tour="tab-${name}"]`)
+  const tab = (wrapper: VueWrapper, name: string) =>
+    wrapper.get(
+      name === 'code' && wrapper.find('[data-tour="code-preview"]').exists()
+        ? '[data-tour="code-preview"]'
+        : `[data-tour="tab-${name}"]`,
+    )
   async function open(wrapper: VueWrapper, name: string) {
+    if (['contract', 'connect', 'code'].includes(name) && !wrapper.find('.code-views').exists())
+      await wrapper.get('[data-tour="tab-code"]').trigger('click')
     await tab(wrapper, name).trigger('click')
     await flushPromises()
   }
@@ -2619,26 +2626,15 @@ id: list
     connection.value = { headless: null, codegen: null }
   })
 
-  it('draws four tabs that share the strip, each label in its own ellipsizing span', () => {
+  it('draws three task tabs that share the strip, each label in its own ellipsizing span', () => {
     const tabs = shell({}).findAll('.face-toggle button')
     expect(tabs.map((t) => t.attributes('data-tour'))).toEqual([
       'tab-design',
-      'tab-contract',
-      'tab-connect',
+      'tab-data',
       'tab-code',
     ])
-    expect(tabs.map((t) => t.get('.face-label').text())).toEqual([
-      'Design',
-      'Contract',
-      'Connect',
-      'Code',
-    ])
-    expect(tabs.map((t) => t.attributes('aria-pressed'))).toEqual([
-      'true',
-      'false',
-      'false',
-      'false',
-    ])
+    expect(tabs.map((t) => t.get('.face-label').text())).toEqual(['Design', 'Data', 'Code'])
+    expect(tabs.map((t) => t.attributes('aria-pressed'))).toEqual(['true', 'false', 'false'])
     expect(tabs.some((t) => t.find('.badge').exists())).toBe(false)
   })
 
@@ -2695,17 +2691,19 @@ id: list
       const empty = wrapper.get('.empty-state[data-empty="none"]')
       expect(empty.get('.empty-title').text()).toBe('No component selected')
       expect(empty.get('details.about summary').text()).toContain(
-        `About ${name[0]!.toUpperCase()}${name.slice(1)}`,
+        `About ${{ contract: 'Component API', connect: 'Setup', code: 'Code' }[name]}`,
       )
     }
   })
 
-  it('words a library it cannot read once, on every tab, and dots only Connect', async () => {
+  it('surfaces setup problems on Code and identifies Setup as their source', async () => {
     const wrapper = shell({ headlessError: MISSING })
+    expect(wrapper.get('[data-tour="tab-code"] .badge').attributes('data-tone')).toBe('danger')
+    await open(wrapper, 'connect')
     const connect = tab(wrapper, 'connect').get('.badge')
     expect(connect.attributes('data-tone')).toBe('danger')
     expect(connect.attributes('title')).toBe('Library file not found')
-    expect(tab(wrapper, 'connect').attributes('title')).toBe('Connect: Library file not found')
+    expect(tab(wrapper, 'connect').attributes('title')).toBe('Setup: Library file not found')
     // Unchecked parts are not problems; the Code tab has not rendered yet.
     expect(tab(wrapper, 'contract').find('.badge').exists()).toBe(false)
     expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
@@ -2747,7 +2745,7 @@ id: list
     await wrapper.get('button.status-bar').trigger('click')
     const fix = wrapper
       .findAll('.status-actions .link-button')
-      .find((b) => b.text() === 'Fix in Connect')!
+      .find((b) => b.text() === 'Fix in Setup')!
     await fix.trigger('click')
     expect(tab(wrapper, 'connect').attributes('aria-pressed')).toBe('true')
     expect(wrapper.getComponent(ConnectSection).props('focus')).toMatchObject({
@@ -2781,6 +2779,7 @@ id: list
   it('puts a uidx.json that will not load on Connect and Code, and a refused profile under its field', async () => {
     connectionError.value = 'Unexpected token } in JSON at position 48'
     const wrapper = shell({})
+    await open(wrapper, 'connect')
     expect(tab(wrapper, 'connect').get('.badge').attributes('title')).toBe(
       "uidx.json isn't valid JSON",
     )
@@ -2887,7 +2886,7 @@ id: list
     expect(tab(wrapper, 'contract').attributes('aria-pressed')).toBe('true')
   })
 
-  it("never dots Code for the library, before or after Code renders, nor once it's back", async () => {
+  it("marks the main Code tab for setup problems while keeping Preview's own status separate", async () => {
     headlessFailure.value = classifyFailure(new Error(MISSING))
     const wrapper = shell({ headlessError: MISSING })
     vi.stubGlobal(
@@ -2900,7 +2899,7 @@ id: list
           }),
       ),
     )
-    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
+    expect(tab(wrapper, 'code').find('.badge').exists()).toBe(true)
     await open(wrapper, 'code')
     await flushPromises()
     expect(wrapper.get('.status-title').text()).toBe('Library file not found')
@@ -2910,7 +2909,7 @@ id: list
     await wrapper.setProps({ headlessError: '' })
     await flushPromises()
     expect(tab(wrapper, 'code').find('.badge').exists()).toBe(false)
-    expect(tab(wrapper, 'code').attributes('title')).toBe('Code')
+    expect(tab(wrapper, 'code').attributes('title')).toBe('Preview')
   })
 
   it('drops the Code mark when Code is left before it re-renders an edit', async () => {

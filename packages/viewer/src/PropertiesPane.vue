@@ -15,6 +15,7 @@ import { LENGTH_FIELD_CONTEXT } from './length-field-context'
 import ContractSection from './ContractSection.vue'
 import CodeSection from './CodeSection.vue'
 import ConnectSection from './ConnectSection.vue'
+import DataSection from './DataSection.vue'
 import InspectorEmpty from './InspectorEmpty.vue'
 import InspectorStatus from './InspectorStatus.vue'
 import {
@@ -171,10 +172,8 @@ import PropertyDialog from './PropertyDialog.vue'
 import PropertyLink from './PropertyLink.vue'
 import ComponentVariantsSection from './ComponentVariantsSection.vue'
 import InstancePropsSection from './InstancePropsSection.vue'
-import PreviewDataSection from './PreviewDataSection.vue'
 import SlotCardField from './SlotCardField.vue'
 import SlotSettingsSection from './SlotSettingsSection.vue'
-import RepeatSection from './RepeatSection.vue'
 import { slotCards } from './slot-content'
 import { FieldIcon } from './field-icons'
 import type { SideValues } from './edit-models'
@@ -326,16 +325,13 @@ const emit = defineEmits<{
   generateCode: []
 }>()
 
-/**
- * Which face the inspector shows. Design is the scene properties; Contract,
- * Connect and Code are what the layer is to code — what its component
- * declares, how it is wired to a library, and what the generator makes of it
- * (ADR 0013 §3). Faces rather than more sections, because they answer
- * different questions about the same layer, and Figma's Design / Dev split is
- * the precedent authors already know. Pane-local: the choice is about how to
- * look, not what is open.
- */
-const face = ref<'design' | Face>('design')
+/** Design styles a layer; Data connects its content; Code groups developer tools. */
+const face = defineModel<'design' | 'data' | Face>('face', { default: 'design' })
+const codeFace = ref<Face>('code')
+const inCode = computed(() => face.value !== 'design' && face.value !== 'data')
+watch(face, (value) => {
+  if (value !== 'design' && value !== 'data') codeFace.value = value
+})
 
 /**
  * The pane's scroller. A tab opens at its top, its status line first, not at
@@ -350,9 +346,13 @@ watch(face, () => {
 /** The tab strip, in order. */
 const FACES = [
   { id: 'design', label: 'Design' },
-  { id: 'contract', label: 'Contract' },
-  { id: 'connect', label: 'Connect' },
+  { id: 'data', label: 'Data' },
   { id: 'code', label: 'Code' },
+] as const
+const CODE_VIEWS = [
+  { id: 'code', label: 'Preview' },
+  { id: 'contract', label: 'Component API' },
+  { id: 'connect', label: 'Setup' },
 ] as const
 const TABS: readonly Face[] = ['contract', 'connect', 'code']
 
@@ -580,7 +580,11 @@ function emptyFor(tab: Face): EmptyState | null {
     }
   return null
 }
-const tabEmpty = computed(() => (face.value === 'design' ? null : emptyFor(face.value)))
+const tabEmpty = computed(() =>
+  face.value === 'design' || face.value === 'data' ? null : emptyFor(face.value),
+)
+
+const codeDot = computed(() => tabDot.value.connect ?? tabDot.value.code ?? tabDot.value.contract)
 
 /**
  * Runs what a status line, an empty state or a tab's link asked for. Actions
@@ -597,6 +601,13 @@ function act(action: MessageAction): void {
       break
     case 'retry-code':
       codeReload.value += 1
+      break
+    case 'open-setup':
+      projectFocus.value = null
+      face.value = 'connect'
+      break
+    case 'open-data':
+      face.value = 'data'
       break
     case 'open-project':
       face.value = 'connect'
@@ -2256,21 +2267,17 @@ function onDetach(prop: string, value: JsonValue): void {
             :key="tab.id"
             type="button"
             :data-tour="`tab-${tab.id}`"
-            :aria-pressed="face === tab.id"
-            :title="
-              tab.id !== 'design' && tabDot[tab.id]
-                ? `${tab.label}: ${tabDot[tab.id]!.title}`
-                : tab.label
-            "
-            @click="face = tab.id"
+            :aria-pressed="tab.id === 'code' ? inCode : face === tab.id"
+            :title="tab.id === 'code' && codeDot ? `Code: ${codeDot.title}` : tab.label"
+            @click="face = tab.id === 'code' ? codeFace : tab.id"
           >
             <span class="face-label">{{ tab.label }}</span>
             <span
-              v-if="tab.id !== 'design' && tabDot[tab.id]"
+              v-if="tab.id === 'code' && codeDot"
               class="badge"
-              :data-tone="tabDot[tab.id]!.tone"
-              :title="tabDot[tab.id]!.title"
-              ><span class="sr-only">{{ tabDot[tab.id]!.label }}</span></span
+              :data-tone="codeDot.tone"
+              :title="codeDot.title"
+              ><span class="sr-only">{{ codeDot.label }}</span></span
             >
           </button>
         </nav>
@@ -2317,11 +2324,65 @@ function onDetach(prop: string, value: JsonValue): void {
           ><span class="sr-only">{{ COPY.readOnly }}</span></span
         >
       </div>
+      <div v-if="active && subject.name && subject.kind !== 'component'" class="owner-context">
+        <span>{{ subject.kind === 'instance' ? 'Instance of' : 'Layer in' }}</span>
+        <button
+          v-if="subject.definition"
+          type="button"
+          :title="`Open component ${subject.name}`"
+          @click="emit('openComponent', subject.name)"
+        >
+          {{ subject.name }}
+        </button>
+        <span v-else>{{ subject.name }}</span>
+      </div>
+      <nav v-if="inCode" class="code-views" aria-label="Code view">
+        <button
+          v-for="tab in CODE_VIEWS"
+          :key="tab.id"
+          type="button"
+          :data-tour="tab.id === 'code' ? 'code-preview' : `tab-${tab.id}`"
+          :aria-pressed="face === tab.id"
+          :title="tabDot[tab.id] ? `${tab.label}: ${tabDot[tab.id]!.title}` : tab.label"
+          @click="face = tab.id"
+        >
+          {{ tab.label }}
+          <span
+            v-if="tabDot[tab.id]"
+            class="badge"
+            :data-tone="tabDot[tab.id]!.tone"
+            :title="tabDot[tab.id]!.title"
+          >
+            <span class="sr-only">{{ tabDot[tab.id]!.label }}</span>
+          </span>
+        </button>
+      </nav>
     </header>
 
+    <section v-if="face === 'data'" class="editor inspector-tab">
+      <DataSection
+        :key="active?.address ?? 'empty'"
+        :doc="doc"
+        :node="active"
+        :selection-count="selection?.length ?? 0"
+        :models="models"
+        :components="components"
+        :pages="pages"
+        :preview-index="previewIndex ?? 0"
+        :writable="writable !== false"
+        :can-make-component="canMakeComponent"
+        @patches="emit('patches', $event)"
+        @select="emit('select', $event)"
+        @open-model="emit('openModel', $event)"
+        @open-component="emit('openComponent', $event)"
+        @preview="emit('previewSample', $event)"
+        @design="face = 'design'"
+        @make-component="emit('makeComponent')"
+      />
+    </section>
     <!-- Contract, Connect and Code share one frame: the status line, the empty
          state, then the tab itself inside the editor that styles its controls. -->
-    <template v-if="face !== 'design'">
+    <template v-else-if="face !== 'design'">
       <InspectorStatus
         :key="face"
         v-model:open="statusOpen[face]"
@@ -2555,6 +2616,14 @@ function onDetach(prop: string, value: JsonValue): void {
         its content, and the geometry and its outer box below are the only
         other things an instance lets anyone change (ADR 0018).
       -->
+        <button
+          v-if="active.element === 'Instance'"
+          type="button"
+          class="data-shortcut"
+          @click="face = 'data'"
+        >
+          Edit properties and data →
+        </button>
         <!--
           A slot inside a component, set up by the component's author: what it
           repeats over, what it draws, what it takes. A fill is the other side
@@ -2578,6 +2647,7 @@ function onDetach(prop: string, value: JsonValue): void {
           v-if="active.element === 'Instance'"
           :doc="doc"
           :instance="active"
+          view="design"
           :definition="definitionFor(active)"
           :components="components"
           :models="models"
@@ -2589,46 +2659,6 @@ function onDetach(prop: string, value: JsonValue): void {
           @open-component="emit('openComponent', $event)"
           @open-model="emit('openModel', $event)"
           @preview="emit('previewSample', $event)"
-        />
-
-        <!--
-        A component's states come before its properties: a state is the coarser
-        fact — which button this is, before what it says.
-      -->
-        <!--
-          Repeat, for any layer inside a component (ADR 0017 §2): the layer and
-          what it holds become the template drawn once per item. A slot has it
-          inside its own panel above; a state's derived layer repeats as its
-          base does.
-        -->
-        <div
-          v-if="
-            active.element !== 'Slot' &&
-            active.element !== 'Component' &&
-            doc &&
-            !derivedTarget(doc, active.address)
-          "
-          class="repeat-host"
-        >
-          <RepeatSection
-            :doc="doc"
-            :node="active"
-            :components="components"
-            :models="models"
-            :writable="writable !== false"
-            @patches="emit('patches', $event)"
-            @select="emit('select', $event)"
-            @open-model="emit('openModel', $event)"
-          />
-        </div>
-
-        <PreviewDataSection
-          v-if="active.element === 'Component'"
-          :component="active"
-          :models="models"
-          :index="previewIndex ?? 0"
-          @preview="emit('previewSample', $event)"
-          @open-model="emit('openModel', $event)"
         />
 
         <ComponentVariantsSection
@@ -3286,6 +3316,62 @@ function onDetach(prop: string, value: JsonValue): void {
 </template>
 
 <style scoped>
+.data-shortcut {
+  width: 100%;
+  padding: 8px;
+  margin: 0 0 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--raised);
+  color: var(--accent);
+  font: inherit;
+  cursor: pointer;
+}
+.owner-context {
+  display: flex;
+  gap: 5px;
+  min-width: 0;
+  padding: 0 var(--section-pad) 10px;
+  color: var(--text-faint);
+  font-size: var(--ui-size-sm);
+}
+.owner-context button {
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.code-views {
+  display: flex;
+  gap: 4px;
+  padding: 0 var(--section-pad) 10px;
+}
+.code-views button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+  padding: 6px 2px;
+  border: 0;
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font: inherit;
+  font-size: var(--ui-size-sm);
+  cursor: pointer;
+}
+.code-views button[aria-pressed='true'] {
+  background: var(--raised);
+  color: var(--text);
+}
+
 .root-size-setting {
   padding: var(--pad);
 }
@@ -3366,7 +3452,7 @@ function onDetach(prop: string, value: JsonValue): void {
 }
 /*
  * The same toggle the left rail uses for Elements / Tokens / Fonts, the
- * pane's width: four tabs share it, each its label's width plus an equal
+ * pane's width: three tabs share it, each its label's width plus an equal
  * share of the rest, and a label ellipsizes before the strip overflows.
  */
 .face-toggle {

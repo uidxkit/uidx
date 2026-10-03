@@ -30,10 +30,8 @@ import {
   PLACEHOLDER,
   libraryOffers,
   scaffoldOffers,
-  setImplements,
   type LibraryOffer,
   setPart,
-  setReceives,
   undeclare,
 } from './contract-edits'
 import type { ModelIndex } from '@uidx/schema'
@@ -56,7 +54,6 @@ import { parentOf } from './layer-moves'
 import InspectorEmpty from './InspectorEmpty.vue'
 import InspectorSection from './InspectorSection.vue'
 import SlotSettingsSection from './SlotSettingsSection.vue'
-import RepeatSection from './RepeatSection.vue'
 
 /**
  * The Contract tab: where the visual tree is bound to its code render
@@ -207,10 +204,6 @@ const members = computed(() => {
   }
 })
 
-/** A Headless element option's text: the tag, marked when the library lacks it. */
-const elementLabel = (option: { tag: string; known: boolean }): string =>
-  option.known ? option.tag : COPY.notInLibrary(option.tag)
-
 /** `N` slots, and how many of them no Slot layer draws yet. */
 const slotsMeta = computed(() => {
   if (view.value.kind !== 'component') return undefined
@@ -293,11 +286,6 @@ function send(patches: UidxPatch[]): void {
   if (patches.length) emit('patches', patches)
 }
 
-function chooseElement(tag: string): void {
-  if (view.value.kind !== 'component') return
-  send(setImplements(view.value.component, tag || null))
-}
-
 function bind(part: string, address: string): void {
   if (view.value.kind !== 'component' || !props.doc || !address) return
   send(bindPart(props.doc, view.value.component, part, address))
@@ -312,24 +300,6 @@ function unbind(address: string): void {
 function choosePart(part: string): void {
   if (view.value.kind !== 'part') return
   send(setPart(view.value.node, part || null))
-}
-
-/**
- * The repeat rows (ADR 0017 §2) belong to any layer inside a component: a
- * part, a slot, or an instance repeats the same way, so one block serves the
- * three views rather than each carrying its own.
- */
-const repeatable = computed(() => {
-  const current = view.value
-  return current.kind === 'part' || current.kind === 'slot' || current.kind === 'instance'
-    ? current
-    : null
-})
-
-/** What an instance hands one of its definition's props; empty leaves the inference to stand. */
-function chooseReceives(prop: string, alias: string): void {
-  if (view.value.kind !== 'instance') return
-  send(setReceives(view.value.node, prop, alias || null))
 }
 
 /** A `<Slot>` in the tree the contract does not declare yet, declared in one click. */
@@ -1467,46 +1437,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         :info="INFO.codeBinding"
       >
         <div class="row stacked" data-field="implements" :data-set="view.implementsValue !== null">
-          <!-- Named as Connect names it: one value, one name in both tabs. -->
-          <span class="name" title="The headless element this component is a render of">
-            Headless element
-          </span>
-          <!-- A select over the library's elements; a typed tag without one, or
-               while it cannot be read, so the tag can still be changed. -->
-          <select
-            v-if="library"
-            class="pick"
-            :value="view.implementsValue ?? ''"
-            :disabled="!writable"
-            aria-label="Headless element"
-            @change="chooseElement(($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">None</option>
-            <option v-for="option in view.rootOptions" :key="option.tag" :value="option.tag">
-              {{ elementLabel(option) }}
-            </option>
-          </select>
-          <input
-            v-else
-            class="text"
-            :value="view.implementsValue ?? ''"
-            :disabled="!writable"
-            aria-label="Headless element"
-            placeholder="e.g. hwc-button"
-            @change="chooseElement(($event.target as HTMLInputElement).value.trim())"
-          />
-          <button
-            v-if="view.implementsValue !== null"
-            type="button"
-            class="reset"
-            :disabled="!writable"
-            aria-label="Clear headless element"
-            title="Implement nothing"
-            @click="chooseElement('')"
-          >
-            ↺
+          <span class="name">Headless element</span>
+          <span class="type">{{ view.implementsValue ?? 'Not connected' }}</span>
+          <button type="button" class="link-button" @click="emit('act', ACTION.setupComponent)">
+            Change in Setup
           </button>
-          <span v-else class="reset-spacer" />
         </div>
         <p v-if="!library && !paused" class="hint" data-field="choose-library">
           {{ COPY.connectLibrary }}
@@ -1773,63 +1708,11 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
         word written, as the code target passes it. The rows say what each
         prop receives, mark what was inferred, and let the use say otherwise.
       -->
-      <InspectorSection v-else title="Receives" :meta="`from ${view.definition.name}`">
-        <template #actions>
-          <button
-            type="button"
-            class="link-button"
-            :title="`Select ${view.definition.name} to change what it declares`"
-            :aria-label="`Select ${view.definition.name}`"
-            @click="emit('select', view.definition.address)"
-          >
-            Select component
-          </button>
-        </template>
-        <div
-          v-for="row in view.receives"
-          :key="row.prop"
-          class="row pick-row"
-          :data-receives="row.prop"
-          :data-set="row.from !== null"
-          :data-inferred="!row.explicit && row.from !== null"
-        >
-          <span class="name" :title="`${row.prop}: ${row.type}`">
-            <span class="name-text">{{ row.prop }}</span>
-          </span>
-          <select
-            v-if="row.options.length"
-            class="pick"
-            :value="row.explicit ? row.from : ''"
-            :disabled="!writable"
-            :aria-label="`${row.prop} receives`"
-            @change="chooseReceives(row.prop, ($event.target as HTMLSelectElement).value)"
-          >
-            <option value="">
-              {{ row.from && !row.explicit ? `${row.from} · inferred` : 'Nothing' }}
-            </option>
-            <option v-for="option in row.options" :key="option" :value="option">
-              {{ option }}
-            </option>
-          </select>
-          <span v-else class="type" :title="`Nothing in scope is a ${row.type}`">
-            {{ row.from ?? 'nothing in scope' }}
-          </span>
-          <button
-            v-if="row.explicit"
-            type="button"
-            class="reset"
-            :disabled="!writable"
-            :aria-label="`Reset ${row.prop}`"
-            title="Back to what the repeat implies"
-            @click="chooseReceives(row.prop, '')"
-          >
-            ↺
-          </button>
-          <span v-else class="reset-spacer" />
-        </div>
-        <p v-if="!view.receives.length" class="hint">
-          {{ view.definition.name }} has no properties.
-        </p>
+      <InspectorSection v-else title="Data connections" :meta="view.definition.name">
+        <p class="hint">Choose the values and model fields this instance receives in Data.</p>
+        <button type="button" class="link-button" @click="emit('act', ACTION.openData)">
+          Open Data
+        </button>
       </InspectorSection>
     </template>
 
@@ -1840,29 +1723,6 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
       :action="makeComponent"
       @act="emit('act', $event)"
     />
-
-    <!--
-      Repeating is per layer (ADR 0017 §2), the way Vue's v-for and Plasmic's
-      "repeat this element" are: any layer inside a component may draw itself
-      once per item of a list, and its parent is the outer structure. So the
-      rows sit below whichever view the layer has, not in a view of their own:
-      the same section the Design tab shows, ruled off like the tab's own.
-    -->
-    <div
-      v-if="repeatable && repeatable.component && view.kind !== 'slot'"
-      class="bleed repeat-wrap"
-    >
-      <RepeatSection
-        :doc="doc"
-        :node="repeatable.node"
-        :components="components"
-        :models="models"
-        :writable="writable"
-        @patches="emit('patches', $event)"
-        @select="emit('select', $event)"
-        @open-model="emit('openModel', $event)"
-      />
-    </div>
   </section>
 </template>
 

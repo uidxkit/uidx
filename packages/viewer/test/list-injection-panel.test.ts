@@ -5,6 +5,7 @@ import { modelIndex } from '@uidx/schema'
 import InstancePropsSection from '../src/InstancePropsSection.vue'
 import PreviewDataSection from '../src/PreviewDataSection.vue'
 import PropertiesPane from '../src/PropertiesPane.vue'
+import DataSection from '../src/DataSection.vue'
 import SlotSettingsSection from '../src/SlotSettingsSection.vue'
 import { pickPatches, slotCards } from '../src/slot-content'
 
@@ -322,18 +323,26 @@ describe('setting a slot up in its own component', () => {
     })
   }
 
-  it('shows the repeat as a switch and a model, like any layer', () => {
+  it('keeps repeat editing out of slot appearance settings', () => {
     const wrapper = settings(LIST, 'List#item')
-    expect(wrapper.find('[role="switch"]').attributes('aria-checked')).toBe('true')
-    expect(wrapper.find('[data-field="model"]').text()).toContain('Person')
-    expect(wrapper.find('[data-field="model"]').text()).toContain('4 items')
+    expect(wrapper.find('[data-field="repeat"]').exists()).toBe(false)
     expect(wrapper.find('[data-field="receives"]').exists()).toBe(false)
     expect(wrapper.find('[data-field="accepts"]').exists()).toBe(false)
   })
 
-  it('stops repeating with the switch', async () => {
-    const wrapper = settings(LIST, 'List#item')
-    await wrapper.find('[role="switch"]').trigger('click')
+  it('stops a slot repeating from Data', async () => {
+    const wrapper = mount(DataSection, {
+      props: {
+        doc: LIST,
+        node: resolve(LIST.tree, 'List#item'),
+        models,
+        components,
+        selectionCount: 1,
+        previewIndex: 0,
+        writable: true,
+      },
+    })
+    await wrapper.get('.repeat-section .head .link').trigger('click')
     expect(wrapper.emitted('patches')).toEqual([
       [[{ op: 'remove', address: 'List#item', prop: 'repeat' }]],
     ])

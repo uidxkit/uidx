@@ -44,6 +44,8 @@ const props = defineProps<{
   /** Which sample row the canvas previews a lone item component with. */
   previewIndex?: number
   writable: boolean
+  /** Design keeps appearance and slots; Data holds values and model connections. */
+  view?: 'design' | 'data'
 }>()
 
 const emit = defineEmits<{
@@ -171,7 +173,7 @@ function resetAll(): void {
       and the way to its definition — Builder's symbol header and Figma's
       "Go to main component" in one place, before anything to change.
     -->
-    <div class="component-card" :data-missing="!definition || undefined">
+    <div v-if="view !== 'data'" class="component-card" :data-missing="!definition || undefined">
       <ComponentThumb :name="componentName" />
       <span class="card-text">
         <span class="card-name">{{ componentName }}</span>
@@ -227,7 +229,7 @@ function resetAll(): void {
       </span>
     </p>
 
-    <template v-if="rows.length">
+    <template v-if="rows.length && view !== 'design'">
       <header class="head"><span class="title">Properties</span></header>
       <div
         v-for="row in rows"
@@ -342,7 +344,7 @@ function resetAll(): void {
       — Builder's Data tab, kept beside the content it feeds rather than on a
       tab of its own, because on a page there is only one answer to choose.
     -->
-    <template v-if="data.length">
+    <template v-if="data.length && view !== 'design'">
       <header class="head"><span class="title">Data</span></header>
       <div
         v-for="row in data"
@@ -447,7 +449,7 @@ function resetAll(): void {
       gesture of ADR 0007 and ADR 0017 §2), with what the slot does — repeat
       over a list — said on the card rather than discovered on the canvas.
     -->
-    <template v-if="cards.length">
+    <template v-if="cards.length && view !== 'data'">
       <header class="head"><span class="title">Slots</span></header>
       <SlotCardField
         v-for="card in cards"

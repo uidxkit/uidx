@@ -292,6 +292,8 @@ const undeclared = computed(() =>
 )
 /** The model a repeat's row sent the author to: marked and scrolled to on the face. */
 const focusedModel = ref<string | null>(null)
+const inspectorFace = ref<'design' | 'data' | 'contract' | 'connect' | 'code'>('design')
+const modelReturn = ref<{ file: string; selection: string[]; label: string } | null>(null)
 
 /** A plan built in the viewer: sent as one undo step, or its refusal shown. */
 function commitRefusable(
@@ -315,7 +317,23 @@ function onModelOpen(file: string, component?: string): void {
 function openModel(name: string): void {
   focusedModel.value = name
   const now = view.value
-  if (now.kind !== 'home' && now.kind !== 'models') openView({ kind: 'models', file: now.file })
+  if (now.kind !== 'home' && now.kind !== 'models') {
+    modelReturn.value = {
+      file: now.file,
+      selection: [...selection.value],
+      label: selection.value[0]?.split(/[#/]/).at(-1) ?? 'canvas',
+    }
+    openView({ kind: 'models', file: now.file })
+  }
+}
+
+function returnFromModels(): void {
+  const target = modelReturn.value
+  if (!target) return
+  openView({ kind: 'page', file: target.file })
+  selection.value = target.selection
+  inspectorFace.value = 'data'
+  modelReturn.value = null
 }
 
 /**
@@ -2488,9 +2506,11 @@ onUnmounted(() => socket.close())
           :undeclared="undeclared"
           :pages="modelPages"
           :focus="focusedModel"
+          :return-to="modelReturn?.label"
           :writable="connection === 'open'"
           @edit="onModelEdit"
           @open="onModelOpen"
+          @return="returnFromModels"
           @rename-model="(from, to) => commitRefusable(renameModel(pages, from, to))"
           @rename-field="(model, from, to) => commitRefusable(renameField(pages, model, from, to))"
         />
@@ -2610,6 +2630,7 @@ onUnmounted(() => socket.close())
         </ErrorBoundary>
         <ErrorBoundary pane="Inspector">
           <PropertiesPane
+            v-model:face="inspectorFace"
             :doc="sceneDoc"
             :selection="selection"
             :tokens="panelTokens"

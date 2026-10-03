@@ -28,6 +28,8 @@ export interface MessageAction {
     | 'retry-library'
     | 'retry-config'
     | 'retry-code'
+    | 'open-data'
+    | 'open-setup'
     | 'open-project'
     | 'open-contract'
     | 'select'
@@ -220,15 +222,17 @@ function transportDetail(code: Failure['code']): string | null {
 
 /** The actions the tabs share, worded once. */
 export const ACTION = {
+  openData: { label: 'Open Data', run: 'open-data' },
+  setupComponent: { label: 'Change in Setup', run: 'open-setup' },
   retryLibrary: { label: 'Retry', run: 'retry-library' },
   retryConfig: { label: 'Retry', run: 'retry-config' },
   retryCode: { label: 'Retry', run: 'retry-code' },
   chooseLibrary: { label: 'Choose library', run: 'open-project', arg: 'library' },
-  fixInConnect: { label: 'Fix in Connect', run: 'open-project', arg: 'library' },
-  openConnect: { label: 'Open Connect', run: 'open-project', arg: 'library' },
+  fixInConnect: { label: 'Fix in Setup', run: 'open-project', arg: 'library' },
+  openConnect: { label: 'Open Setup', run: 'open-project', arg: 'library' },
   setFolder: { label: 'Set folder', run: 'open-project', arg: 'output' },
   changeFolder: { label: 'Change folder', run: 'open-project', arg: 'output' },
-  openContract: { label: 'Open contract', run: 'open-contract' },
+  openContract: { label: 'Open Component API', run: 'open-contract' },
   showParts: { label: 'Show', run: 'open-contract' },
   makeComponent: { label: 'Make component', run: 'make-component' },
 } as const satisfies Record<string, MessageAction>
@@ -621,12 +625,12 @@ export const noFiles = (component: string): EmptyCopy => ({
 /** The disclosures under the nothing-selected state: what each tab is for. */
 export const ABOUT: Record<Face, { label: string; text: string }> = {
   contract: {
-    label: 'About Contract',
+    label: 'About Component API',
     text: 'The contract is what an instance of a component can change without reaching inside: its properties, events, slots and states. Select a layer inside a component to name the part of the headless element it draws.',
   },
   connect: {
-    label: 'About Connect',
-    text: 'Connect ties a component to code: the headless element it implements, the names the library uses, and an existing React component to render with. Project settings name the library and where generated code goes.',
+    label: 'About Setup',
+    text: 'Setup connects a component to code: the headless element it implements, the names the library uses, and an existing React component to render with. Project settings name the library and where generated code goes.',
   },
   code: {
     label: 'About Code',

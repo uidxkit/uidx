@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
+import { enableAutoUnmount, mount } from '@vue/test-utils'
 import { parseOrThrow, resolve } from '@uidx/format'
 import { modelIndex } from '@uidx/schema'
 import RepeatSection from '../src/RepeatSection.vue'
 import InstancePropsSection from '../src/InstancePropsSection.vue'
 import { dataRows, rowBindingFor, scopesInside } from '../src/instance-data'
+
+enableAutoUnmount(afterEach)
 
 /**
  * Repeat, kept simple (ADR 0017 §2): a switch on any layer, then a model.
@@ -80,23 +82,24 @@ const at = (address: string, doc = TEAM) =>
     attachTo: document.body,
   })
 const choose = async (wrapper: ReturnType<typeof at>, model: string) => {
-  await wrapper.find('[role="switch"]').trigger('click')
+  if (wrapper.find('.nested-repeat').exists()) await wrapper.get('.nested-repeat').trigger('click')
+  await wrapper.find('.model-trigger').trigger('click')
   await wrapper.find(`.model-popup [data-model="${model}"]`).trigger('click')
 }
 
-describe('repeating a layer: a switch, then a model', () => {
+describe('repeating a layer: choose data, then repeat', () => {
   it('shows the model and how many items it holds for a repeated layer', () => {
     const row = at('Team#row')
-    expect(row.find('[role="switch"]').attributes('aria-checked')).toBe('true')
+    expect(row.attributes('data-set')).toBe('true')
     expect(row.find('[data-field="model"]').text()).toContain('Person')
-    expect(row.find('[data-field="model"]').text()).toContain('3 items')
+    expect(row.find('[data-field="model"]').text()).toContain('3 sample items')
     row.unmount()
   })
 
-  it('lists every model with its item count and fields when switched on', async () => {
+  it('lists every model before making a change', async () => {
     const footer = at('Team#footer')
-    expect(footer.find('[role="switch"]').attributes('aria-checked')).toBe('false')
-    await footer.find('[role="switch"]').trigger('click')
+    expect(footer.attributes('data-set')).toBe('false')
+    await footer.find('.model-trigger').trigger('click')
     const rows = footer.findAll('.model-popup [data-model]')
     expect(rows.map((row) => row.attributes('data-model'))).toEqual(['Person', 'Tag'])
     expect(rows[0]!.text()).toContain('id · name · tags')
@@ -167,9 +170,35 @@ id: bare
     cell.unmount()
   })
 
-  it('stops repeating when switched off', async () => {
+  it('canceling the picker leaves the layer unchanged', async () => {
+    const footer = at('Team#footer')
+    await footer.get('.model-trigger').trigger('click')
+    await footer.get('.model-popup input').trigger('keydown', { key: 'Escape' })
+    expect(footer.find('.model-popup').exists()).toBe(false)
+    expect(footer.attributes('data-set')).toBe('false')
+    expect(footer.emitted('patches')).toBeUndefined()
+  })
+
+  it('asks which list to use when two lists share a model', async () => {
+    const two = parseOrThrow(
+      TEAM.source.replace(
+        '</Props>',
+        '<Prop name="guests" type="Person[]">Guests.</Prop>\n</Props>',
+      ),
+    )
+    const footer = at('Team#footer', two)
+    await choose(footer, 'Person')
+    expect(footer.emitted('patches')).toBeUndefined()
+    expect(footer.text()).toContain('Which Person list?')
+    await footer.get('[aria-label="Repeat list source"]').setValue('guests')
+    expect(footer.emitted('patches')).toEqual([
+      [[{ op: 'add', address: 'Team#footer', prop: 'repeat', value: '{guests}' }]],
+    ])
+  })
+
+  it('stops repeating explicitly', async () => {
     const row = at('Team#row')
-    await row.find('[role="switch"]').trigger('click')
+    await row.find('.head .link').trigger('click')
     expect(row.emitted('patches')).toEqual([
       [[{ op: 'remove', address: 'Team#row', prop: 'repeat' }]],
     ])
@@ -320,7 +349,7 @@ id: roster
       },
       attachTo: document.body,
     })
-    await row.find('[role="switch"]').trigger('click')
+    await row.find('.model-trigger').trigger('click')
     await row.find('.model-popup [data-model="Person"]').trigger('click')
     expect(row.emitted('patches')).toEqual([
       [

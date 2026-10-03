@@ -7,20 +7,17 @@ import { contractView, declare, isPlaceholder, PLACEHOLDER } from './contract-ed
 import type { HeadlessLibrary } from './headless'
 import { COPY } from './inspector-messages'
 import { LAYER_ICONS } from './layer-icons'
-import RepeatSection from './RepeatSection.vue'
 import SlotContentPopup from './SlotContentPopup.vue'
 import { defaultContentPatches, definitionSlotCard, type SlotPick } from './slot-content'
 
 /**
- * A slot, as the author of its component sets it up, in three choices:
+ * A slot, as the author of its component sets it up, in two choices:
  *
  * 1. what the slot is for (its contract declaration),
- * 2. whether it repeats for each item of a model — the same switch and model
- *    picker every layer has (ADR 0017 §2),
- * 3. what it draws when a use says nothing (its default content).
+ * 2. what it draws when a use says nothing (its default content).
  *
  * What may fill it (`accepts`) stays on the Contract tab with the rest of the
- * contract; this panel is the everyday part.
+ * contract; repeating the slot is in Data.
  */
 const props = defineProps<{
   doc: UidxDocument | null
@@ -110,21 +107,6 @@ function pickDefault(pick: SlotPick): void {
         @change="redeclare({ description: ($event.target as HTMLTextAreaElement).value.trim() })"
       />
     </label>
-
-    <!-- 2. Repeat for each item of a model: the same switch any layer has. -->
-    <div class="group">
-      <RepeatSection
-        :doc="doc"
-        :node="node"
-        :components="components"
-        :models="models"
-        :writable="writable"
-        for-slot
-        @patches="emit('patches', $event)"
-        @select="emit('select', $event)"
-        @open-model="emit('openModel', $event)"
-      />
-    </div>
 
     <!-- 4. What it draws when a use says nothing -->
     <div v-if="card" class="group" data-field="default">

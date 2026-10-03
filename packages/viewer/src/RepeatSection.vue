@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import type { UidxDocument, UidxNode, UidxPatch } from '@uidx/format'
 import type { ModelIndex } from '@uidx/schema'
 import { setRepeat } from './contract-edits'
@@ -10,15 +10,9 @@ import { repeatOverModel } from './repeat-edits'
 import { repeatView } from './repeat-view'
 
 /**
- * Repeat, kept to the two choices a designer makes (ADR 0017 §2):
- *
- * 1. this layer repeats — a switch;
- * 2. for each item of which model — picked like a token.
- *
- * The layer and everything in it is then drawn once per item of the model,
- * and its texts and component properties are bound to the item's fields with
- * the same bind button tokens use. Which list prop carries the items is
- * bookkeeping for code, done here without asking.
+ * Choose a model before starting a repeat. When several reachable lists use
+ * that model, ask which list to use before writing. Existing repeats name
+ * their source; a child shows its inherited source before offering nesting.
  */
 const props = defineProps<{
   doc: UidxDocument | null
@@ -51,27 +45,60 @@ const currentModel = computed(() =>
 /** The enclosing repeat this layer is drawn inside, nearest — it is part of that template. */
 const inside = computed(() => view.value?.enclosing.at(-1) ?? null)
 
-/** The switch is on while the layer repeats, or while a model is being chosen for it. */
-const choosing = ref(false)
-const on = computed(() => own.value !== null || choosing.value)
 const trigger = ref<Element | null>(null)
 const picking = ref(false)
+const nesting = ref(false)
+const showControls = computed(() => !!own.value || !inside.value || nesting.value)
+const pendingModel = ref<string | null>(null)
+const sourceOptions = computed(() => {
+  const model = pendingModel.value ?? own.value?.model
+  return view.value?.lists.filter((entry) => entry.type.replace(/\s+/g, '') === `${model}[]`) ?? []
+})
+watch(
+  () => props.node.address,
+  () => {
+    picking.value = false
+    pendingModel.value = null
+    nesting.value = false
+  },
+)
 
-function toggle(): void {
-  if (own.value) {
-    choosing.value = false
-    send(setRepeat(props.node, null))
-  } else {
-    choosing.value = !choosing.value
-    picking.value = choosing.value
-  }
+function stop(): void {
+  picking.value = false
+  pendingModel.value = null
+  send(setRepeat(props.node, null))
+}
+
+function apply(model: string, list?: string): void {
+  const current = view.value
+  if (!current || !props.writable) return
+  send(
+    repeatOverModel(
+      current.component,
+      props.node,
+      model,
+      list ? current.lists.filter((entry) => entry.list === list) : current.lists,
+      props.components,
+    ),
+  )
+  pendingModel.value = null
+  picking.value = false
 }
 
 function pick(model: string): void {
-  const current = view.value
-  if (!current) return
-  choosing.value = false
-  send(repeatOverModel(current.component, props.node, model, current.lists, props.components))
+  const matching =
+    view.value?.lists.filter((entry) => entry.type.replace(/\s+/g, '') === `${model}[]`) ?? []
+  if (matching.length > 1) pendingModel.value = model
+  else apply(model)
+}
+
+function pickSource(list: string): void {
+  const model = pendingModel.value ?? own.value?.model
+  if (model && sourceOptions.value.some((entry) => entry.list === list)) apply(model, list)
+}
+function manageModels(): void {
+  picking.value = false
+  emit('openModel', own.value?.model ?? '')
 }
 </script>
 
@@ -83,25 +110,33 @@ function pick(model: string): void {
     data-field="repeat"
     :data-set="own !== null"
   >
-    <div class="head">
+    <!-- A layer inside a repeated one is part of its template: say so, plainly. -->
+    <p v-if="inside" class="hint" data-field="inside-repeat">
+      Inside
+      <button type="button" class="link" @click="emit('select', inside.address)">
+        {{ inside.name }}</button
+      >, repeated for each {{ inside.model ?? 'item' }}.
+    </p>
+    <button
+      v-if="inside && !own && !nesting"
+      type="button"
+      class="link nested-repeat"
+      :disabled="!writable"
+      @click="nesting = true"
+    >
+      Repeat this layer too…
+    </button>
+    <div v-if="showControls" class="head">
       <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
         <path :d="REPEAT_ICON" fill="none" stroke="currentColor" stroke-width="1" />
       </svg>
-      <span class="title">{{ forSlot ? 'Repeat for each item' : 'Repeat' }}</span>
-      <button
-        type="button"
-        role="switch"
-        class="switch"
-        :aria-checked="on"
-        :disabled="!writable"
-        :aria-label="`Repeat ${node.name}`"
-        @click="toggle"
-      >
-        <span class="knob" />
+      <span class="title">{{ forSlot ? 'Repeat for each item' : 'Repeat with data' }}</span>
+      <button v-if="own" type="button" class="link" :disabled="!writable" @click="stop">
+        Stop repeating
       </button>
     </div>
 
-    <template v-if="on">
+    <template v-if="own">
       <button
         ref="trigger"
         type="button"
@@ -116,34 +151,61 @@ function pick(model: string): void {
         <span v-if="own?.model" class="model-name">{{ own.model }}</span>
         <span v-else-if="own" class="warn">{{ own.list }} · no model</span>
         <span v-else class="placeholder">Choose a model…</span>
-        <span v-if="currentModel" class="count">{{ itemCount(currentModel) }} items</span>
+        <span v-if="currentModel" class="count">{{ itemCount(currentModel) }} sample items</span>
         <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true">
           <path d="M3 4.5 6 7.5 9 4.5" fill="none" stroke="currentColor" stroke-width="1.2" />
         </svg>
       </button>
       <p v-if="own?.model" class="hint">
-        Drawn once per {{ own.model }}. Bind texts and component properties inside to its fields
-        with the bind button.
-        <button type="button" class="link" @click="emit('openModel', own.model)">Edit items</button>
+        {{ node.name }} is drawn once for each {{ own.model }} in {{ own.list }}.
+        <button type="button" class="link" @click="emit('openModel', own.model)">
+          Edit sample data
+        </button>
       </p>
-      <ModelPickerPopup
-        v-if="picking"
-        :models="allModels"
-        :current="own?.model ?? null"
-        :trigger="trigger"
-        @pick="pick"
-        @manage="emit('openModel', own?.model ?? '')"
-        @close="picking = false"
-      />
     </template>
-
-    <!-- A layer inside a repeated one is part of its template: say so, plainly. -->
-    <p v-else-if="inside" class="hint" data-field="inside-repeat">
-      Inside
-      <button type="button" class="link" @click="emit('select', inside.address)">
-        {{ inside.name }}</button
-      >, repeated for each {{ inside.model ?? 'item' }}.
+    <button
+      v-else-if="showControls"
+      ref="trigger"
+      type="button"
+      class="model-trigger"
+      :disabled="!writable"
+      :aria-expanded="picking"
+      @click="picking = !picking"
+    >
+      Choose data to repeat…
+    </button>
+    <p v-if="!own && !inside" class="hint">
+      Choose a model. This layer and its contents become one item in the list.
     </p>
+    <div v-if="pendingModel || sourceOptions.length > 1" class="source-choice">
+      <label class="hint" for="repeat-source">{{
+        pendingModel ? `Which ${pendingModel} list?` : 'List source'
+      }}</label>
+      <select
+        id="repeat-source"
+        :value="pendingModel ? '' : own?.list"
+        :disabled="!writable"
+        aria-label="Repeat list source"
+        @change="pickSource(($event.target as HTMLSelectElement).value)"
+      >
+        <option value="" disabled>Choose a list…</option>
+        <option v-for="entry in sourceOptions" :key="entry.list" :value="entry.list">
+          {{ entry.list.replaceAll('.', ' › ') }}
+        </option>
+      </select>
+      <button v-if="pendingModel" type="button" class="link" @click="pendingModel = null">
+        Cancel
+      </button>
+    </div>
+    <ModelPickerPopup
+      v-if="picking"
+      :models="allModels"
+      :current="own?.model ?? null"
+      :trigger="trigger"
+      @pick="pick"
+      @manage="manageModels"
+      @close="picking = false"
+    />
   </section>
 </template>
 
@@ -165,33 +227,19 @@ function pick(model: string): void {
   color: var(--text);
   font-weight: 600;
 }
-.switch {
-  position: relative;
-  width: 28px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  border-radius: 8px;
+.source-choice {
+  display: grid;
+  gap: 6px;
+}
+.source-choice select {
+  width: 100%;
+  min-width: 0;
+  height: var(--field-h);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--raised);
-  cursor: pointer;
-  transition: background 120ms;
-}
-.switch[aria-checked='true'] {
-  background: var(--accent);
-}
-.knob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--text);
-  transition: transform 120ms;
-}
-.switch[aria-checked='true'] .knob {
-  background: var(--on-accent);
-  transform: translateX(12px);
+  color: var(--text);
+  font: inherit;
 }
 .model-trigger {
   display: flex;
@@ -230,6 +278,9 @@ function pick(model: string): void {
 }
 .model-name {
   flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   font-weight: 500;
 }
 .placeholder {

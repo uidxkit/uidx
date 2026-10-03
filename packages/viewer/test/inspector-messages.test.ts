@@ -127,7 +127,7 @@ describe('the library item', () => {
     expect(items[1]!.detail).toBe('Part checks are paused.')
     expect(items[2]!.detail).toBe("Code can't render without it.")
     expect(items[0]!.actions!.map((a) => a.label)).toEqual(['Choose library', 'Retry'])
-    expect(items[1]!.actions!.map((a) => a.label)).toEqual(['Fix in Connect', 'Retry'])
+    expect(items[1]!.actions!.map((a) => a.label)).toEqual(['Fix in Setup', 'Retry'])
     expect(items[2]!.actions).toEqual(items[1]!.actions)
     // The configured path shows; the absolute one the server tried is its title.
     expect(items[0]!.path).toBe('../vendor/hwc/missing/custom-elements.json')
@@ -222,7 +222,10 @@ describe('code diagnostics', () => {
       ['blocked:components/checkbox-field.uidx', 'Blocked by checkbox-field.uidx', undefined],
     ])
     expect(items[0]!.rows).toHaveLength(4)
-    expect(items[0]!.rows![0]!.action).toEqual({ label: 'Open contract', run: 'open-contract' })
+    expect(items[0]!.rows![0]!.action).toEqual({
+      label: 'Open Component API',
+      run: 'open-contract',
+    })
     expect(items[1]!.detail).toBe('That file has 1 problem.')
     expect(items[1]!.rows![0]!.action).toBeUndefined()
     expect(items[1]!.actions).toBeUndefined()

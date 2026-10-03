@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { applyPatches, parseOrThrow, resolve, type UidxPatch } from '@uidx/format'
 import { defaultVariantAddress, derivedDocument, modelIndex } from '@uidx/schema'
+import DataSection from '../src/DataSection.vue'
 import ContractSection from '../src/ContractSection.vue'
 import PropertiesPane from '../src/PropertiesPane.vue'
 import {
@@ -562,31 +563,19 @@ describe('the Contract section', () => {
     })
   }
 
-  it('offers the library roots for implements and emits the write', async () => {
+  it('shows the element and sends edits to the single Setup editor', async () => {
     const section = mountFor(CHECKBOX, 'Checkbox')
-    const pick = section.find('[data-field="implements"] select')
-    expect(pick.findAll('option').map((o) => o.text())).toEqual([
-      'None',
-      'hwc-checkbox',
-      'hwc-field',
-      'hwc-text',
-      'hwc-text-input',
-    ])
-    await pick.setValue('hwc-field')
-    expect(section.emitted('patches')).toEqual([
-      [[{ op: 'set', address: 'Checkbox', prop: 'implements', value: 'hwc-field' }]],
-    ])
+    const binding = section.get('[data-field="implements"]')
+    expect(binding.text()).toContain('hwc-checkbox')
+    expect(binding.find('select').exists()).toBe(false)
+    await binding.get('button').trigger('click')
+    expect(section.emitted('act')).toEqual([[{ label: 'Change in Setup', run: 'open-setup' }]])
   })
 
-  it('falls back to a text field when the document has no library', async () => {
+  it('keeps the Setup shortcut available without a library', async () => {
     const section = mountFor(CHECKBOX, 'Checkbox', true, null)
-    const text = section.find('[data-field="implements"] input')
-    expect(text.exists()).toBe(true)
-    expect(section.text()).toContain('Connect a component library')
-    await text.setValue('hwc-toggle')
-    expect(section.emitted('patches')).toEqual([
-      [[{ op: 'set', address: 'Checkbox', prop: 'implements', value: 'hwc-toggle' }]],
-    ])
+    await section.get('[data-field="implements"] button').trigger('click')
+    expect(section.emitted('act')).toEqual([[{ label: 'Change in Setup', run: 'open-setup' }]])
   })
 
   it('leads with properties and keeps the code binding closed until an element is chosen', () => {
@@ -818,17 +807,25 @@ describe('the Contract section', () => {
     ])
   })
 
-  it('edits a repeat from the layer it rides on', async () => {
-    const section = mountFor(LIST, 'List#option')
-    // A slot repeats the way any layer does: a switch, and its model.
-    expect(section.find('[data-field="model"]').text()).toContain('Item')
-    await section.find('[data-field="repeat"] [role="switch"]').trigger('click')
+  it('keeps repeat editing in Data rather than the component API', async () => {
+    const doc = parseOrThrow(LIST)
+    const section = mount(DataSection, {
+      props: {
+        doc,
+        node: resolve(doc.tree, 'List#option'),
+        models: modelIndex([doc]),
+        selectionCount: 1,
+        previewIndex: 0,
+        writable: true,
+      },
+    })
+    expect(section.get('[data-field="model"]').text()).toContain('Item')
+    await section.get('.repeat-section .head .link').trigger('click')
     expect(section.emitted('patches')!.at(-1)).toEqual([
       [{ op: 'remove', address: 'List#option', prop: 'repeat' }],
     ])
-    // An instance below shows the same rows, unset.
-    const instance = mountFor(LIST, 'List#option/row')
-    expect(instance.find('[data-field="repeat"]').attributes('data-set')).toBe('false')
+    expect(mountFor(LIST, 'List#option').find('[data-field="repeat"]').exists()).toBe(false)
+    section.unmount()
   })
 
   it('declares a boolean prop with its default, so the state axis is well formed', async () => {
@@ -855,7 +852,7 @@ describe('the Contract section', () => {
 
   it('goes read-only with the socket', () => {
     const section = mountFor(CHECKBOX, 'Checkbox', false)
-    expect(section.find('[data-field="implements"] select').attributes('disabled')).toBeDefined()
+    expect(section.get('[data-field="implements"] button').attributes('disabled')).toBeUndefined()
     expect(
       section.find('[data-part="indeterminate-indicator"] select').attributes('disabled'),
     ).toBeDefined()
@@ -941,7 +938,7 @@ describe('the Contract section', () => {
     )
   })
 
-  it('pauses the part checks while the library cannot be read, and keeps the tag editable', async () => {
+  it('pauses the part checks while the library cannot be read, and offers Setup to fix it', async () => {
     // The fault itself is the shell's status line; here only what waits on it.
     const doc = parseOrThrow(STRAY)
     const section = mount(ContractSection, {
@@ -956,12 +953,9 @@ describe('the Contract section', () => {
     expect(section.text()).toContain('Not checked while the library is unavailable.')
     expect(section.find('.issue').exists()).toBe(false)
     expect(section.find('[data-field="choose-library"]').exists()).toBe(false)
-    // No list to pick from: the tag is typed, as Connect's is, so it can still change.
-    expect(section.find('[data-field="implements"] select').exists()).toBe(false)
-    const tag = section.find('[data-field="implements"] input')
-    expect((tag.element as HTMLInputElement).value).toBe('hwc-checkbox')
-    await tag.setValue('hwc-switch')
-    expect(section.emitted('patches')).toHaveLength(1)
+    expect(section.get('[data-field="implements"]').text()).toContain('hwc-checkbox')
+    await section.get('[data-field="implements"] button').trigger('click')
+    expect(section.emitted('act')).toEqual([[{ label: 'Change in Setup', run: 'open-setup' }]])
   })
 
   it('opens Code binding when the shell asks to show the parts, once per request', async () => {
@@ -1001,7 +995,7 @@ describe('choosing a library', () => {
     })
     await section.find('[data-field="choose-library"] button').trigger('click')
     expect(section.emitted('act')).toEqual([
-      [{ label: 'Open Connect', run: 'open-project', arg: 'library' }],
+      [{ label: 'Open Setup', run: 'open-project', arg: 'library' }],
     ])
   })
 
@@ -1222,18 +1216,14 @@ describe('the inspector tabs', () => {
     })
     const tabs = pane.findAll('.face-toggle button')
     // One part still to bind is progress, shown under Parts, not a mark on the tab.
-    expect(tabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual([
-      'Design',
-      'Contract',
-      'Connect',
-      'Code',
-    ])
+    expect(tabs.map((t) => t.text().replace(/\s+/g, ' '))).toEqual(['Design', 'Data', 'Code'])
     expect(tabs[1]!.find('.badge').exists()).toBe(false)
     expect(tabs[0]!.attributes('aria-pressed')).toBe('true')
     expect(pane.find('.contract').exists()).toBe(false)
-    await tabs[1]!.trigger('click')
+    await tabs[2]!.trigger('click')
+    await pane.get('[data-tour="tab-contract"]').trigger('click')
     expect(pane.find('.contract').exists()).toBe(true)
-    expect(pane.find('[data-field="implements"] select').exists()).toBe(true)
+    expect(pane.get('[data-field="implements"]').text()).toContain('Change in Setup')
     await pane.find('[data-part="checked-indicator"] .layer').trigger('click')
     expect(pane.emitted('select')).toEqual([['Checkbox#check']])
 

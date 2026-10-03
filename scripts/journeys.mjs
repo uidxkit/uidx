@@ -102,7 +102,8 @@ try {
   await journey('selecting a layer shows its properties, then its contract', async () => {
     await open('?page=button.uidx')
     await page.getByText('Button', { exact: true }).first().click()
-    await page.getByRole('button', { name: 'Contract' }).first().click()
+    await page.locator('[data-tour="tab-code"]').click()
+    await page.locator('[data-tour="tab-contract"]').click()
     await page.getByText('Properties', { exact: false }).first().waitFor()
     await page.getByText('variant', { exact: true }).first().waitFor()
   })
