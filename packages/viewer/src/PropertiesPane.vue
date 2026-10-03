@@ -3331,7 +3331,7 @@ function onDetach(prop: string, value: JsonValue): void {
   display: flex;
   gap: 5px;
   min-width: 0;
-  padding: 0 var(--section-pad) 10px;
+  padding: 0 0 10px;
   color: var(--text-faint);
   font-size: var(--ui-size-sm);
 }
@@ -3349,7 +3349,7 @@ function onDetach(prop: string, value: JsonValue): void {
 .code-views {
   display: flex;
   gap: 4px;
-  padding: 0 var(--section-pad) 10px;
+  padding: 0 0 10px;
 }
 .code-views button {
   display: flex;

@@ -1829,6 +1829,9 @@ const isState = (prop: { type: string; visual: boolean }): boolean =>
   color: var(--text-dim);
   font-size: var(--ui-size-sm);
 }
+.row.stacked[data-field='implements'] {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
 .name-text {
   min-width: 0;
   overflow: hidden;
